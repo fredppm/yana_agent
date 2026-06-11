@@ -1,0 +1,131 @@
+name: PR Quality Check
+
+on:
+  pull_request:
+    branches: [main]
+    # 'edited' catches title changes after the PR is open
+    types: [opened, edited, synchronize, reopened]
+
+jobs:
+  pr-title:
+    name: PR Title
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    steps:
+      - uses: amannn/action-semantic-pull-request@v5
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          # Allowed types — extend as needed
+          types: |
+            feat
+            fix
+            docs
+            refactor
+            test
+            ci
+            chore
+            revert
+            wip
+
+  quality:
+    name: Lint & Type Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install tools
+        run: pip install ruff mypy types-PyYAML vulture pip-audit pytest pytest-cov
+
+      # ── Lint ─────────────────────────────────────────────────────────────
+      # --output-format github emits ::error file=…,line=…:: annotations
+      # that appear inline in the PR "Files changed" tab
+      - name: Ruff — lint
+        id: ruff_lint
+        run: ruff check orchestrator/ --output-format github
+        continue-on-error: true
+
+      - name: Ruff — format check
+        id: ruff_format
+        run: ruff format --check orchestrator/
+        continue-on-error: true
+
+      # ── Type check ────────────────────────────────────────────────────────
+      # The problem matcher converts mypy output to ::error:: annotations
+      - name: Register mypy problem matcher
+        run: echo "::add-matcher::.github/matchers/mypy.json"
+
+      - name: Mypy — type check
+        id: mypy
+        run: mypy orchestrator/
+        continue-on-error: true
+
+      - name: Remove mypy matcher
+        if: always()
+        run: echo "::remove-matcher owner=mypy::"
+
+      # ── Dead code ─────────────────────────────────────────────────────────
+      # Informational only — does NOT block the PR.
+      # Add false positives to pyproject.toml [tool.vulture] ignore_names.
+      - name: Vulture — dead code (informational)
+        id: vulture
+        run: vulture orchestrator/
+        continue-on-error: true
+
+      # ── Security ─────────────────────────────────────────────────────────
+      - name: pip-audit — dependency CVEs
+        id: pip_audit
+        run: pip-audit -r orchestrator/requirements.txt
+        continue-on-error: true
+
+      # ── Tests ─────────────────────────────────────────────────────────────
+      # Exit 5 = no tests collected — treated as pass until tests are written.
+      - name: Pytest — tests + coverage
+        id: tests
+        run: |
+          pytest orchestrator/ \
+            --cov=orchestrator \
+            --cov-report=term-missing \
+            --tb=short -q
+          code=$?
+          [ $code -eq 5 ] && exit 0 || exit $code
+        continue-on-error: true
+
+      # ── Summary ───────────────────────────────────────────────────────────
+      # Appears in the "Summary" tab when you click "Details" on the PR check
+      - name: Write job summary
+        if: always()
+        run: |
+          echo "## PR Quality Report" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Check | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|---|:---:|" >> $GITHUB_STEP_SUMMARY
+          echo "| Ruff lint | ${{ steps.ruff_lint.outcome == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Ruff format | ${{ steps.ruff_format.outcome == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Mypy type check | ${{ steps.mypy.outcome == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Vulture dead code ⚠️ | ${{ steps.vulture.outcome == 'success' && '✅ Clean' || '⚠️ Found items' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| pip-audit CVEs | ${{ steps.pip_audit.outcome == 'success' && '✅ Clean' || '❌ Vulnerabilities found' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Tests + coverage | ${{ steps.tests.outcome == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "> ⚠️ Vulture is **informational** and does not block merge. Add false positives to \`pyproject.toml → [tool.vulture] ignore_names\`." >> $GITHUB_STEP_SUMMARY
+
+      # ── Gate ─────────────────────────────────────────────────────────────
+      # Fails the required status check if any blocking check above failed.
+      # Vulture is intentionally excluded — it's informational.
+      - name: Gate — fail if required checks failed
+        if: >
+          steps.ruff_lint.outcome == 'failure' ||
+          steps.ruff_format.outcome == 'failure' ||
+          steps.mypy.outcome == 'failure' ||
+          steps.pip_audit.outcome == 'failure' ||
+          steps.tests.outcome == 'failure'
+        run: |
+          echo "One or more required checks failed. See the summary above for details."
+          exit 1

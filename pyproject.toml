@@ -1,0 +1,25 @@
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+# E/W = pycodestyle, F = pyflakes, I = isort, UP = pyupgrade
+# B = bugbear, C4 = comprehensions, RUF = ruff-specific
+select = ["E", "W", "F", "I", "UP", "B", "C4", "RUF"]
+ignore = [
+    "E501",   # line too long — handled by formatter
+    "B008",   # do not perform function calls in default args
+]
+
+[tool.mypy]
+python_version = "3.12"
+ignore_missing_imports = true
+strict_optional = true
+warn_unused_ignores = true
+warn_return_any = false   # too noisy for LLM-calling code
+
+[tool.vulture]
+min_confidence = 80
+paths = ["orchestrator/"]
+# Add false positives below as you discover them:
+# ignore_names = ["_SANCTUM_FILES", "some_func"]
