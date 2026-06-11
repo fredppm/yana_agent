@@ -10,11 +10,11 @@ Usage:
 from __future__ import annotations
 
 import argparse
+from datetime import datetime
 import io
+from pathlib import Path
 import sys
 import time
-from datetime import datetime
-from pathlib import Path
 
 # Force UTF-8 I/O on Windows to handle accented characters
 if sys.platform == "win32":
@@ -36,12 +36,12 @@ sys.path.insert(0, str(_HERE))
 # Imports (after path fix)
 # ---------------------------------------------------------------------------
 
-import core
-import output
-import providers as prov
-import sanctum_writer as sw
-import voice as v
-from strings import t
+import core  # noqa: E402
+import output  # noqa: E402
+import providers as prov  # noqa: E402
+import sanctum_writer as sw  # noqa: E402
+from strings import t  # noqa: E402
+import voice as v  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -97,12 +97,9 @@ def run_conversation(text_mode: bool) -> None:
     speak_fn = None
     if not text_mode:
         _cfg = voice_cfg
-        speak_fn = lambda text: v.speak(
-            text,
-            voice=_cfg["tts_voice"],
-            rate=_cfg["tts_rate"],
-            volume=_cfg["tts_volume"],
-        )
+        def _speak(text: str) -> None:
+            v.speak(text, voice=_cfg["tts_voice"], rate=_cfg["tts_rate"], volume=_cfg["tts_volume"])
+        speak_fn = _speak
     output.configure(voice_mode=not text_mode, speak_fn=speak_fn)
 
     if not core.sanctum_exists():

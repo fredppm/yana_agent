@@ -112,8 +112,6 @@ def _transcribe(audio, provider: str, model_name: str, language: str) -> str:
 
 
 def _transcribe_openai_whisper(audio, model_name: str, language: str) -> str:
-    import whisper
-
     model = _get_whisper_model(model_name)
     result = model.transcribe(audio, language=language, fp16=False)
     return result["text"].strip()
@@ -161,8 +159,6 @@ def speak(text: str, voice: str = "pt-BR-FranciscaNeural", rate: str = "+0%", vo
 
 async def _speak_async(text: str, voice: str, rate: str, volume: str) -> None:
     import edge_tts
-    import soundfile as sf
-    import sounddevice as sd
 
     with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp:
         tmp_path = tmp.name
@@ -180,8 +176,8 @@ async def _speak_async(text: str, voice: str, rate: str, volume: str) -> None:
 
 def _play_audio_file(path: str) -> None:
     """Play an audio file (mp3/wav) via sounddevice."""
-    import soundfile as sf
     import sounddevice as sd
+    import soundfile as sf
 
     # soundfile can't read mp3 natively — use pydub if available, else convert
     try:

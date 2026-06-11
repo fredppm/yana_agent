@@ -14,8 +14,8 @@ from __future__ import annotations
 
 import os
 import time
+from collections.abc import Callable
 from datetime import datetime
-from typing import Callable, Optional
 
 import strings
 
@@ -37,7 +37,7 @@ _RESET  = "\033[0m"
 # ---------------------------------------------------------------------------
 
 _voice_mode: bool = False
-_speak_fn: Optional[Callable[[str], None]] = None
+_speak_fn: Callable[[str], None] | None = None
 _level: str = "info"   # "debug" | "info" | "quiet"
 _color: bool = True
 
@@ -48,9 +48,9 @@ _color: bool = True
 
 def configure(
     voice_mode: bool,
-    speak_fn: Optional[Callable[[str], None]] = None,
-    level: Optional[str] = None,
-    color: Optional[bool] = None,
+    speak_fn: Callable[[str], None] | None = None,
+    level: str | None = None,
+    color: bool | None = None,
 ) -> None:
     """
     Call once at startup.

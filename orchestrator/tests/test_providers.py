@@ -4,8 +4,8 @@ tests/test_providers.py — unit tests for providers.py pure logic.
 No network, no API keys, no file I/O. Config is passed as dicts.
 """
 
-import sys
 from pathlib import Path
+import sys
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -100,7 +100,7 @@ class TestResolveModel:
         # When two providers define the same tier, the first one in yaml order wins
         # (dicts are insertion-ordered in Python 3.7+)
         cfg = _config()
-        provider, model = providers.resolve_model("conversation_fast", cfg)
+        provider, _ = providers.resolve_model("conversation_fast", cfg)
         # "anthropic" is listed before "bedrock" in our fixture → anthropic wins
         assert provider == "anthropic"
 

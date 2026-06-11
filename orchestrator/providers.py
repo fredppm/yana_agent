@@ -12,8 +12,8 @@ Routing resolution order:
 from __future__ import annotations
 
 import os
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable, Optional
 
 import yaml
 
@@ -36,7 +36,7 @@ def load_providers() -> dict:
         return yaml.safe_load(f) or {}
 
 
-def resolve_model(task: str = "conversation", config: Optional[dict] = None) -> tuple[str, str]:
+def resolve_model(task: str = "conversation", config: dict | None = None) -> tuple[str, str]:
     """
     Return (provider_name, model_id) for the given task type.
 
@@ -75,7 +75,7 @@ def resolve_model(task: str = "conversation", config: Optional[dict] = None) -> 
     raise ValueError(errors.e("LLM-001", task=task, tier=tier_spec))
 
 
-def get_api_key(provider: str, config: Optional[dict] = None) -> Optional[str]:
+def get_api_key(provider: str, config: dict | None = None) -> str | None:
     """Return API key for provider, or None if provider uses ambient credentials (Bedrock)."""
     if provider == "bedrock":
         return None  # uses AWS env vars / profile
@@ -90,7 +90,7 @@ def get_api_key(provider: str, config: Optional[dict] = None) -> Optional[str]:
 
     key = os.environ.get(env_var, "")
     if not key:
-        raise EnvironmentError(errors.e("LLM-002", env_var=env_var))
+        raise OSError(errors.e("LLM-002", env_var=env_var))
     return key
 
 
@@ -117,9 +117,9 @@ def call_llm(
     system_prompt: str,
     task: str = "conversation",
     stream: bool = True,
-    config: Optional[dict] = None,
+    config: dict | None = None,
     timeout: float = 60.0,
-    on_token: Optional[Callable[[str], None]] = None,
+    on_token: Callable[[str], None] | None = None,
 ) -> str:
     """
     Route to the correct provider and return the assistant's reply as a string.
@@ -153,7 +153,7 @@ def call_llm(
         raise ValueError(f"Unknown provider: {provider}")
 
 
-def _bedrock_config(config: dict) -> tuple[str, Optional[str]]:
+def _bedrock_config(config: dict) -> tuple[str, str | None]:
     """Return (region, profile) for Bedrock."""
     llm = config.get("llm", {})
     bedrock_cfg = llm.get("providers", {}).get("bedrock", {})
@@ -211,7 +211,7 @@ def _call_bedrock(
     system_prompt: str,
     model_id: str,
     region: str,
-    profile: Optional[str],
+    profile: str | None,
     stream: bool,
     timeout: float,
     on_token: Callable[[str], None],
@@ -263,7 +263,7 @@ def _call_openai(
     from openai import OpenAI
 
     client = OpenAI(api_key=api_key, timeout=timeout)
-    full_messages = [{"role": "system", "content": system_prompt}] + messages
+    full_messages = [{"role": "system", "content": system_prompt}, *messages]
 
     if stream:
         full_text = ""

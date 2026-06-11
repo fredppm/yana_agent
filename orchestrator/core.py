@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
+
 import errors
 
 
@@ -123,6 +124,6 @@ def is_quiet_hours() -> bool:
         end = datetime.strptime(end_str.strip(), "%H:%M").time()
         if start <= end:
             return start <= now <= end
-        return now >= start or now <= end  # overnight window e.g. 23:00–07:00
+        return now >= start or now <= end  # overnight window e.g. 23:00-07:00
     except (ValueError, AttributeError):
         return False

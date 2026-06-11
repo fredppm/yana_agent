@@ -4,9 +4,9 @@ tests/test_sanctum_writer.py — unit tests for sanctum_writer.py pure parsing l
 _parse_and_write is tested by mocking sanctum_path() so no actual files are written.
 """
 
+from pathlib import Path
 import sys
 import tempfile
-from pathlib import Path
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).parent.parent))

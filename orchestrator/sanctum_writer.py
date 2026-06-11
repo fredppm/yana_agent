@@ -14,8 +14,6 @@ from __future__ import annotations
 
 import re
 from datetime import datetime
-from pathlib import Path
-from typing import Optional
 
 import core
 import errors
@@ -85,8 +83,8 @@ def write_sanctum(
     messages: list[dict],
     system_prompt: str,
     is_first_breath: bool,
-    config: Optional[dict] = None,
-    session_date: Optional[str] = None,
+    config: dict | None = None,
+    session_date: str | None = None,
 ) -> dict[str, str]:
     """
     Call YANA with the full conversation history + sanctum write prompt.
@@ -104,7 +102,7 @@ def write_sanctum(
     sanctum_prompt = _build_sanctum_prompt(files, session_date)
 
     # Add the write request as a final user message
-    write_messages = messages + [{"role": "user", "content": sanctum_prompt}]
+    write_messages = [*messages, {"role": "user", "content": sanctum_prompt}]
 
     output.status("saving sanctum...")
     response = prov.call_llm(

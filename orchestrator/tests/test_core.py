@@ -2,10 +2,10 @@
 tests/test_core.py — unit tests for core.py pure logic.
 """
 
-import sys
+from datetime import datetime, time as dtime
 from pathlib import Path
+import sys
 from unittest.mock import patch
-from datetime import time as dtime, datetime
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
