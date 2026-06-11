@@ -22,6 +22,7 @@ def _reset():
 # configure + say
 # ---------------------------------------------------------------------------
 
+
 class TestConfigure:
     def setup_method(self):
         _reset()
@@ -44,8 +45,10 @@ class TestConfigure:
 
     def test_say_returns_positive_ms_in_voice_mode(self):
         import time
+
         def slow_speak(text):
             time.sleep(0.05)  # 50ms — safely above Windows timer tick (~15.6ms)
+
         output.configure(voice_mode=True, speak_fn=slow_speak, color=False)
         ms = output.say("hello")
         assert ms > 0  # TTS ran, so some time elapsed
@@ -64,6 +67,7 @@ class TestConfigure:
 # ---------------------------------------------------------------------------
 # after_stream
 # ---------------------------------------------------------------------------
+
 
 class TestAfterStream:
     def setup_method(self):
@@ -89,6 +93,7 @@ class TestAfterStream:
 # ---------------------------------------------------------------------------
 # status / debug / warn / error — level filtering
 # ---------------------------------------------------------------------------
+
 
 class TestLevels:
     def setup_method(self):
@@ -144,6 +149,7 @@ class TestLevels:
 # stream_token
 # ---------------------------------------------------------------------------
 
+
 class TestStreamToken:
     def test_prints_without_newline(self, capsys):
         output.stream_token("a")
@@ -156,6 +162,7 @@ class TestStreamToken:
 # ---------------------------------------------------------------------------
 # Labels
 # ---------------------------------------------------------------------------
+
 
 class TestLabels:
     def setup_method(self):

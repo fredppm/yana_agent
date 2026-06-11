@@ -4,17 +4,17 @@ tests/test_providers.py — unit tests for providers.py pure logic.
 No network, no API keys, no file I/O. Config is passed as dicts.
 """
 
-from pathlib import Path
 import sys
+from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import providers
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 def _config(routing: dict | None = None, extra_providers: dict | None = None) -> dict:
     """Build a minimal providers config dict."""
@@ -54,6 +54,7 @@ def _config(routing: dict | None = None, extra_providers: dict | None = None) ->
 # resolve_model
 # ---------------------------------------------------------------------------
 
+
 class TestResolveModel:
     def test_conversation_resolves_to_default(self):
         provider, model = providers.resolve_model("conversation", _config())
@@ -91,6 +92,7 @@ class TestResolveModel:
 
     def test_raises_if_unresolvable(self):
         import pytest
+
         # Config with no models at all
         empty_cfg = {"llm": {"providers": {}, "routing": {}}}
         with pytest.raises(ValueError):
@@ -108,6 +110,7 @@ class TestResolveModel:
 # ---------------------------------------------------------------------------
 # _auto_task
 # ---------------------------------------------------------------------------
+
 
 class TestAutoTask:
     def _msgs(self, last: str, count: int = 1) -> list:

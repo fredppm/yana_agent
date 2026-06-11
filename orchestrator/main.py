@@ -10,11 +10,11 @@ Usage:
 from __future__ import annotations
 
 import argparse
-from datetime import datetime
 import io
-from pathlib import Path
 import sys
 import time
+from datetime import datetime
+from pathlib import Path
 
 # Force UTF-8 I/O on Windows to handle accented characters
 if sys.platform == "win32":
@@ -40,18 +40,18 @@ import core  # noqa: E402
 import output  # noqa: E402
 import providers as prov  # noqa: E402
 import sanctum_writer as sw  # noqa: E402
-from strings import t  # noqa: E402
 import voice as v  # noqa: E402
-
+from strings import t  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
 
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="YANA — You Are Not Alone")
     mode = parser.add_mutually_exclusive_group()
-    mode.add_argument("--text",  action="store_true", help="Text mode (no voice I/O)")
+    mode.add_argument("--text", action="store_true", help="Text mode (no voice I/O)")
     mode.add_argument("--pulse", action="store_true", help="PULSE run (autonomous tasks)")
     return parser.parse_args()
 
@@ -59,6 +59,7 @@ def parse_args() -> argparse.Namespace:
 # ---------------------------------------------------------------------------
 # PULSE
 # ---------------------------------------------------------------------------
+
 
 def run_pulse() -> None:
     output.configure(voice_mode=False)
@@ -75,8 +76,12 @@ def run_pulse() -> None:
 
     output.status("PULSE starting...")
     reply = prov.call_llm(
-        messages, system_prompt, task="pulse_scheduled", stream=True,
-        on_token=output.stream_token, config=providers_config,
+        messages,
+        system_prompt,
+        task="pulse_scheduled",
+        stream=True,
+        on_token=output.stream_token,
+        config=providers_config,
     )
     print()  # newline after stream
     messages.append({"role": "assistant", "content": reply})
@@ -89,6 +94,7 @@ def run_pulse() -> None:
 # Conversation
 # ---------------------------------------------------------------------------
 
+
 def run_conversation(text_mode: bool) -> None:
     providers_config = prov.load_providers()
     voice_cfg = v.load_voice_config(providers_config)
@@ -97,8 +103,10 @@ def run_conversation(text_mode: bool) -> None:
     speak_fn = None
     if not text_mode:
         _cfg = voice_cfg
+
         def _speak(text: str) -> None:
             v.speak(text, voice=_cfg["tts_voice"], rate=_cfg["tts_rate"], volume=_cfg["tts_volume"])
+
         speak_fn = _speak
     output.configure(voice_mode=not text_mode, speak_fn=speak_fn)
 
@@ -149,8 +157,12 @@ def run_conversation(text_mode: bool) -> None:
             print(output.yana_label(), end="", flush=True)
             _t0 = time.monotonic()
             reply = prov.call_llm(
-                messages, system_prompt, task=task, stream=True,
-                on_token=output.stream_token, config=providers_config,
+                messages,
+                system_prompt,
+                task=task,
+                stream=True,
+                on_token=output.stream_token,
+                config=providers_config,
             )
             _llm_ms = int((time.monotonic() - _t0) * 1000)
             messages.append({"role": "assistant", "content": reply})
@@ -172,14 +184,14 @@ def run_conversation(text_mode: bool) -> None:
     core.save_session_log(messages, session_id)
 
     bond = core.sanctum_path() / "BOND.md"
-    is_first_breath = (
-        not core.sanctum_exists()
-        or (bond.exists() and "{" in bond.read_text(encoding="utf-8"))
+    is_first_breath = not core.sanctum_exists() or (
+        bond.exists() and "{" in bond.read_text(encoding="utf-8")
     )
 
     try:
         sw.write_sanctum(
-            messages, system_prompt,
+            messages,
+            system_prompt,
             is_first_breath=is_first_breath,
             config=providers_config,
             session_date=session_date,
@@ -193,6 +205,7 @@ def run_conversation(text_mode: bool) -> None:
 # ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
+
 
 def main() -> None:
     args = parse_args()

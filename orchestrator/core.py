@@ -12,10 +12,10 @@ from pathlib import Path
 
 import errors
 
-
 # ---------------------------------------------------------------------------
 # Paths
 # ---------------------------------------------------------------------------
+
 
 def _project_root() -> Path:
     """Resolve project root: two levels up from this file (orchestrator/)."""
@@ -66,7 +66,9 @@ def load_system_prompt() -> str:
         parts += [_section(sanctum / f) for f in _SANCTUM_FILES if (sanctum / f).exists()]
         pulse_cfg = sanctum / "pulse-config.yaml"
         if pulse_cfg.exists():
-            parts.append(f"---\n## pulse-config.yaml\n\n```yaml\n{pulse_cfg.read_text(encoding='utf-8')}\n```")
+            parts.append(
+                f"---\n## pulse-config.yaml\n\n```yaml\n{pulse_cfg.read_text(encoding='utf-8')}\n```"
+            )
     else:
         parts.append(f"---\n[{errors.e('SYS-001')}]")
 
@@ -76,6 +78,7 @@ def load_system_prompt() -> str:
 # ---------------------------------------------------------------------------
 # Session management
 # ---------------------------------------------------------------------------
+
 
 def save_session_log(messages: list[dict], session_id: str) -> None:
     """Persist the conversation to data/agent-yana/sessions/session-{id}.md."""
@@ -88,6 +91,7 @@ def save_session_log(messages: list[dict], session_id: str) -> None:
 # ---------------------------------------------------------------------------
 # Sanctum state check
 # ---------------------------------------------------------------------------
+
 
 def sanctum_exists() -> bool:
     """True if the sanctum has been initialised (PERSONA.md present)."""
@@ -102,9 +106,11 @@ def sanctum_path() -> Path:
 # Pulse-config helpers
 # ---------------------------------------------------------------------------
 
+
 def load_pulse_config() -> dict:
     """Load pulse-config.yaml from the sanctum. Returns empty dict if missing or invalid."""
     import yaml
+
     cfg_path = _sanctum_root() / "pulse-config.yaml"
     if not cfg_path.exists():
         return {}

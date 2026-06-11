@@ -20,7 +20,6 @@ import errors
 import output
 import providers as prov
 
-
 # ---------------------------------------------------------------------------
 # Files YANA should write after First Breath
 # ---------------------------------------------------------------------------
@@ -44,6 +43,7 @@ REGULAR_SESSION_FILES = [
 # ---------------------------------------------------------------------------
 # Prompt
 # ---------------------------------------------------------------------------
+
 
 def _build_sanctum_prompt(files: list[str], session_date: str) -> str:
     file_list = "\n".join(f"- {f}" for f in files)
@@ -79,6 +79,7 @@ Write every file. No skipping. No summarizing with "same as template". Real cont
 # Write sanctum
 # ---------------------------------------------------------------------------
 
+
 def write_sanctum(
     messages: list[dict],
     system_prompt: str,
@@ -109,9 +110,9 @@ def write_sanctum(
         write_messages,
         system_prompt,
         task="conversation",
-        stream=True,        # stream to avoid timeout on large responses
+        stream=True,  # stream to avoid timeout on large responses
         config=config,
-        timeout=300.0,      # 5 min — writing 8 files takes time
+        timeout=300.0,  # 5 min — writing 8 files takes time
         on_token=output.stream_token,
     )
     print()  # newline after stream — no TTS for sanctum write
@@ -146,6 +147,7 @@ def _parse_and_write(response: str) -> dict[str, str]:
         # Security: reject absolute paths, traversal, and dot-prefixed names
         # Note: PurePosixPath normalises "./" away, so check raw string first
         from pathlib import PurePosixPath
+
         if not filename or filename.startswith((".", "/", "\\")):
             output.warn(errors.e("MEM-001", filename=filename))
             continue

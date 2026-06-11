@@ -20,13 +20,13 @@ _LOCALE = "pt_BR"
 _STRINGS: dict[str, dict[str, str]] = {
     "pt_BR": {
         # -- UI --
-        "banner":          "--- YANA (Ctrl+C para sair) ---",
+        "banner": "--- YANA (Ctrl+C para sair) ---",
         "sanctum_missing": "Sanctum não encontrado.",
-        "warn_prefix":     "aviso",
-        "error_prefix":    "erro",
+        "warn_prefix": "aviso",
+        "error_prefix": "erro",
         # -- Communication --
-        "user_label":      "Você",
-        "greeting":        "Oi, estou ouvindo.",
+        "user_label": "Você",
+        "greeting": "Oi, estou ouvindo.",
     },
 }
 

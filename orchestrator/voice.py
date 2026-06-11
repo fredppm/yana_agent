@@ -15,10 +15,10 @@ import tempfile
 import errors
 import output
 
-
 # ---------------------------------------------------------------------------
 # Markdown stripper — LLMs add markdown even in voice mode
 # ---------------------------------------------------------------------------
+
 
 def strip_markdown(text: str) -> str:
     """Remove markdown formatting so TTS doesn't read symbols aloud."""
@@ -49,11 +49,11 @@ def strip_markdown(text: str) -> str:
 # STT — listen
 # ---------------------------------------------------------------------------
 
-_SAMPLE_RATE = 16000      # Hz — Whisper wants 16 kHz
+_SAMPLE_RATE = 16000  # Hz — Whisper wants 16 kHz
 _CHANNELS = 1
 _SILENCE_THRESHOLD = 0.01  # RMS below this = silence
-_SILENCE_SECONDS = 1.5    # seconds of silence to consider speech done
-_MAX_SECONDS = 60         # hard cap on recording length
+_SILENCE_SECONDS = 1.5  # seconds of silence to consider speech done
+_MAX_SECONDS = 60  # hard cap on recording length
 
 
 def listen(provider: str = "openai-whisper", model_name: str = "base", language: str = "pt") -> str:
@@ -85,7 +85,7 @@ def _record_until_silence():
     with sd.InputStream(samplerate=_SAMPLE_RATE, channels=_CHANNELS, dtype="float32") as stream:
         for _ in range(max_chunks):
             chunk, _ = stream.read(chunk_samples)
-            rms = float(np.sqrt(np.mean(chunk ** 2)))
+            rms = float(np.sqrt(np.mean(chunk**2)))
 
             if rms > _SILENCE_THRESHOLD:
                 started_speaking = True
@@ -103,6 +103,7 @@ def _record_until_silence():
 
 def _transcribe(audio, provider: str, model_name: str, language: str) -> str:
     import numpy as np
+
     audio_flat = audio.flatten().astype(np.float32)
 
     if provider == "faster-whisper":
@@ -123,6 +124,7 @@ _whisper_model_cache: dict[str, object] = {}
 def _get_whisper_model(model_name: str):
     if model_name not in _whisper_model_cache:
         import whisper
+
         _whisper_model_cache[model_name] = whisper.load_model(model_name)
     return _whisper_model_cache[model_name]
 
@@ -133,8 +135,11 @@ _faster_whisper_cache: dict[str, object] = {}
 def _get_faster_whisper_model(model_name: str):
     if model_name not in _faster_whisper_cache:
         from faster_whisper import WhisperModel
+
         output.debug(f"loading faster-whisper {model_name}...")
-        _faster_whisper_cache[model_name] = WhisperModel(model_name, device="cpu", compute_type="int8")
+        _faster_whisper_cache[model_name] = WhisperModel(
+            model_name, device="cpu", compute_type="int8"
+        )
     return _faster_whisper_cache[model_name]
 
 
@@ -148,7 +153,10 @@ def _transcribe_faster_whisper(audio, model_name: str, language: str) -> str:
 # TTS — speak
 # ---------------------------------------------------------------------------
 
-def speak(text: str, voice: str = "pt-BR-FranciscaNeural", rate: str = "+0%", volume: str = "+0%") -> None:
+
+def speak(
+    text: str, voice: str = "pt-BR-FranciscaNeural", rate: str = "+0%", volume: str = "+0%"
+) -> None:
     """
     Strip markdown, synthesise with edge-tts, and play.
     Blocks until playback is done.
@@ -186,6 +194,7 @@ def _play_audio_file(path: str) -> None:
         # Fallback: convert mp3 → wav via pydub
         try:
             from pydub import AudioSegment
+
             audio = AudioSegment.from_mp3(path)
             wav_path = path.replace(".mp3", ".wav")
             audio.export(wav_path, format="wav")
@@ -202,6 +211,7 @@ def _play_audio_file(path: str) -> None:
 # ---------------------------------------------------------------------------
 # Voice config helpers
 # ---------------------------------------------------------------------------
+
 
 def load_voice_config(providers_config: dict) -> dict:
     """Extract STT/TTS config from providers.yaml content."""

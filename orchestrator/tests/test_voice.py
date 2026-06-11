@@ -4,18 +4,18 @@ tests/test_voice.py — unit tests for voice.py pure functions.
 No hardware, no network, no audio. Safe to run anywhere.
 """
 
-from pathlib import Path
 import sys
+from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import output
 import voice
 
-
 # ---------------------------------------------------------------------------
 # strip_markdown
 # ---------------------------------------------------------------------------
+
 
 class TestStripMarkdown:
     def test_headers_removed(self):
@@ -82,6 +82,7 @@ class TestStripMarkdown:
 # ts (now lives in output.py)
 # ---------------------------------------------------------------------------
 
+
 class TestTs:
     def test_format(self):
         result = output.ts()
@@ -99,10 +100,18 @@ class TestTs:
 # load_voice_config
 # ---------------------------------------------------------------------------
 
+
 class TestLoadVoiceConfig:
     def test_all_keys_present(self):
         cfg = voice.load_voice_config({})
-        for key in ("stt_provider", "stt_model", "stt_language", "tts_voice", "tts_rate", "tts_volume"):
+        for key in (
+            "stt_provider",
+            "stt_model",
+            "stt_language",
+            "tts_voice",
+            "tts_rate",
+            "tts_volume",
+        ):
             assert key in cfg
 
     def test_defaults(self):

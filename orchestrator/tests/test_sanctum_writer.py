@@ -4,19 +4,19 @@ tests/test_sanctum_writer.py — unit tests for sanctum_writer.py pure parsing l
 _parse_and_write is tested by mocking sanctum_path() so no actual files are written.
 """
 
-from pathlib import Path
 import sys
 import tempfile
+from pathlib import Path
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import sanctum_writer
 
-
 # ---------------------------------------------------------------------------
 # _parse_and_write
 # ---------------------------------------------------------------------------
+
 
 class TestParseAndWrite:
     def _run(self, response: str) -> dict:
@@ -33,8 +33,7 @@ class TestParseAndWrite:
 
     def test_multiple_files_parsed(self):
         response = (
-            "<<<FILE:BOND.md>>>\ncontent A\n<<<END>>>\n"
-            "<<<FILE:MEMORY.md>>>\ncontent B\n<<<END>>>"
+            "<<<FILE:BOND.md>>>\ncontent A\n<<<END>>>\n<<<FILE:MEMORY.md>>>\ncontent B\n<<<END>>>"
         )
         written = self._run(response)
         assert set(written.keys()) == {"BOND.md", "MEMORY.md"}
@@ -101,6 +100,7 @@ class TestParseAndWrite:
 # _build_sanctum_prompt
 # ---------------------------------------------------------------------------
 
+
 class TestBuildSanctumPrompt:
     def test_contains_all_file_names(self):
         files = ["BOND.md", "MEMORY.md"]
@@ -118,8 +118,12 @@ class TestBuildSanctumPrompt:
         assert "<<<END>>>" in prompt
 
     def test_first_breath_files_vs_regular(self):
-        fb_prompt = sanctum_writer._build_sanctum_prompt(sanctum_writer.FIRST_BREATH_FILES, "2026-06-10")
-        reg_prompt = sanctum_writer._build_sanctum_prompt(sanctum_writer.REGULAR_SESSION_FILES, "2026-06-10")
+        fb_prompt = sanctum_writer._build_sanctum_prompt(
+            sanctum_writer.FIRST_BREATH_FILES, "2026-06-10"
+        )
+        reg_prompt = sanctum_writer._build_sanctum_prompt(
+            sanctum_writer.REGULAR_SESSION_FILES, "2026-06-10"
+        )
         # First breath requests more files → longer prompt
         assert len(fb_prompt) > len(reg_prompt)
         # The file lists themselves must differ

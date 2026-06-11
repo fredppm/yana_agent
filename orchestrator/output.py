@@ -19,17 +19,16 @@ from datetime import datetime
 
 import strings
 
-
 # ---------------------------------------------------------------------------
 # ANSI colours — subtle palette, easy on the eyes
 # ---------------------------------------------------------------------------
 
-_DIM    = "\033[2m"
-_CYAN   = "\033[36m"
-_BLUE   = "\033[94m"
+_DIM = "\033[2m"
+_CYAN = "\033[36m"
+_BLUE = "\033[94m"
 _YELLOW = "\033[33m"
-_RED    = "\033[31m"
-_RESET  = "\033[0m"
+_RED = "\033[31m"
+_RESET = "\033[0m"
 
 
 # ---------------------------------------------------------------------------
@@ -38,13 +37,14 @@ _RESET  = "\033[0m"
 
 _voice_mode: bool = False
 _speak_fn: Callable[[str], None] | None = None
-_level: str = "info"   # "debug" | "info" | "quiet"
+_level: str = "info"  # "debug" | "info" | "quiet"
 _color: bool = True
 
 
 # ---------------------------------------------------------------------------
 # Setup
 # ---------------------------------------------------------------------------
+
 
 def configure(
     voice_mode: bool,
@@ -69,12 +69,14 @@ def configure(
         _color = color
     else:
         import sys
+
         _color = hasattr(sys.stdout, "isatty") and sys.stdout.isatty()
 
 
 # ---------------------------------------------------------------------------
 # Timestamp helper
 # ---------------------------------------------------------------------------
+
 
 def ts() -> str:
     """Current timestamp with milliseconds: HH:MM:SS.mmm"""
@@ -84,6 +86,7 @@ def ts() -> str:
 # ---------------------------------------------------------------------------
 # Colour helpers
 # ---------------------------------------------------------------------------
+
 
 def _c(code: str, text: str) -> str:
     """Wrap text in ANSI code if colour is enabled."""
@@ -95,6 +98,7 @@ def _c(code: str, text: str) -> str:
 # ---------------------------------------------------------------------------
 # Output channels
 # ---------------------------------------------------------------------------
+
 
 def stream_token(char: str) -> None:
     """Print a single streamed LLM token — never spoken mid-stream."""
@@ -185,6 +189,7 @@ def error(msg: str) -> None:
 # ---------------------------------------------------------------------------
 # Internal
 # ---------------------------------------------------------------------------
+
 
 def _do_tts(text: str) -> int:
     """Run TTS and return elapsed ms, or 0 if voice mode is off."""
