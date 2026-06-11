@@ -5,9 +5,9 @@ openai>=1.50.0
 # Config
 PyYAML>=6.0
 
-# STT — choose one (or both)
-openai-whisper>=20231117
-# faster-whisper>=1.0.0   # uncomment for GPU/faster local inference
+# STT — choose one (or both); default config uses faster-whisper
+# openai-whisper>=20231117   # uncomment if using openai-whisper provider
+faster-whisper>=1.0.0
 
 # TTS
 edge-tts>=6.1.9

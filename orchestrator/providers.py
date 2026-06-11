@@ -15,20 +15,20 @@ import os
 from collections.abc import Callable
 from pathlib import Path
 
-import yaml
-
 import errors
-
 
 # ---------------------------------------------------------------------------
 # Config loading
 # ---------------------------------------------------------------------------
+
 
 def _config_path() -> Path:
     return Path(__file__).parent / "config" / "providers.yaml"
 
 
 def load_providers() -> dict:
+    import yaml
+
     path = _config_path()
     if not path.exists():
         raise FileNotFoundError(errors.e("CFG-001", path=path))
@@ -98,6 +98,7 @@ def get_api_key(provider: str, config: dict | None = None) -> str | None:
 # LLM call — dispatcher
 # ---------------------------------------------------------------------------
 
+
 def _auto_task(messages: list[dict], task: str) -> str:
     """
     Auto-downgrade 'conversation' to 'conversation_fast' for short/simple exchanges.
@@ -142,12 +143,18 @@ def call_llm(
 
     if provider == "anthropic":
         api_key = get_api_key("anthropic", config)
-        return _call_anthropic(messages, system_prompt, model_id, api_key, stream, timeout, _on_token)
+        assert api_key is not None  # get_api_key raises OSError if key is missing
+        return _call_anthropic(
+            messages, system_prompt, model_id, api_key, stream, timeout, _on_token
+        )
     elif provider == "bedrock":
         region, profile = _bedrock_config(config)
-        return _call_bedrock(messages, system_prompt, model_id, region, profile, stream, timeout, _on_token)
+        return _call_bedrock(
+            messages, system_prompt, model_id, region, profile, stream, timeout, _on_token
+        )
     elif provider == "openai":
         api_key = get_api_key("openai", config)
+        assert api_key is not None  # get_api_key raises OSError if key is missing
         return _call_openai(messages, system_prompt, model_id, api_key, stream, timeout, _on_token)
     else:
         raise ValueError(f"Unknown provider: {provider}")
@@ -165,6 +172,7 @@ def _bedrock_config(config: dict) -> tuple[str, str | None]:
 # ---------------------------------------------------------------------------
 # Anthropic (direct API)
 # ---------------------------------------------------------------------------
+
 
 def _call_anthropic(
     messages: list[dict],
@@ -205,6 +213,7 @@ def _call_anthropic(
 # ---------------------------------------------------------------------------
 # Bedrock (AnthropicBedrock — same SDK, different client)
 # ---------------------------------------------------------------------------
+
 
 def _call_bedrock(
     messages: list[dict],
@@ -250,6 +259,7 @@ def _call_bedrock(
 # ---------------------------------------------------------------------------
 # OpenAI
 # ---------------------------------------------------------------------------
+
 
 def _call_openai(
     messages: list[dict],

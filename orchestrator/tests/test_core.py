@@ -2,9 +2,10 @@
 tests/test_core.py — unit tests for core.py pure logic.
 """
 
-from datetime import datetime, time as dtime
-from pathlib import Path
 import sys
+from datetime import datetime
+from datetime import time as dtime
+from pathlib import Path
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -14,10 +15,13 @@ import core
 
 def _at(hour: int, minute: int = 0):
     """Context manager: mock datetime.now().time() to a fixed local time."""
-    return patch("core.datetime", **{
-        "now.return_value.time.return_value": dtime(hour, minute),
-        "strptime.side_effect": datetime.strptime,
-    })
+    return patch(  # type: ignore[call-overload]
+        "core.datetime",
+        **{
+            "now.return_value.time.return_value": dtime(hour, minute),
+            "strptime.side_effect": datetime.strptime,
+        },
+    )
 
 
 def _quiet(window: str):
@@ -28,6 +32,7 @@ def _quiet(window: str):
 # ---------------------------------------------------------------------------
 # is_quiet_hours
 # ---------------------------------------------------------------------------
+
 
 class TestIsQuietHours:
     def test_inside_daytime_window(self):
