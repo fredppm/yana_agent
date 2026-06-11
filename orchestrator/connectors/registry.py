@@ -33,6 +33,7 @@ class ConnectorInstance:
     description: str
     type: str               # ConnectorType class name
     owner: str | None = None
+    config: dict[str, Any] = field(default_factory=dict)  # constructor kwargs
 
 
 # ---------------------------------------------------------------------------
@@ -75,15 +76,16 @@ class ConnectorRegistry:
         name: str,
         owner: str | None = None,
         description: str = "",
+        config: dict[str, Any] | None = None,
     ) -> ConnectorInstance:
         """
         Register a connector instance programmatically — no YAML required.
 
         *connector* may be:
-          - a Connector subclass (instantiated with no args on first call)
-          - an already-configured Connector instance (useful when the
-            constructor requires parameters, e.g. credentials paths)
+          - a Connector subclass — instantiated lazily via *config* kwargs
+          - an already-configured Connector instance — used as-is
 
+        *config* is passed as **kwargs to the constructor on first call.
         *description* defaults to the class-level ``connector_description``
         when not supplied.
         """
@@ -100,6 +102,7 @@ class ConnectorRegistry:
             description=description or cls.connector_description,
             type=cls.__name__,
             owner=owner,
+            config=config or {},
         )
         self._instances[instance_id] = instance
         return instance
@@ -117,6 +120,7 @@ class ConnectorRegistry:
                 description=entry.get("description") or fallback_desc,
                 type=entry["type"],
                 owner=entry.get("owner"),
+                config=entry.get("config") or {},
             )
             self._instances[instance.id] = instance
 
@@ -231,5 +235,5 @@ class ConnectorRegistry:
             cls = self._types.get(instance.type)
             if cls is None:
                 raise KeyError(f"no implementation registered for type: {instance.type}")
-            self._cache[instance_id] = cls()
+            self._cache[instance_id] = cls(**instance.config)
         return self._cache[instance_id]
