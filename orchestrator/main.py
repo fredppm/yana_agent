@@ -2,23 +2,17 @@
 main.py — YANA Orchestrator entry point.
 
 Usage:
-  python main.py                    # voice mode (default)
-  python main.py --text             # text mode (no mic/speaker)
-  python main.py --init             # initialise sanctum and exit
-  python main.py --headless         # full PULSE run (no interaction)
-  python main.py --headless:memory  # PULSE memory curation only
-  python main.py --headless:price-watch
-  python main.py --headless:email-digest
-  python main.py --headless:agenda-review
-  python main.py --headless:trigger --source garmin --event stress_high
+  python main.py           # voice mode (default)
+  python main.py --text    # text mode (no mic/speaker)
+  python main.py --pulse   # PULSE run (autonomous tasks)
 """
 
 from __future__ import annotations
 
 import argparse
 import io
-import subprocess
 import sys
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -43,172 +37,131 @@ sys.path.insert(0, str(_HERE))
 # ---------------------------------------------------------------------------
 
 import core
+import output
 import providers as prov
 import sanctum_writer as sw
 import voice as v
+from strings import t
 
 
 # ---------------------------------------------------------------------------
-# CLI parsing
+# CLI
 # ---------------------------------------------------------------------------
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="YANA — You Are Not Alone",
-        formatter_class=argparse.RawTextHelpFormatter,
-    )
-
+    parser = argparse.ArgumentParser(description="YANA — You Are Not Alone")
     mode = parser.add_mutually_exclusive_group()
-    mode.add_argument("--text", action="store_true", help="Text mode (no voice I/O)")
-    mode.add_argument("--init", action="store_true", help="Initialise sanctum and exit")
-
-    # Headless / PULSE modes
-    parser.add_argument(
-        "--headless",
-        nargs="?",
-        const="full",
-        metavar="TASK",
-        help="PULSE run. TASK: full | memory | price-watch | email-digest | agenda-review",
-    )
-    parser.add_argument("--source", default="", help="Trigger source (with --headless:trigger)")
-    parser.add_argument("--event", default="", help="Trigger event (with --headless:trigger)")
-    parser.add_argument("--payload", default="{}", help="JSON payload for trigger events")
-
+    mode.add_argument("--text",  action="store_true", help="Text mode (no voice I/O)")
+    mode.add_argument("--pulse", action="store_true", help="PULSE run (autonomous tasks)")
     return parser.parse_args()
 
 
 # ---------------------------------------------------------------------------
-# Sanctum init
+# PULSE
 # ---------------------------------------------------------------------------
 
-def run_init() -> None:
-    script = _HERE.parent / "skills" / "agent-yana" / "scripts" / "init-sanctum.py"
-    if not script.exists():
-        print(f"[erro] Script não encontrado: {script}")
-        sys.exit(1)
-    result = subprocess.run([sys.executable, str(script), "--json"], capture_output=False)
-    sys.exit(result.returncode)
+def run_pulse() -> None:
+    output.configure(voice_mode=False)
 
-
-# ---------------------------------------------------------------------------
-# PULSE headless mode
-# ---------------------------------------------------------------------------
-
-def run_pulse(task: str, source: str = "", event: str = "", payload: str = "{}") -> None:
-    pulse_cfg = core.load_pulse_config()
-
-    if core.is_quiet_hours(pulse_cfg):
-        # Triggered tasks may ignore quiet hours based on config
-        if task == "trigger":
-            src_cfg = pulse_cfg.get("triggers", {}).get(source, {})
-            if src_cfg.get("respect_quiet_hours", True):
-                print("[PULSE] Quiet hours — skipping.")
-                return
-        else:
-            print("[PULSE] Quiet hours — skipping.")
-            return
+    if core.is_quiet_hours():
+        output.status("PULSE — quiet hours, skipping.")
+        return
 
     system_prompt = core.load_system_prompt()
     providers_config = prov.load_providers()
 
-    if task == "trigger":
-        user_msg = (
-            f"[PULSE TRIGGER] source={source} event={event} payload={payload}\n"
-            "Execute the matching trigger handler from your PULSE instructions."
-        )
-    else:
-        task_map = {
-            "full": "Execute all enabled scheduled PULSE tasks in priority order.",
-            "memory": "Execute the Memory Curation PULSE task only.",
-            "price-watch": "Execute the Price Watch PULSE task only.",
-            "email-digest": "Execute the Email Digest PULSE task only.",
-            "agenda-review": "Execute the Agenda Review PULSE task only.",
-        }
-        user_msg = task_map.get(task, f"Execute PULSE task: {task}")
+    msg = "Execute all enabled scheduled PULSE tasks in priority order."
+    messages = [{"role": "user", "content": msg}]
 
-    messages = [{"role": "user", "content": user_msg}]
-    print(f"[PULSE] task={task}")
+    output.status("PULSE starting...")
     reply = prov.call_llm(
-        messages, system_prompt, task="pulse_scheduled", stream=True, config=providers_config
+        messages, system_prompt, task="pulse_scheduled", stream=True,
+        on_token=output.stream_token, config=providers_config,
     )
-
-    # Save headless session log
+    print()  # newline after stream
     messages.append({"role": "assistant", "content": reply})
-    core.save_session_log(messages, session_id=f"pulse-{task}-{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}")
+    session_id = f"pulse-{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}"
+    core.save_session_log(messages, session_id)
+    output.status(f"PULSE done — log: {session_id}")
 
 
 # ---------------------------------------------------------------------------
-# Conversation loop
+# Conversation
 # ---------------------------------------------------------------------------
 
 def run_conversation(text_mode: bool) -> None:
     providers_config = prov.load_providers()
     voice_cfg = v.load_voice_config(providers_config)
 
+    # Configure the output channel for this session
+    speak_fn = None
+    if not text_mode:
+        _cfg = voice_cfg
+        speak_fn = lambda text: v.speak(
+            text,
+            voice=_cfg["tts_voice"],
+            rate=_cfg["tts_rate"],
+            volume=_cfg["tts_volume"],
+        )
+    output.configure(voice_mode=not text_mode, speak_fn=speak_fn)
+
     if not core.sanctum_exists():
-        print()
-        print("=" * 60)
-        print("  Sanctum não encontrado.")
-        print("  Execute `python main.py --init` para inicializar.")
-        print("  Depois, YANA conduzirá o First Breath por voz.")
-        print("=" * 60)
-        print()
+        output.setup_warning(
+            t("sanctum_missing"),
+            hint="Execute: python ../skills/agent-yana/scripts/init-sanctum.py . ../skills/agent-yana",
+        )
 
     system_prompt = core.load_system_prompt()
     session_id = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     messages: list[dict] = []
-
-    # Determine task type for routing
     task = "first_breath" if not core.sanctum_exists() else "conversation"
 
-    # Greeting
-    greeting = "Oi, estou ouvindo." if not text_mode else ""
-    if greeting and not text_mode:
-        print(f"\nYANA: {greeting}")
-        v.speak(greeting, **_tts_kwargs(voice_cfg))
+    if not text_mode:
+        greeting = t("greeting")
+        print(f"{output.yana_label()}{greeting}")
+        output.say(greeting)
 
-    print("\n--- YANA (Ctrl+C para sair) ---\n")
+    output.announce(t("banner"))
 
     try:
         while True:
-            # --- Input ---
             if text_mode:
                 try:
-                    user_input = input("Você: ").strip()
+                    user_input = input(f"{t('user_label')}: ").strip()
                 except (EOFError, KeyboardInterrupt):
                     break
             else:
-                print("Você: ", end="", flush=True)
+                print(output.user_label(), end="", flush=True)
                 try:
+                    _t0 = time.monotonic()
                     user_input = v.listen(
                         provider=voice_cfg["stt_provider"],
                         model_name=voice_cfg["stt_model"],
                         language=voice_cfg["stt_language"],
                     )
+                    _stt_ms = int((time.monotonic() - _t0) * 1000)
+                    print(f"{user_input}  [{_stt_ms}ms STT]")
                 except KeyboardInterrupt:
                     break
-                print(user_input)
 
             if not user_input:
                 continue
 
             messages.append({"role": "user", "content": user_input})
 
-            # --- LLM call ---
-            print("YANA: [pensando...]", end="\r", flush=True)
-            print("YANA: " + " " * 14, end="\r", flush=True)  # clear thinking indicator
-            print("YANA: ", end="", flush=True)
+            print(output.yana_label(), end="", flush=True)
+            _t0 = time.monotonic()
             reply = prov.call_llm(
-                messages, system_prompt, task=task, stream=True, config=providers_config
+                messages, system_prompt, task=task, stream=True,
+                on_token=output.stream_token, config=providers_config,
             )
+            _llm_ms = int((time.monotonic() - _t0) * 1000)
             messages.append({"role": "assistant", "content": reply})
-
-            # After first exchange, task becomes regular conversation
             task = "conversation"
 
-            # --- TTS ---
+            _tts_ms = output.after_stream(reply)
             if not text_mode:
-                v.speak(reply, **_tts_kwargs(voice_cfg))
+                output.timing(f"LLM {_llm_ms}ms | TTS {_tts_ms}ms" + " " * 10)
 
             print()
 
@@ -218,34 +171,26 @@ def run_conversation(text_mode: bool) -> None:
     if not messages:
         return
 
-    # Save raw session log
-    session_date = session_id[:10]  # YYYY-MM-DD
+    session_date = session_id[:10]
     core.save_session_log(messages, session_id)
 
-    # Write sanctum files
-    is_first_breath = task == "first_breath" or not core.sanctum_exists()
-    # If first exchange was first_breath and we flipped task, detect via session length
-    # heuristic: if sanctum BOND.md is still a template (has placeholders), it's first breath
     bond = core.sanctum_path() / "BOND.md"
-    if bond.exists() and "{" in bond.read_text(encoding="utf-8"):
-        is_first_breath = True
-
-    sw.write_sanctum(
-        messages,
-        system_prompt,
-        is_first_breath=is_first_breath,
-        config=providers_config,
-        session_date=session_date,
+    is_first_breath = (
+        not core.sanctum_exists()
+        or (bond.exists() and "{" in bond.read_text(encoding="utf-8"))
     )
-    print(f"[sessão: {session_id}]")
 
+    try:
+        sw.write_sanctum(
+            messages, system_prompt,
+            is_first_breath=is_first_breath,
+            config=providers_config,
+            session_date=session_date,
+        )
+    except KeyboardInterrupt:
+        output.warn("sanctum not updated — raw log saved.")
 
-def _tts_kwargs(cfg: dict) -> dict:
-    return {
-        "voice": cfg["tts_voice"],
-        "rate": cfg["tts_rate"],
-        "volume": cfg["tts_volume"],
-    }
+    output.status(f"session: {session_id}")
 
 
 # ---------------------------------------------------------------------------
@@ -254,17 +199,10 @@ def _tts_kwargs(cfg: dict) -> dict:
 
 def main() -> None:
     args = parse_args()
-
-    if args.init:
-        run_init()
-        return
-
-    if args.headless is not None:
-        task = args.headless if args.headless != "trigger" else "trigger"
-        run_pulse(task, source=args.source, event=args.event, payload=args.payload)
-        return
-
-    run_conversation(text_mode=args.text)
+    if args.pulse:
+        run_pulse()
+    else:
+        run_conversation(text_mode=args.text)
 
 
 if __name__ == "__main__":

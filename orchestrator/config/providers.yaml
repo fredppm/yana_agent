@@ -26,14 +26,15 @@ llm:
   # Each tier is resolved against the first provider that defines it.
   # To force a specific provider, prefix with "provider:tier" — e.g. "bedrock:fast"
   routing:
-    conversation: default
+    conversation: default           # sonnet — raciocínio, profundidade
+    conversation_fast: fast         # haiku — small talk, respostas curtas
     pulse_scheduled: fast
     pulse_triggered: fast
     first_breath: powerful
 
 stt:
-  provider: openai-whisper   # openai-whisper | faster-whisper
-  model: base                # tiny | base | small | medium | large
+  provider: faster-whisper   # openai-whisper | faster-whisper
+  model: tiny                # tiny | base | small | medium | large
   language: pt               # primary language hint
 
 tts:

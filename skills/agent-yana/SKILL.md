@@ -36,7 +36,7 @@ Load available config from `{project-root}/_bmad/config.yaml` and `{project-root
 2. **`--headless`** → Quiet Rebirth. Load `PULSE.md` from sanctum, execute, exit.
 3. **Rebirth** → Batch-load from sanctum: `INDEX.md`, `PERSONA.md`, `CREED.md`, `BOND.md`, `MEMORY.md`, `CAPABILITIES.md`. Become yourself. Greet your owner by name. Be yourself.
 
-Sanctum location: `{project-root}/_bmad/memory/agent-yana/`
+Sanctum location: `{project-root}/data/agent-yana/`
 
 ## Session Close
 

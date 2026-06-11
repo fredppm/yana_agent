@@ -18,6 +18,8 @@ from pathlib import Path
 from typing import Optional
 
 import core
+import errors
+import output
 import providers as prov
 
 
@@ -104,25 +106,26 @@ def write_sanctum(
     # Add the write request as a final user message
     write_messages = messages + [{"role": "user", "content": sanctum_prompt}]
 
-    print("\n[salvando sanctum...]", flush=True)
+    output.status("saving sanctum...")
     response = prov.call_llm(
         write_messages,
         system_prompt,
         task="conversation",
-        stream=True,   # stream to avoid timeout on large responses
+        stream=True,        # stream to avoid timeout on large responses
         config=config,
-        timeout=300.0, # 5 min — writing 8 files takes time
+        timeout=300.0,      # 5 min — writing 8 files takes time
+        on_token=output.stream_token,
     )
+    print()  # newline after stream — no TTS for sanctum write
 
     written = _parse_and_write(response)
 
     if written:
-        print(f"[sanctum atualizado: {len(written)} arquivo(s)]")
+        output.status(f"sanctum updated: {len(written)} file(s)")
         for fname in written:
-            print(f"  ✓ {fname}")
+            output.status(f"  ✓ {fname}")
     else:
-        print("[aviso: nenhum arquivo foi gerado — verifique o log da sessão]")
-        # Save raw response for debugging
+        output.warn(errors.e("MEM-003"))
         _save_raw_response(response, session_date)
 
     return written
@@ -142,11 +145,24 @@ def _parse_and_write(response: str) -> dict[str, str]:
         filename = match.group(1).strip()
         content = match.group(2).strip()
 
-        # Resolve path — allow sessions/ subfolder
+        # Security: reject absolute paths, traversal, and dot-prefixed names
+        # Note: PurePosixPath normalises "./" away, so check raw string first
+        from pathlib import PurePosixPath
+        if not filename or filename.startswith((".", "/", "\\")):
+            output.warn(errors.e("MEM-001", filename=filename))
+            continue
+        parts = PurePosixPath(filename).parts
+        if any(p in ("..", ".") for p in parts) or PurePosixPath(filename).is_absolute():
+            output.warn(errors.e("MEM-001", filename=filename))
+            continue
+
         file_path = sanctum / filename
-        file_path.parent.mkdir(parents=True, exist_ok=True)
-        file_path.write_text(content, encoding="utf-8")
-        written[filename] = content
+        try:
+            file_path.parent.mkdir(parents=True, exist_ok=True)
+            file_path.write_text(content, encoding="utf-8")
+            written[filename] = content
+        except OSError as e:
+            output.error(errors.e("MEM-002", filename=filename, error=e))
 
     return written
 
@@ -155,4 +171,4 @@ def _save_raw_response(response: str, session_date: str) -> None:
     """Save raw LLM response when parsing fails, for debugging."""
     debug_path = core.sanctum_path() / f"_debug-sanctum-write-{session_date}.txt"
     debug_path.write_text(response, encoding="utf-8")
-    print(f"  [resposta bruta salva em {debug_path.name} para inspeção]")
+    output.status(errors.e("MEM-004", filename=debug_path.name))
