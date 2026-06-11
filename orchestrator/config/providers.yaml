@@ -1,0 +1,43 @@
+llm:
+  default: anthropic.claude-sonnet-4-5-v2:0
+  providers:
+    bedrock:
+      profile: SWE-053131491888
+      region: us-east-1   # override with AWS_DEFAULT_REGION if needed
+      models:
+        fast: us.anthropic.claude-haiku-4-5-20251001-v1:0
+        default: us.anthropic.claude-sonnet-4-5-20250929-v1:0
+        powerful: us.anthropic.claude-opus-4-5-20251101-v1:0
+
+    anthropic:
+      api_key_env: ANTHROPIC_API_KEY
+      models:
+        fast: claude-haiku-4-5-20251001
+        default: claude-sonnet-4-6
+        powerful: claude-opus-4-6
+
+    openai:
+      api_key_env: OPENAI_API_KEY
+      models:
+        fast: gpt-4o-mini
+        default: gpt-4o
+
+  # Routing rules: which model tier to use for each task type.
+  # Each tier is resolved against the first provider that defines it.
+  # To force a specific provider, prefix with "provider:tier" — e.g. "bedrock:fast"
+  routing:
+    conversation: default
+    pulse_scheduled: fast
+    pulse_triggered: fast
+    first_breath: powerful
+
+stt:
+  provider: openai-whisper   # openai-whisper | faster-whisper
+  model: base                # tiny | base | small | medium | large
+  language: pt               # primary language hint
+
+tts:
+  provider: edge-tts
+  voice: pt-BR-FranciscaNeural
+  rate: +0%
+  volume: +0%

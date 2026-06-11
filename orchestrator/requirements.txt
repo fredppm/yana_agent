@@ -1,0 +1,22 @@
+# LLM providers
+anthropic>=0.40.0
+openai>=1.50.0
+
+# Config
+PyYAML>=6.0
+
+# STT — choose one (or both)
+openai-whisper>=20231117
+# faster-whisper>=1.0.0   # uncomment for GPU/faster local inference
+
+# TTS
+edge-tts>=6.1.9
+
+# Audio I/O
+sounddevice>=0.4.6
+soundfile>=0.12.1
+numpy>=1.24.0
+
+# MP3 playback fallback (only needed if edge-tts output can't be decoded by soundfile)
+# pydub>=0.25.1
+# Install ffmpeg separately if using pydub: https://ffmpeg.org/download.html

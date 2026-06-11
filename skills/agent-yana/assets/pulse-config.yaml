@@ -1,0 +1,44 @@
+# YANA Pulse Configuration
+# Edit this file to control what YANA does autonomously and how often.
+# Location: _bmad/memory/agent-yana/pulse-config.yaml
+#
+# Future: per-item granularity (e.g. specific products on custom schedules)
+# will be added here — keep the structure extensible.
+
+quiet_hours: "23:00-07:00"
+
+scheduled:
+  memory_curation:
+    frequency: "2x/day"   # runs every ~12h
+    enabled: true
+
+  price_watch:
+    frequency: "3x/day"   # runs every ~8h
+    enabled: true
+
+  email_digest:
+    frequency: "1x/day"   # runs once, morning
+    enabled: true
+
+  agenda_review:
+    frequency: "2x/day"   # morning + evening
+    enabled: true
+
+  self_improvement:
+    frequency: "1x/week"  # Sunday evening
+    enabled: true
+
+# Trigger-based tasks fire on external events (Home Assistant webhooks, Garmin, Calendar).
+# To disable a trigger type, set enabled: false.
+triggers:
+  home_assistant:
+    enabled: true
+    respect_quiet_hours: true
+
+  garmin:
+    enabled: true
+    respect_quiet_hours: false   # health signals don't wait
+
+  calendar:
+    enabled: true
+    respect_quiet_hours: true

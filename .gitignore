@@ -1,0 +1,24 @@
+# Sanctum — private YANA memory (never commit)
+_bmad/memory/agent-yana/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+
+# Environment / secrets
+.env
+.env.*
+
+# User-specific BMad config
+_bmad/config.user.toml
+_bmad/custom/*.user.toml
+
+# OS
+.DS_Store
+Thumbs.db
