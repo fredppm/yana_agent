@@ -1,51 +1,108 @@
 """
-connectors/google_calendar.py — GoogleCalendar connector stub.
+connectors/google_calendar.py — GoogleCalendar connector.
+
+Requires OAuth2 credentials from Google Cloud Console.
+On first run, opens a browser for authorization and saves a token file.
+Subsequent runs use the saved token (auto-refreshed when expired).
+
+Setup:
+  1. Create OAuth2 credentials at console.cloud.google.com
+     (Desktop app type, Calendar API scope)
+  2. Download credentials.json
+  3. Pass paths when registering the instance:
+       registry.add_instance(
+           GoogleCalendarConnector,
+           instance_id="calendar_fred",
+           name="Fred's Calendar",
+           owner="fred",
+           credentials_file="~/.yana/google_credentials.json",
+           token_file="~/.yana/tokens/calendar_fred.json",
+       )
+     Or set GOOGLE_CREDENTIALS_FILE / GOOGLE_TOKEN_FILE env vars.
 """
 
 from __future__ import annotations
 
+import os
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
 from orchestrator.connectors import Connector, command, event, query
+
+_SCOPES = ["https://www.googleapis.com/auth/calendar"]
 
 
 class GoogleCalendarConnector(Connector):
-    connector_description = "Eventos e compromissos do Google Calendar — leitura e criação"
+    connector_description = "Google Calendar events and scheduling — read and create"
 
+    def __init__(
+        self,
+        credentials_file: str | None = None,
+        token_file: str | None = None,
+    ) -> None:
+        self._credentials_file = Path(
+            credentials_file
+            or os.environ.get("GOOGLE_CREDENTIALS_FILE", "~/.yana/google_credentials.json")
+        ).expanduser()
+        self._token_file = Path(
+            token_file
+            or os.environ.get("GOOGLE_TOKEN_FILE", "~/.yana/tokens/google_calendar.json")
+        ).expanduser()
+        self._service = None  # lazy — built on first call
+
+    # ------------------------------------------------------------------
+    # Queries
+    # ------------------------------------------------------------------
 
     @query(
-        description="Eventos de hoje em todos os calendários",
+        description="All events today across all calendars",
         returns={"type": "list"},
     )
-    def events_today(self) -> list:
-        raise NotImplementedError
+    def events_today(self) -> list[dict]:
+        now = datetime.now(timezone.utc)
+        start = now.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+        end = now.replace(hour=23, minute=59, second=59, microsecond=0).isoformat()
+        return self._list_events(start, end)
 
     @query(
-        description="Próximo evento agendado a partir de agora",
+        description="Next upcoming event from now",
         returns={"type": "object"},
     )
-    def next_event(self) -> dict:
-        raise NotImplementedError
+    def next_event(self) -> dict | None:
+        now = datetime.now(timezone.utc).isoformat()
+        events = self._list_events(time_min=now, max_results=1)
+        return events[0] if events else None
 
     @query(
-        description="Eventos nos próximos N dias",
+        description="Events in the next N days (default 7)",
         params={"days": {"type": "number", "required": False}},
         returns={"type": "list"},
     )
-    def upcoming_events(self, days: int = 7) -> list:
-        raise NotImplementedError
+    def upcoming_events(self, days: int = 7) -> list[dict]:
+        from datetime import timedelta
+        now = datetime.now(timezone.utc)
+        end = (now + timedelta(days=days)).isoformat()
+        return self._list_events(time_min=now.isoformat(), time_max=end)
 
     @query(
-        description="Verifica disponibilidade num horário específico",
+        description="Check availability in a time slot (ISO 8601 strings)",
         params={
             "start_iso": {"type": "string"},
-            "end_iso":   {"type": "string"},
+            "end_iso": {"type": "string"},
         },
         returns={"type": "boolean"},
     )
     def is_available(self, start_iso: str, end_iso: str) -> bool:
-        raise NotImplementedError
+        events = self._list_events(time_min=start_iso, time_max=end_iso)
+        return len(events) == 0
+
+    # ------------------------------------------------------------------
+    # Commands
+    # ------------------------------------------------------------------
 
     @command(
-        description="Cria um novo evento no calendário",
+        description="Create a new calendar event",
         params={
             "title":     {"type": "string"},
             "start_iso": {"type": "string"},
@@ -54,27 +111,112 @@ class GoogleCalendarConnector(Connector):
         },
         returns={"type": "object"},
     )
-    def create_event(self, title: str, start_iso: str, end_iso: str, notes: str = "") -> dict:
-        raise NotImplementedError
+    def create_event(
+        self, title: str, start_iso: str, end_iso: str, notes: str = ""
+    ) -> dict:
+        body: dict[str, Any] = {
+            "summary": title,
+            "start": {"dateTime": start_iso},
+            "end": {"dateTime": end_iso},
+        }
+        if notes:
+            body["description"] = notes
+        result = (
+            self._svc()
+            .events()
+            .insert(calendarId="primary", body=body)
+            .execute()
+        )
+        return self._format_event(result)
 
     @command(
-        description="Cancela um evento existente pelo ID",
+        description="Cancel an existing event by its ID",
         params={"event_id": {"type": "string"}},
         returns={"type": "boolean"},
     )
     def cancel_event(self, event_id: str) -> bool:
-        raise NotImplementedError
+        self._svc().events().delete(calendarId="primary", eventId=event_id).execute()
+        return True
+
+    # ------------------------------------------------------------------
+    # Events
+    # ------------------------------------------------------------------
 
     @event(
-        description="Novo evento adicionado ao calendário",
+        description="New event added to the calendar",
         schema={"type": "object"},
     )
     def on_event_created(self, callback) -> None:  # type: ignore[type-arg]
+        # Google Calendar doesn't have native push without a public webhook.
+        # Poll-based detection can be wired here via a background thread.
         raise NotImplementedError
 
     @event(
-        description="Evento com início em 15 minutos",
+        description="Event starting in 15 minutes",
         schema={"type": "object"},
     )
     def on_event_reminder(self, callback) -> None:  # type: ignore[type-arg]
         raise NotImplementedError
+
+    # ------------------------------------------------------------------
+    # Internals
+    # ------------------------------------------------------------------
+
+    def _svc(self):
+        if self._service is None:
+            self._service = self._build_service()
+        return self._service
+
+    def _build_service(self):
+        from google.oauth2.credentials import Credentials
+        from google_auth_oauthlib.flow import InstalledAppFlow
+        from google.auth.transport.requests import Request
+        from googleapiclient.discovery import build
+
+        creds = None
+        if self._token_file.exists():
+            creds = Credentials.from_authorized_user_file(str(self._token_file), _SCOPES)
+
+        if not creds or not creds.valid:
+            if creds and creds.expired and creds.refresh_token:
+                creds.refresh(Request())
+            else:
+                flow = InstalledAppFlow.from_client_secrets_file(
+                    str(self._credentials_file), _SCOPES
+                )
+                creds = flow.run_local_server(port=0)
+            self._token_file.parent.mkdir(parents=True, exist_ok=True)
+            self._token_file.write_text(creds.to_json())
+
+        return build("calendar", "v3", credentials=creds)
+
+    def _list_events(
+        self,
+        time_min: str | None = None,
+        time_max: str | None = None,
+        max_results: int = 50,
+    ) -> list[dict]:
+        kwargs: dict[str, Any] = {
+            "calendarId": "primary",
+            "maxResults": max_results,
+            "singleEvents": True,
+            "orderBy": "startTime",
+        }
+        if time_min:
+            kwargs["timeMin"] = time_min
+        if time_max:
+            kwargs["timeMax"] = time_max
+
+        result = self._svc().events().list(**kwargs).execute()
+        return [self._format_event(e) for e in result.get("items", [])]
+
+    def _format_event(self, raw: dict) -> dict:
+        return {
+            "id":       raw.get("id"),
+            "title":    raw.get("summary", ""),
+            "start":    raw.get("start", {}).get("dateTime") or raw.get("start", {}).get("date"),
+            "end":      raw.get("end", {}).get("dateTime") or raw.get("end", {}).get("date"),
+            "location": raw.get("location"),
+            "notes":    raw.get("description"),
+            "link":     raw.get("htmlLink"),
+        }

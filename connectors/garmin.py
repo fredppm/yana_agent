@@ -1,9 +1,8 @@
 """
 connectors/garmin.py — GarminActivity connector stub.
 
-Validates the connector contract against real Garmin data shapes.
-Implementation methods raise NotImplementedError until the Garmin API
-integration is wired up.
+Contract definition only — methods raise NotImplementedError until
+the Garmin Connect API integration is wired up.
 """
 
 from __future__ import annotations
@@ -12,46 +11,45 @@ from orchestrator.connectors import Connector, command, event, query
 
 
 class GarminActivityConnector(Connector):
-    connector_description = "Dados de saúde e atividade física via Garmin — passos, sono, stress, corridas"
-
+    connector_description = "Health and activity data via Garmin — steps, sleep, stress, runs"
 
     @query(
-        description="Passos dados hoje",
+        description="Steps taken today",
         returns={"type": "number", "unit": "steps/day"},
     )
     def steps_today(self) -> int:
         raise NotImplementedError
 
     @query(
-        description="Calorias queimadas hoje",
+        description="Calories burned today",
         returns={"type": "number", "unit": "kcal"},
     )
     def calories_today(self) -> int:
         raise NotImplementedError
 
     @query(
-        description="Nível de stress atual (0–100)",
+        description="Current stress level (0–100)",
         returns={"type": "number", "unit": "stress_score"},
     )
     def stress_level(self) -> int:
         raise NotImplementedError
 
     @query(
-        description="Dados do sono da última noite",
+        description="Last night's sleep data",
         returns={"type": "object"},
     )
     def last_sleep(self) -> dict:
         raise NotImplementedError
 
     @query(
-        description="Última atividade física registrada",
+        description="Most recent recorded physical activity",
         returns={"type": "object"},
     )
     def last_activity(self) -> dict:
         raise NotImplementedError
 
     @query(
-        description="Histórico de batimento cardíaco das últimas horas",
+        description="Heart rate history over the last N hours",
         params={
             "hours": {"type": "number", "required": False},
         },
@@ -61,14 +59,14 @@ class GarminActivityConnector(Connector):
         raise NotImplementedError
 
     @command(
-        description="Sincroniza dados do dispositivo manualmente",
+        description="Manually sync data from the device",
         returns={"type": "boolean"},
     )
     def sync(self) -> bool:
         raise NotImplementedError
 
     @event(
-        description="Nova atividade física registrada no dispositivo",
+        description="New physical activity recorded on the device",
         schema={"type": "object"},
     )
     def on_new_activity(self, callback) -> None:  # type: ignore[type-arg]
