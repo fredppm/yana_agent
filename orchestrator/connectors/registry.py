@@ -70,7 +70,7 @@ class ConnectorRegistry:
 
     def add_instance(
         self,
-        cls: type[Connector],
+        connector: type[Connector] | Connector,
         instance_id: str,
         name: str,
         owner: str | None = None,
@@ -79,9 +79,20 @@ class ConnectorRegistry:
         """
         Register a connector instance programmatically — no YAML required.
 
+        *connector* may be:
+          - a Connector subclass (instantiated with no args on first call)
+          - an already-configured Connector instance (useful when the
+            constructor requires parameters, e.g. credentials paths)
+
         *description* defaults to the class-level ``connector_description``
         when not supplied.
         """
+        if isinstance(connector, type):
+            cls = connector
+        else:
+            cls = type(connector)
+            self._cache[instance_id] = connector
+
         self.register_type(cls)
         instance = ConnectorInstance(
             id=instance_id,
