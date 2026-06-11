@@ -1,0 +1,28 @@
+connectors:
+  - type: GarminActivityConnector
+    id: garmin_fred
+    name: "Garmin do Fred"
+    description: "Dados de saúde e atividade física do Fred — passos, sono, stress, corridas"
+    owner: fred
+
+  - type: GarminActivityConnector
+    id: garmin_ana
+    name: "Garmin da Ana"
+    description: "Dados de saúde e atividade física da Ana — passos, sono, stress, corridas"
+    owner: ana
+
+  - type: GoogleCalendarConnector
+    id: calendar_fred
+    name: "Agenda do Fred"
+    description: "Eventos e compromissos do calendário pessoal do Fred"
+    owner: fred
+
+  - type: RGBLightConnector
+    id: rgb_sala
+    name: "Luz da Sala"
+    description: "Luz RGB da sala de estar"
+
+  - type: RGBLightConnector
+    id: rgb_banheiro
+    name: "Luz do Banheiro"
+    description: "Luz RGB do banheiro"
