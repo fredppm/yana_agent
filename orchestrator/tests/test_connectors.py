@@ -187,7 +187,7 @@ def test_call_generic_error():
     c = ErrorConnector()
     result = c.call("crash_op")
     assert result.ok is False
-    assert result.error == "unavailable"
+    assert result.error == "boom"  # str(exc) — full message, not a fixed category
 
 
 # ---------------------------------------------------------------------------

@@ -31,11 +31,13 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
         if not item.get_closest_marker("integration"):
             continue
         path_str = str(item.fspath)
-        if "calendar" in path_str and not gcal_creds.exists():
+        needs_google = any(kw in path_str for kw in ("calendar", "tasks"))
+        needs_garmin = "garmin" in path_str
+        if needs_google and not gcal_creds.exists():
             item.add_marker(pytest.mark.skip(reason="~/.yana/google_credentials.json not found"))
-        elif "garmin" in path_str and not garmin_token.exists():
+        elif needs_garmin and not garmin_token.exists():
             item.add_marker(
                 pytest.mark.skip(
-                    reason="~/.yana/tokens/garmin_fred not found — run once with credentials to seed tokens"
+                    reason="~/.yana/tokens/garmin_fred not found — run once to seed tokens"
                 )
             )

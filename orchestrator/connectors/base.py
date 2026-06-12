@@ -4,7 +4,7 @@ connectors/base.py — Connector contract framework for YANA.
 Provides @query, @command, @event decorators and the Connector base class.
 ConnectorResult is the typed envelope returned by every call().
 
-Error strings: "timeout" | "auth" | "unavailable" | "validation_error"
+Error strings: "timeout" | "auth" | "validation_error" | str(exc) for unexpected errors
 """
 
 from __future__ import annotations
@@ -59,7 +59,7 @@ class OperationMeta:
 class ConnectorResult:
     ok: bool
     data: Any = None
-    error: str | None = None  # "timeout" | "auth" | "unavailable" | "validation_error"
+    error: str | None = None  # "timeout" | "auth" | "validation_error" | str(exc)
 
 
 # ---------------------------------------------------------------------------
@@ -175,8 +175,8 @@ class Connector:
             return ConnectorResult(ok=False, error="timeout")
         except PermissionError:
             return ConnectorResult(ok=False, error="auth")
-        except Exception:
-            return ConnectorResult(ok=False, error="unavailable")
+        except Exception as exc:
+            return ConnectorResult(ok=False, error=str(exc))
 
     def contract(self) -> dict[str, Any]:
         """Full contract for on-demand loading into AI context."""
