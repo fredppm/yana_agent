@@ -342,15 +342,24 @@ def call_llm_with_tools(
 
     provider, model_id = resolve_model(task, config)
 
-    if provider != "anthropic":
-        text = call_llm(messages, system_prompt, task=task, stream=False, config=config, timeout=timeout)
-        return text, [], [{"type": "text", "text": text}]
-
-    api_key = get_api_key("anthropic", config)
     import anthropic
     import httpx
 
-    client = anthropic.Anthropic(api_key=api_key, timeout=httpx.Timeout(timeout, connect=10.0))
+    if provider == "anthropic":
+        api_key = get_api_key("anthropic", config)
+        client = anthropic.Anthropic(api_key=api_key, timeout=httpx.Timeout(timeout, connect=10.0))
+    elif provider == "bedrock":
+        region, profile = _bedrock_config(config)
+        client = anthropic.AnthropicBedrock(
+            aws_region=region,
+            aws_profile=profile,
+            timeout=httpx.Timeout(timeout, connect=10.0),
+        )
+    else:
+        # Provider doesn't support tools — fall back to plain call (no tool use)
+        text = call_llm(messages, system_prompt, task=task, stream=False, config=config, timeout=timeout)
+        return text, [], [{"type": "text", "text": text}]
+
     response = client.messages.create(
         model=model_id,
         max_tokens=4096,
