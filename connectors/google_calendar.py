@@ -24,7 +24,9 @@ Setup:
 from __future__ import annotations
 
 import os
-from datetime import datetime, timezone
+import threading
+import time
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -133,21 +135,70 @@ class GoogleCalendarConnector(Connector):
     # Events
     # ------------------------------------------------------------------
 
+    _POLL_INTERVAL = 60  # seconds between polls
+
     @event(
         description="New event added to the calendar",
         schema={"type": "object"},
     )
     def on_event_created(self, callback) -> None:  # type: ignore[type-arg]
-        # Google Calendar doesn't have native push without a public webhook.
-        # Poll-based detection can be wired here via a background thread.
-        raise NotImplementedError
+        """Poll every 60 s; fire callback for any event ID not seen before."""
+        def _poll() -> None:
+            now = datetime.now(timezone.utc)
+            try:
+                existing = self._list_events(
+                    time_min=now.isoformat(),
+                    time_max=(now + timedelta(days=30)).isoformat(),
+                )
+                known: set[str] = {e["id"] for e in existing if e.get("id")}
+            except Exception:
+                known = set()
+
+            while True:
+                time.sleep(self._POLL_INTERVAL)
+                try:
+                    now = datetime.now(timezone.utc)
+                    events = self._list_events(
+                        time_min=now.isoformat(),
+                        time_max=(now + timedelta(days=30)).isoformat(),
+                    )
+                    current: set[str] = {e["id"] for e in events if e.get("id")}
+                    for ev in events:
+                        if ev.get("id") in (current - known):
+                            callback(ev)
+                    known = current
+                except Exception:
+                    pass
+
+        t = threading.Thread(target=_poll, daemon=True, name="gcal-on_event_created")
+        t.start()
 
     @event(
-        description="Event starting in 15 minutes",
+        description="Event starting within the next 15 minutes",
         schema={"type": "object"},
     )
     def on_event_reminder(self, callback) -> None:  # type: ignore[type-arg]
-        raise NotImplementedError
+        """Poll every 60 s; fire callback once per event that starts within 15 minutes."""
+        def _poll() -> None:
+            notified: set[str] = set()
+            while True:
+                try:
+                    now = datetime.now(timezone.utc)
+                    upcoming = self._list_events(
+                        time_min=now.isoformat(),
+                        time_max=(now + timedelta(minutes=16)).isoformat(),
+                    )
+                    for ev in upcoming:
+                        eid = ev.get("id")
+                        if eid and eid not in notified:
+                            notified.add(eid)
+                            callback(ev)
+                except Exception:
+                    pass
+                time.sleep(self._POLL_INTERVAL)
+
+        t = threading.Thread(target=_poll, daemon=True, name="gcal-on_event_reminder")
+        t.start()
 
     # ------------------------------------------------------------------
     # Internals
