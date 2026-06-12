@@ -56,40 +56,31 @@ class GoogleCalendarConnector(Connector):
     # ------------------------------------------------------------------
 
     @query(
-        description="All events today across all calendars",
+        description="List calendar events in a time range. Both params are ISO 8601 strings. Omit start_iso to default to now; omit end_iso to default to 7 days from start.",
+        params={
+            "start_iso": {"type": "string", "required": False},
+            "end_iso":   {"type": "string", "required": False},
+            "max_results": {"type": "number", "required": False},
+        },
         returns={"type": "list"},
     )
-    def events_today(self) -> list[dict]:
-        now = datetime.now(timezone.utc)
-        start = now.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
-        end = now.replace(hour=23, minute=59, second=59, microsecond=0).isoformat()
-        return self._list_events(start, end)
-
-    @query(
-        description="Next upcoming event from now",
-        returns={"type": "object"},
-    )
-    def next_event(self) -> dict | None:
-        now = datetime.now(timezone.utc).isoformat()
-        events = self._list_events(time_min=now, max_results=1)
-        return events[0] if events else None
-
-    @query(
-        description="Events in the next N days (default 7)",
-        params={"days": {"type": "number", "required": False}},
-        returns={"type": "list"},
-    )
-    def upcoming_events(self, days: int = 7) -> list[dict]:
+    def list_events(
+        self,
+        start_iso: str | None = None,
+        end_iso: str | None = None,
+        max_results: int = 50,
+    ) -> list[dict]:
         from datetime import timedelta
         now = datetime.now(timezone.utc)
-        end = (now + timedelta(days=days)).isoformat()
-        return self._list_events(time_min=now.isoformat(), time_max=end)
+        start = start_iso or now.isoformat()
+        end = end_iso or (now + timedelta(days=7)).isoformat()
+        return self._list_events(time_min=start, time_max=end, max_results=max_results)
 
     @query(
-        description="Check availability in a time slot (ISO 8601 strings)",
+        description="Check whether a time slot is free (no events overlap). Both params are ISO 8601 strings.",
         params={
             "start_iso": {"type": "string"},
-            "end_iso": {"type": "string"},
+            "end_iso":   {"type": "string"},
         },
         returns={"type": "boolean"},
     )

@@ -27,22 +27,26 @@ def registry():
 
 
 @pytest.mark.integration
-def test_events_today_returns_list(registry):
-    result = registry.call("calendar_fred", "events_today")
+def test_list_events_no_params_returns_list(registry):
+    result = registry.call("calendar_fred", "list_events")
     assert result.ok is True, f"call failed: {result.error}"
     assert isinstance(result.data, list)
 
 
 @pytest.mark.integration
-def test_next_event_returns_dict_or_none(registry):
-    result = registry.call("calendar_fred", "next_event")
+def test_list_events_explicit_range(registry):
+    from datetime import datetime, timezone, timedelta
+    now = datetime.now(timezone.utc)
+    start = now.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+    end = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+    result = registry.call("calendar_fred", "list_events", {"start_iso": start, "end_iso": end})
     assert result.ok is True, f"call failed: {result.error}"
-    assert result.data is None or isinstance(result.data, dict)
+    assert isinstance(result.data, list)
 
 
 @pytest.mark.integration
-def test_event_fields_present(registry):
-    result = registry.call("calendar_fred", "events_today")
+def test_list_events_fields_present(registry):
+    result = registry.call("calendar_fred", "list_events")
     assert result.ok is True
     for event in result.data:
         assert "id" in event
@@ -52,16 +56,20 @@ def test_event_fields_present(registry):
 
 
 @pytest.mark.integration
-def test_upcoming_events_default_7_days(registry):
-    result = registry.call("calendar_fred", "upcoming_events")
+def test_is_available_returns_bool(registry):
+    from datetime import datetime, timezone, timedelta
+    far_future = (datetime.now(timezone.utc) + timedelta(days=365))
+    start = far_future.replace(hour=3, minute=0, second=0, microsecond=0).isoformat()
+    end = far_future.replace(hour=4, minute=0, second=0, microsecond=0).isoformat()
+    result = registry.call("calendar_fred", "is_available", {"start_iso": start, "end_iso": end})
     assert result.ok is True
-    assert isinstance(result.data, list)
+    assert isinstance(result.data, bool)
 
 
 @pytest.mark.integration
-def test_get_connector_contract_has_queries(registry):
+def test_get_connector_contract_has_list_events(registry):
     contract = registry.load_contract("calendar_fred")
     assert "queries" in contract
     query_names = {q["name"] for q in contract["queries"]}
-    assert "events_today" in query_names
-    assert "next_event" in query_names
+    assert "list_events" in query_names
+    assert "is_available" in query_names
