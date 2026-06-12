@@ -13,8 +13,10 @@ from pathlib import Path
 _HERE = Path(__file__).parent
 _PROJECT_ROOT = _HERE.parent
 
+if str(_PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(_PROJECT_ROOT))  # so `import orchestrator.connectors` works
 if str(_HERE) not in sys.path:
-    sys.path.insert(0, str(_HERE))
+    sys.path.insert(0, str(_HERE))          # so `import connectors` works
 
 from connectors import ConnectorRegistry
 from connectors.loader import load_connectors
