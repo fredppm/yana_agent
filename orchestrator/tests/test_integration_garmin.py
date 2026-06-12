@@ -5,14 +5,22 @@ These tests hit the real Garmin Connect API. They require a garth token
 directory at ~/.yana/tokens/garmin_fred (created on first login).
 
 First-time setup:
-    GARMIN_EMAIL=you@example.com GARMIN_PASSWORD=secret \
-        python -c "
-    import sys; sys.path.insert(0, 'orchestrator')
-    from connectors.garmin import GarminActivityConnector
-    c = GarminActivityConnector(token_dir='~/.yana/tokens/garmin_fred')
-    c._svc()  # triggers login + token save
-    print('tokens saved')
-    "
+    1. Create ~/.yana/credentials/garmin_fred.json:
+           {"email": "fred@example.com", "password": "secret"}
+
+    2. Seed the tokens (runs login once, then saves garth tokens):
+           python -c "
+           import sys; sys.path.insert(0, 'orchestrator')
+           from connectors.garmin import GarminActivityConnector
+           c = GarminActivityConnector(
+               credentials_file='~/.yana/credentials/garmin_fred.json',
+               token_dir='~/.yana/tokens/garmin_fred',
+           )
+           c._svc()
+           print('tokens saved to ~/.yana/tokens/garmin_fred')
+           "
+
+    Subsequent runs load the saved tokens — no password needed.
 
 Run:
     pytest -m integration -v

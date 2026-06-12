@@ -5,6 +5,7 @@ connectors:
     description: "Dados de saúde e atividade física do Fred — passos, sono, stress, corridas"
     owner: fred
     config:
+      credentials_file: "~/.yana/credentials/garmin_fred.json"
       token_dir: "~/.yana/tokens/garmin_fred"
 
   - type: GarminActivityConnector
@@ -13,6 +14,7 @@ connectors:
     description: "Dados de saúde e atividade física da Ana — passos, sono, stress, corridas"
     owner: ana
     config:
+      credentials_file: "~/.yana/credentials/garmin_ana.json"
       token_dir: "~/.yana/tokens/garmin_ana"
 
   - type: GoogleCalendarConnector

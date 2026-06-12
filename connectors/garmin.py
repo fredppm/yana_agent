@@ -5,26 +5,22 @@ Uses the garminconnect library (garth-based) for Garmin Connect API access.
 Tokens are saved after first login so subsequent runs need no credentials prompt.
 
 Setup:
-  Set GARMIN_EMAIL and GARMIN_PASSWORD env vars, or pass them explicitly.
-  The first call triggers browser-less login and saves garth tokens.
-  Subsequent calls load the saved tokens (auto-refreshed by garth when expired).
+  1. Create a credentials file (NOT in the repo) e.g. ~/.yana/credentials/garmin_fred.json:
+       {"email": "fred@example.com", "password": "secret"}
 
-  registry.add_instance(
-      GarminActivityConnector,
-      instance_id="garmin_fred",
-      name="Garmin do Fred",
-      owner="fred",
-      config={
-          "email": "fred@example.com",
-          "password": "...",          # or leave empty → uses GARMIN_EMAIL / GARMIN_PASSWORD
-          "token_dir": "~/.yana/tokens/garmin_fred",
-      },
-  )
+  2. Reference it in orchestrator/config/connectors.yaml:
+       config:
+         credentials_file: "~/.yana/credentials/garmin_fred.json"
+         token_dir: "~/.yana/tokens/garmin_fred"
+
+  On first call the connector logs in and saves garth tokens to token_dir.
+  Subsequent calls load the saved tokens (auto-refreshed by garth when expired)
+  — no password needed after that.
 """
 
 from __future__ import annotations
 
-import os
+import json
 import threading
 import time
 from datetime import UTC, date, datetime, timedelta
@@ -38,15 +34,13 @@ class GarminActivityConnector(Connector):
 
     def __init__(
         self,
-        email: str | None = None,
-        password: str | None = None,
+        credentials_file: str | None = None,
         token_dir: str | None = None,
     ) -> None:
-        self._email = email or os.environ.get("GARMIN_EMAIL", "")
-        self._password = password or os.environ.get("GARMIN_PASSWORD", "")
-        self._token_dir = Path(
-            token_dir or os.environ.get("GARMIN_TOKEN_DIR", "~/.yana/tokens/garmin")
+        self._credentials_file = Path(
+            credentials_file or "~/.yana/credentials/garmin.json"
         ).expanduser()
+        self._token_dir = Path(token_dir or "~/.yana/tokens/garmin").expanduser()
         self._client = None  # lazy
 
     # ------------------------------------------------------------------
@@ -183,16 +177,17 @@ class GarminActivityConnector(Connector):
     def _build_client(self):
         from garminconnect import Garmin
 
-        client = Garmin(email=self._email, password=self._password)
-
         if self._token_dir.exists():
             try:
+                # garth handles token refresh automatically
+                client = Garmin()
                 client.garth.load(str(self._token_dir))
-                # garth handles token refresh automatically — no explicit check needed
                 return client
             except Exception:
                 pass  # corrupted or incompatible tokens — fall through to fresh login
 
+        creds = json.loads(self._credentials_file.read_text())
+        client = Garmin(email=creds["email"], password=creds["password"])
         client.login()
         self._token_dir.mkdir(parents=True, exist_ok=True)
         client.garth.dump(str(self._token_dir))
