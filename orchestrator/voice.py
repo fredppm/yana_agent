@@ -162,6 +162,33 @@ def _play_audio_file(path: str) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Utilities
+# ---------------------------------------------------------------------------
+
+
+def ts() -> str:
+    """Return current time as HH:MM:SS.mmm (12-char timestamp)."""
+    from datetime import datetime
+
+    now = datetime.now()
+    return now.strftime("%H:%M:%S.") + f"{now.microsecond // 1000:03d}"
+
+
+def strip_markdown(text: str) -> str:
+    """Remove common markdown so TTS reads clean text."""
+    import re
+
+    text = re.sub(r"\*{1,3}(.+?)\*{1,3}", r"\1", text)  # bold / italic
+    text = re.sub(r"#{1,6}\s*", "", text)  # headings
+    text = re.sub(r"`{1,3}[^`]*`{1,3}", "", text)  # code
+    text = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", text)  # links
+    text = re.sub(r"^[-*]\s+", "", text, flags=re.MULTILINE)  # list bullets
+    text = re.sub(r"^>\s+", "", text, flags=re.MULTILINE)  # blockquotes
+    text = re.sub(r"^---+$", "", text, flags=re.MULTILINE)  # hr
+    return text
+
+
+# ---------------------------------------------------------------------------
 # Voice config helpers
 # ---------------------------------------------------------------------------
 
