@@ -176,16 +176,32 @@ class GarminActivityConnector(Connector):
                 pass  # corrupted or incompatible tokens — fall through to fresh login
 
         if not self._credentials_file.exists():
-            raise FileNotFoundError(
-                f"Garmin credentials not found: {self._credentials_file}\n"
-                f'Create it with: {{"email": "you@example.com", "password": "secret"}}'
-            )
+            self._credentials_file = self._prompt_and_save_credentials()
+
         creds = json.loads(self._credentials_file.read_text())
         client = Garmin(email=creds["email"], password=creds["password"])
         client.login()
         self._token_dir.mkdir(parents=True, exist_ok=True)
         client.garth.dump(str(self._token_dir))
         return client
+
+    def _prompt_and_save_credentials(self) -> Path:
+        """Interactively ask for Garmin credentials and save them to disk."""
+        import getpass
+
+        print(f"\n[Garmin] Credenciais não encontradas: {self._credentials_file}")
+        print(
+            "[Garmin] Informe suas credenciais Garmin Connect (salvas localmente, usadas uma vez):"
+        )
+        email = input("  Email: ").strip()
+        password = getpass.getpass("  Senha: ")
+
+        self._credentials_file.parent.mkdir(parents=True, exist_ok=True)
+        self._credentials_file.write_text(
+            json.dumps({"email": email, "password": password}, indent=2)
+        )
+        print(f"[Garmin] Credenciais salvas em {self._credentials_file}")
+        return self._credentials_file
 
     def _stats_today(self) -> dict:
         return self._svc().get_stats(date.today().isoformat()) or {}
