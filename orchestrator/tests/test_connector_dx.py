@@ -2,17 +2,14 @@
 
 from __future__ import annotations
 
-import sys
 import os
+import sys
 import tempfile
 from pathlib import Path
 
-import pytest
-
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from connectors import Connector, ConnectorRegistry, query, command
-
+from connectors import Connector, ConnectorRegistry, command, query
 
 # ---------------------------------------------------------------------------
 # Test connectors

@@ -2,24 +2,20 @@
 
 from __future__ import annotations
 
+import os
 import sys
 import tempfile
-import os
 from pathlib import Path
-from typing import Any
-
-import pytest
+from typing import Any, ClassVar
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from connectors import (
     Connector,
     ConnectorRegistry,
-    command,
     event,
     query,
 )
-
 
 # ---------------------------------------------------------------------------
 # Test connectors
@@ -28,7 +24,7 @@ from connectors import (
 class PushConnector(Connector):
     """Has events — push-capable."""
 
-    _callbacks: dict[str, Any] = {}  # event_name → callback
+    _callbacks: ClassVar[dict[str, Any]] = {}  # event_name → callback
 
     @query(description="Get value", returns={"type": "number"})
     def get_value(self) -> int:
