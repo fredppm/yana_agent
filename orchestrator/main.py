@@ -60,7 +60,14 @@ def parse_args() -> argparse.Namespace:
     )
 
     mode = parser.add_mutually_exclusive_group()
-    mode.add_argument("--text", action="store_true", help="Text mode (no voice I/O)")
+    mode.add_argument(
+        "--text",
+        nargs="?",
+        const=True,
+        default=False,
+        metavar="MESSAGE",
+        help="Text mode. Without MESSAGE: interactive loop. With MESSAGE: single-shot query and exit.",
+    )
     mode.add_argument("--init", action="store_true", help="Initialise sanctum and exit")
 
     # Headless / PULSE modes
@@ -337,6 +344,21 @@ def run_conversation(text_mode: bool) -> None:
     print(f"[sessão: {session_id}]")
 
 
+def run_single_shot(message: str) -> None:
+    """Send one message, print the reply, exit — no session log, no sanctum write."""
+    providers_config = prov.load_providers()
+    registry = connectors_setup.build_registry()
+    tools = prov.CONNECTOR_TOOLS
+    system_prompt = core.load_system_prompt(voice_mode=False, registry=registry)
+
+    messages = [{"role": "user", "content": message}]
+    print(f"[{v.ts()}] YANA: ", end="", flush=True)
+    _call_with_tool_loop(
+        messages, system_prompt, tools, registry, providers_config, task="conversation"
+    )
+    print()
+
+
 def _tts_kwargs(cfg: dict) -> dict:
     return {
         "voice": cfg["tts_voice"],
@@ -362,7 +384,11 @@ def main() -> None:
         run_pulse(task, source=args.source, event=args.event, payload=args.payload)
         return
 
-    run_conversation(text_mode=args.text)
+    if isinstance(args.text, str):
+        run_single_shot(args.text)
+        return
+
+    run_conversation(text_mode=bool(args.text))
 
 
 if __name__ == "__main__":
