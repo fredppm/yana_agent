@@ -28,7 +28,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from orchestrator.connectors import Connector, command, event, query
+from connectors import Connector, command, event, query
 
 _SCOPES = ["https://www.googleapis.com/auth/calendar"]
 

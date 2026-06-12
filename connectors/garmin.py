@@ -7,7 +7,7 @@ the Garmin Connect API integration is wired up.
 
 from __future__ import annotations
 
-from orchestrator.connectors import Connector, command, event, query
+from connectors import Connector, command, event, query
 
 
 class GarminActivityConnector(Connector):
