@@ -52,6 +52,7 @@ class GarminActivityConnector(Connector):
         returns={"type": "number", "unit": "steps/day"},
     )
     def steps_today(self) -> int:
+        # _stats_today propagates auth/network errors; missing field → 0 is valid data
         stats = self._stats_today()
         return int(stats.get("totalSteps") or 0)
 
@@ -68,34 +69,25 @@ class GarminActivityConnector(Connector):
         returns={"type": "number", "unit": "stress_score"},
     )
     def stress_level(self) -> int:
-        try:
-            data = self._svc().get_stress_data(date.today().isoformat())
-            return int(data.get("avgStressLevel", -1) or -1)
-        except Exception:
-            return -1
+        data = self._svc().get_stress_data(date.today().isoformat())
+        return int(data.get("avgStressLevel", -1) or -1)
 
     @query(
         description="Last night's sleep summary",
         returns={"type": "object"},
     )
     def last_sleep(self) -> dict:
-        try:
-            raw = self._svc().get_sleep_data(date.today().isoformat())
-            dto = raw.get("dailySleepDTO") or raw
-            return self._format_sleep(dto)
-        except Exception:
-            return {}
+        raw = self._svc().get_sleep_data(date.today().isoformat())
+        dto = raw.get("dailySleepDTO") or raw
+        return self._format_sleep(dto)
 
     @query(
         description="Most recent recorded physical activity",
         returns={"type": "object"},
     )
     def last_activity(self) -> dict:
-        try:
-            activities = self._svc().get_activities(0, 1)
-            return self._format_activity(activities[0]) if activities else {}
-        except Exception:
-            return {}
+        activities = self._svc().get_activities(0, 1)
+        return self._format_activity(activities[0]) if activities else {}
 
     @query(
         description="Heart rate readings over the last N hours (default 24)",
@@ -103,19 +95,16 @@ class GarminActivityConnector(Connector):
         returns={"type": "list"},
     )
     def heart_rate_history(self, hours: int = 24) -> list:
-        try:
-            data = self._svc().get_heart_rates(date.today().isoformat())
-            readings = data.get("heartRateValues") or []
-            if hours < 24:
-                cutoff_ms = int((datetime.now(UTC) - timedelta(hours=hours)).timestamp() * 1000)
-                readings = [r for r in readings if r and r[0] and r[0] >= cutoff_ms]
-            return [
-                {"timestamp_ms": r[0], "bpm": r[1]}
-                for r in readings
-                if r and len(r) >= 2 and r[1] is not None
-            ]
-        except Exception:
-            return []
+        data = self._svc().get_heart_rates(date.today().isoformat())
+        readings = data.get("heartRateValues") or []
+        if hours < 24:
+            cutoff_ms = int((datetime.now(UTC) - timedelta(hours=hours)).timestamp() * 1000)
+            readings = [r for r in readings if r and r[0] and r[0] >= cutoff_ms]
+        return [
+            {"timestamp_ms": r[0], "bpm": r[1]}
+            for r in readings
+            if r and len(r) >= 2 and r[1] is not None
+        ]
 
     # ------------------------------------------------------------------
     # Commands
@@ -186,6 +175,11 @@ class GarminActivityConnector(Connector):
             except Exception:
                 pass  # corrupted or incompatible tokens — fall through to fresh login
 
+        if not self._credentials_file.exists():
+            raise FileNotFoundError(
+                f"Garmin credentials not found: {self._credentials_file}\n"
+                f'Create it with: {{"email": "you@example.com", "password": "secret"}}'
+            )
         creds = json.loads(self._credentials_file.read_text())
         client = Garmin(email=creds["email"], password=creds["password"])
         client.login()
@@ -194,10 +188,7 @@ class GarminActivityConnector(Connector):
         return client
 
     def _stats_today(self) -> dict:
-        try:
-            return self._svc().get_stats(date.today().isoformat()) or {}
-        except Exception:
-            return {}
+        return self._svc().get_stats(date.today().isoformat()) or {}
 
     def _format_sleep(self, dto: dict) -> dict:
         def _sec_to_h(sec: int | None) -> float | None:
