@@ -7,17 +7,13 @@ Saves and loads session logs for continuity.
 
 from __future__ import annotations
 
-import json
-import os
-import re
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
-
 
 # ---------------------------------------------------------------------------
 # Paths
 # ---------------------------------------------------------------------------
+
 
 def _project_root() -> Path:
     """Resolve project root: two levels up from this file (orchestrator/)."""
@@ -95,14 +91,14 @@ def load_system_prompt(voice_mode: bool = False, registry=None) -> str:
                 parts.append(_read_file(fpath, fname))
     else:
         # No sanctum yet — First Breath hasn't happened
-        parts.append(
-            "\n\n---\n[SANCTUM NOT FOUND — First Breath required before proceeding.]\n"
-        )
+        parts.append("\n\n---\n[SANCTUM NOT FOUND — First Breath required before proceeding.]\n")
 
     # 3. pulse-config.yaml as raw text (YANA reads it for PULSE tasks)
     pulse_cfg = sanctum / "pulse-config.yaml"
     if pulse_cfg.exists():
-        parts.append(f"\n\n---\n## pulse-config.yaml\n\n```yaml\n{pulse_cfg.read_text(encoding='utf-8')}\n```\n")
+        parts.append(
+            f"\n\n---\n## pulse-config.yaml\n\n```yaml\n{pulse_cfg.read_text(encoding='utf-8')}\n```\n"
+        )
 
     # 4. Connector manifest — lightweight, always injected when registry is present
     if registry is not None:
@@ -127,6 +123,7 @@ def _read_file(path: Path, label: str) -> str:
 # Session management
 # ---------------------------------------------------------------------------
 
+
 def load_recent_sessions(n: int = 3) -> str:
     """Return the last n session logs concatenated, or empty string."""
     sessions_dir = _sessions_dir()
@@ -139,7 +136,7 @@ def load_recent_sessions(n: int = 3) -> str:
     return "\n\n".join(parts)
 
 
-def save_session_log(messages: list[dict], session_id: Optional[str] = None) -> Path:
+def save_session_log(messages: list[dict], session_id: str | None = None) -> Path:
     """
     Persist the conversation to a session log file.
 
@@ -166,6 +163,7 @@ def save_session_log(messages: list[dict], session_id: Optional[str] = None) -> 
 # Sanctum state check
 # ---------------------------------------------------------------------------
 
+
 def sanctum_exists() -> bool:
     """True if the sanctum has been initialised (PERSONA.md present)."""
     return (_sanctum_root() / "PERSONA.md").exists()
@@ -178,6 +176,7 @@ def sanctum_path() -> Path:
 # ---------------------------------------------------------------------------
 # Pulse-config helpers
 # ---------------------------------------------------------------------------
+
 
 def load_pulse_config() -> dict:
     """Load pulse-config.yaml from the sanctum. Returns empty dict if missing."""
@@ -193,7 +192,7 @@ def load_pulse_config() -> dict:
         return yaml.safe_load(f) or {}
 
 
-def is_quiet_hours(pulse_config: Optional[dict] = None) -> bool:
+def is_quiet_hours(pulse_config: dict | None = None) -> bool:
     """Return True if current local time falls in the configured quiet window."""
     if pulse_config is None:
         pulse_config = load_pulse_config()
@@ -206,7 +205,7 @@ def is_quiet_hours(pulse_config: Optional[dict] = None) -> bool:
         end = datetime.strptime(end_str.strip(), "%H:%M").time()
         if start <= end:
             return start <= now <= end
-        # Overnight window (e.g. 23:00–07:00)
+        # Overnight window (e.g. 23:00-07:00)
         return now >= start or now <= end
     except (ValueError, AttributeError):
         return False

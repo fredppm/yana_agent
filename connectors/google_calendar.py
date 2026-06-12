@@ -26,7 +26,7 @@ from __future__ import annotations
 import os
 import threading
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -48,8 +48,7 @@ class GoogleCalendarConnector(Connector):
             or os.environ.get("GOOGLE_CREDENTIALS_FILE", "~/.yana/google_credentials.json")
         ).expanduser()
         self._token_file = Path(
-            token_file
-            or os.environ.get("GOOGLE_TOKEN_FILE", "~/.yana/tokens/google_calendar.json")
+            token_file or os.environ.get("GOOGLE_TOKEN_FILE", "~/.yana/tokens/google_calendar.json")
         ).expanduser()
         self._service = None  # lazy — built on first call
 
@@ -61,7 +60,7 @@ class GoogleCalendarConnector(Connector):
         description="List calendar events in a time range. Both params are ISO 8601 strings. Omit start_iso to default to now; omit end_iso to default to 7 days from start.",
         params={
             "start_iso": {"type": "string", "required": False},
-            "end_iso":   {"type": "string", "required": False},
+            "end_iso": {"type": "string", "required": False},
             "max_results": {"type": "number", "required": False},
         },
         returns={"type": "list"},
@@ -73,7 +72,8 @@ class GoogleCalendarConnector(Connector):
         max_results: int = 50,
     ) -> list[dict]:
         from datetime import timedelta
-        now = datetime.now(timezone.utc)
+
+        now = datetime.now(UTC)
         start = start_iso or now.isoformat()
         end = end_iso or (now + timedelta(days=7)).isoformat()
         return self._list_events(time_min=start, time_max=end, max_results=max_results)
@@ -82,7 +82,7 @@ class GoogleCalendarConnector(Connector):
         description="Check whether a time slot is free (no events overlap). Both params are ISO 8601 strings.",
         params={
             "start_iso": {"type": "string"},
-            "end_iso":   {"type": "string"},
+            "end_iso": {"type": "string"},
         },
         returns={"type": "boolean"},
     )
@@ -97,16 +97,14 @@ class GoogleCalendarConnector(Connector):
     @command(
         description="Create a new calendar event",
         params={
-            "title":     {"type": "string"},
+            "title": {"type": "string"},
             "start_iso": {"type": "string"},
-            "end_iso":   {"type": "string"},
-            "notes":     {"type": "string", "required": False},
+            "end_iso": {"type": "string"},
+            "notes": {"type": "string", "required": False},
         },
         returns={"type": "object"},
     )
-    def create_event(
-        self, title: str, start_iso: str, end_iso: str, notes: str = ""
-    ) -> dict:
+    def create_event(self, title: str, start_iso: str, end_iso: str, notes: str = "") -> dict:
         body: dict[str, Any] = {
             "summary": title,
             "start": {"dateTime": start_iso},
@@ -114,12 +112,7 @@ class GoogleCalendarConnector(Connector):
         }
         if notes:
             body["description"] = notes
-        result = (
-            self._svc()
-            .events()
-            .insert(calendarId="primary", body=body)
-            .execute()
-        )
+        result = self._svc().events().insert(calendarId="primary", body=body).execute()
         return self._format_event(result)
 
     @command(
@@ -143,8 +136,9 @@ class GoogleCalendarConnector(Connector):
     )
     def on_event_created(self, callback) -> None:  # type: ignore[type-arg]
         """Poll every 60 s; fire callback for any event ID not seen before."""
+
         def _poll() -> None:
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
             try:
                 existing = self._list_events(
                     time_min=now.isoformat(),
@@ -157,7 +151,7 @@ class GoogleCalendarConnector(Connector):
             while True:
                 time.sleep(self._POLL_INTERVAL)
                 try:
-                    now = datetime.now(timezone.utc)
+                    now = datetime.now(UTC)
                     events = self._list_events(
                         time_min=now.isoformat(),
                         time_max=(now + timedelta(days=30)).isoformat(),
@@ -179,11 +173,12 @@ class GoogleCalendarConnector(Connector):
     )
     def on_event_reminder(self, callback) -> None:  # type: ignore[type-arg]
         """Poll every 60 s; fire callback once per event that starts within 15 minutes."""
+
         def _poll() -> None:
             notified: set[str] = set()
             while True:
                 try:
-                    now = datetime.now(timezone.utc)
+                    now = datetime.now(UTC)
                     upcoming = self._list_events(
                         time_min=now.isoformat(),
                         time_max=(now + timedelta(minutes=16)).isoformat(),
@@ -210,9 +205,9 @@ class GoogleCalendarConnector(Connector):
         return self._service
 
     def _build_service(self):
+        from google.auth.transport.requests import Request
         from google.oauth2.credentials import Credentials
         from google_auth_oauthlib.flow import InstalledAppFlow
-        from google.auth.transport.requests import Request
         from googleapiclient.discovery import build
 
         creds = None
@@ -254,11 +249,11 @@ class GoogleCalendarConnector(Connector):
 
     def _format_event(self, raw: dict) -> dict:
         return {
-            "id":       raw.get("id"),
-            "title":    raw.get("summary", ""),
-            "start":    raw.get("start", {}).get("dateTime") or raw.get("start", {}).get("date"),
-            "end":      raw.get("end", {}).get("dateTime") or raw.get("end", {}).get("date"),
+            "id": raw.get("id"),
+            "title": raw.get("summary", ""),
+            "start": raw.get("start", {}).get("dateTime") or raw.get("start", {}).get("date"),
+            "end": raw.get("end", {}).get("dateTime") or raw.get("end", {}).get("date"),
             "location": raw.get("location"),
-            "notes":    raw.get("description"),
-            "link":     raw.get("htmlLink"),
+            "notes": raw.get("description"),
+            "link": raw.get("htmlLink"),
         }

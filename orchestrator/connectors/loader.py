@@ -43,6 +43,7 @@ def load_connectors(folder: Path, registry: ConnectorRegistry) -> list[str]:
 # Internals
 # ---------------------------------------------------------------------------
 
+
 def _extract_connectors(path: Path) -> list[type[Connector]]:
     """
     Import a .py file and return all non-base Connector subclasses defined in it.

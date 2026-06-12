@@ -42,16 +42,16 @@ sys.path.insert(0, str(_HERE))
 # Imports (after path fix)
 # ---------------------------------------------------------------------------
 
-import core
-import connectors_setup
-import providers as prov
-import sanctum_writer as sw
-import voice as v
-
+import connectors_setup  # noqa: E402
+import core  # noqa: E402
+import providers as prov  # noqa: E402
+import sanctum_writer as sw  # noqa: E402
+import voice as v  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # CLI parsing
 # ---------------------------------------------------------------------------
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -82,6 +82,7 @@ def parse_args() -> argparse.Namespace:
 # Sanctum init
 # ---------------------------------------------------------------------------
 
+
 def run_init() -> None:
     script = _HERE.parent / "skills" / "agent-yana" / "scripts" / "init-sanctum.py"
     if not script.exists():
@@ -94,6 +95,7 @@ def run_init() -> None:
 # ---------------------------------------------------------------------------
 # PULSE headless mode
 # ---------------------------------------------------------------------------
+
 
 def run_pulse(task: str, source: str = "", event: str = "", payload: str = "{}") -> None:
     pulse_cfg = core.load_pulse_config()
@@ -135,12 +137,15 @@ def run_pulse(task: str, source: str = "", event: str = "", payload: str = "{}")
 
     # Save headless session log
     messages.append({"role": "assistant", "content": reply})
-    core.save_session_log(messages, session_id=f"pulse-{task}-{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}")
+    core.save_session_log(
+        messages, session_id=f"pulse-{task}-{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}"
+    )
 
 
 # ---------------------------------------------------------------------------
 # Connector tool execution
 # ---------------------------------------------------------------------------
+
 
 def _execute_tool(tool_call: dict, registry) -> str:
     """Execute a single connector tool call and return the result as a JSON string."""
@@ -211,11 +216,13 @@ def _call_with_tool_loop(
             instance = tc["input"].get("instance_id", "")
             op = tc["input"].get("operation", tc["name"])
             print(f"\n[{v.ts()}] [connector] {instance}/{op}", flush=True)
-            tool_results.append({
-                "type": "tool_result",
-                "tool_use_id": tc["id"],
-                "content": result_str,
-            })
+            tool_results.append(
+                {
+                    "type": "tool_result",
+                    "tool_use_id": tc["id"],
+                    "content": result_str,
+                }
+            )
 
         # Feed results back as a user message and loop
         work.append({"role": "user", "content": tool_results})
@@ -224,6 +231,7 @@ def _call_with_tool_loop(
 # ---------------------------------------------------------------------------
 # Conversation loop
 # ---------------------------------------------------------------------------
+
 
 def run_conversation(text_mode: bool) -> None:
     providers_config = prov.load_providers()
@@ -340,6 +348,7 @@ def _tts_kwargs(cfg: dict) -> dict:
 # ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
+
 
 def main() -> None:
     args = parse_args()

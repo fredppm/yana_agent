@@ -12,17 +12,18 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from connectors import ConnectorRegistry, load_connectors
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def write_connector(folder: Path, filename: str, class_name: str, extra: str = "") -> Path:
     """Write a minimal connector Python file to *folder*."""
     path = folder / filename
-    path.write_text(textwrap.dedent(f"""
+    path.write_text(
+        textwrap.dedent(f"""
         import sys
-        sys.path.insert(0, r"{Path(__file__).parent.parent.parent / 'orchestrator'}")
+        sys.path.insert(0, r"{Path(__file__).parent.parent.parent / "orchestrator"}")
         from connectors import Connector, query
 
         class {class_name}(Connector):
@@ -30,13 +31,15 @@ def write_connector(folder: Path, filename: str, class_name: str, extra: str = "
             def do_thing(self) -> int:
                 return 42
         {extra}
-    """))
+    """)
+    )
     return path
 
 
 # ---------------------------------------------------------------------------
 # Happy paths
 # ---------------------------------------------------------------------------
+
 
 def test_load_single_connector(tmp_path):
     write_connector(tmp_path, "fake_garmin.py", "FakeGarmin")
@@ -67,9 +70,10 @@ def test_connector_callable_after_load(tmp_path):
 
 def test_two_connectors_in_one_file(tmp_path):
     path = tmp_path / "multi.py"
-    path.write_text(textwrap.dedent(f"""
+    path.write_text(
+        textwrap.dedent(f"""
         import sys
-        sys.path.insert(0, r"{Path(__file__).parent.parent.parent / 'orchestrator'}")
+        sys.path.insert(0, r"{Path(__file__).parent.parent.parent / "orchestrator"}")
         from connectors import Connector, query
 
         class Alpha(Connector):
@@ -81,7 +85,8 @@ def test_two_connectors_in_one_file(tmp_path):
             @query(description="beta", returns={{"type": "string"}})
             def beta(self) -> str:
                 return "b"
-    """))
+    """)
+    )
     registry = ConnectorRegistry()
     registered = load_connectors(tmp_path, registry)
     assert "Alpha" in registered
@@ -99,6 +104,7 @@ def test_returns_sorted_load_order(tmp_path):
 # ---------------------------------------------------------------------------
 # File filtering
 # ---------------------------------------------------------------------------
+
 
 def test_skips_dunder_files(tmp_path):
     (tmp_path / "__init__.py").write_text("")
@@ -119,9 +125,10 @@ def test_skips_underscore_files(tmp_path):
 
 def test_non_connector_classes_not_registered(tmp_path):
     path = tmp_path / "mixed.py"
-    path.write_text(textwrap.dedent(f"""
+    path.write_text(
+        textwrap.dedent(f"""
         import sys
-        sys.path.insert(0, r"{Path(__file__).parent.parent.parent / 'orchestrator'}")
+        sys.path.insert(0, r"{Path(__file__).parent.parent.parent / "orchestrator"}")
         from connectors import Connector, query
 
         class NotAConnector:
@@ -131,7 +138,8 @@ def test_non_connector_classes_not_registered(tmp_path):
             @query(description="x", returns={{"type": "number"}})
             def x(self) -> int:
                 return 1
-    """))
+    """)
+    )
     registry = ConnectorRegistry()
     registered = load_connectors(tmp_path, registry)
     assert registered == ["RealOne"]
@@ -148,6 +156,7 @@ def test_empty_folder_returns_empty(tmp_path):
 # Error handling
 # ---------------------------------------------------------------------------
 
+
 def test_missing_folder_raises(tmp_path):
     registry = ConnectorRegistry()
     with pytest.raises(FileNotFoundError):
@@ -158,7 +167,7 @@ def test_import_error_raises_runtime_error(tmp_path):
     bad = tmp_path / "bad.py"
     bad.write_text("raise ImportError('intentional failure')")
     registry = ConnectorRegistry()
-    with pytest.raises(RuntimeError, match="bad.py"):
+    with pytest.raises(RuntimeError, match=r"bad\.py"):
         load_connectors(tmp_path, registry)
 
 
@@ -166,12 +175,15 @@ def test_import_error_raises_runtime_error(tmp_path):
 # Integration: load_connectors + load_manifest + call
 # ---------------------------------------------------------------------------
 
+
 def test_full_flow_scan_manifest_call(tmp_path):
     """Scan folder → load manifest → call without manual register_type."""
     write_connector(tmp_path, "sensor.py", "SensorConnector")
 
-    import tempfile, os
-    manifest_yaml = f"""
+    import os
+    import tempfile
+
+    manifest_yaml = """
 connectors:
   - type: SensorConnector
     id: sensor_1

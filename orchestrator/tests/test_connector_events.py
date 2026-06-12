@@ -21,6 +21,7 @@ from connectors import (
 # Test connectors
 # ---------------------------------------------------------------------------
 
+
 class PushConnector(Connector):
     """Has events — push-capable."""
 
@@ -55,6 +56,7 @@ class PollConnector(Connector):
 # Fixture
 # ---------------------------------------------------------------------------
 
+
 def make_registry(*connector_types) -> ConnectorRegistry:
     r = ConnectorRegistry()
     for cls in connector_types:
@@ -76,15 +78,19 @@ def load_yaml_manifest(registry: ConnectorRegistry, yaml_str: str) -> None:
 # subscribe
 # ---------------------------------------------------------------------------
 
+
 def test_subscribe_registers_handler():
     registry = make_registry(PushConnector)
-    load_yaml_manifest(registry, """
+    load_yaml_manifest(
+        registry,
+        """
 connectors:
   - type: PushConnector
     id: push_1
     name: Push 1
     description: test
-""")
+""",
+    )
     received = []
     registry.subscribe("push_1", "on_value_changed", received.append)
     assert len(registry._handlers[("push_1", "on_value_changed")]) == 1
@@ -92,13 +98,16 @@ connectors:
 
 def test_subscribe_multiple_handlers_same_event():
     registry = make_registry(PushConnector)
-    load_yaml_manifest(registry, """
+    load_yaml_manifest(
+        registry,
+        """
 connectors:
   - type: PushConnector
     id: push_1
     name: Push 1
     description: test
-""")
+""",
+    )
     a, b = [], []
     registry.subscribe("push_1", "on_value_changed", a.append)
     registry.subscribe("push_1", "on_value_changed", b.append)
@@ -109,15 +118,19 @@ connectors:
 # activate_events
 # ---------------------------------------------------------------------------
 
+
 def test_activate_events_returns_event_names():
     registry = make_registry(PushConnector)
-    load_yaml_manifest(registry, """
+    load_yaml_manifest(
+        registry,
+        """
 connectors:
   - type: PushConnector
     id: push_1
     name: Push 1
     description: test
-""")
+""",
+    )
     activated = registry.activate_events("push_1")
     assert "on_value_changed" in activated
     assert "on_alert" in activated
@@ -125,13 +138,16 @@ connectors:
 
 def test_activate_events_only_events_not_queries():
     registry = make_registry(PushConnector)
-    load_yaml_manifest(registry, """
+    load_yaml_manifest(
+        registry,
+        """
 connectors:
   - type: PushConnector
     id: push_1
     name: Push 1
     description: test
-""")
+""",
+    )
     activated = registry.activate_events("push_1")
     assert "get_value" not in activated
 
@@ -139,13 +155,16 @@ connectors:
 def test_dispatch_calls_handler_when_event_fires():
     PushConnector._callbacks = {}
     registry = make_registry(PushConnector)
-    load_yaml_manifest(registry, """
+    load_yaml_manifest(
+        registry,
+        """
 connectors:
   - type: PushConnector
     id: push_1
     name: Push 1
     description: test
-""")
+""",
+    )
     received = []
     registry.subscribe("push_1", "on_value_changed", received.append)
     registry.activate_events("push_1")
@@ -157,13 +176,16 @@ connectors:
 def test_dispatch_calls_all_handlers():
     PushConnector._callbacks = {}
     registry = make_registry(PushConnector)
-    load_yaml_manifest(registry, """
+    load_yaml_manifest(
+        registry,
+        """
 connectors:
   - type: PushConnector
     id: push_1
     name: Push 1
     description: test
-""")
+""",
+    )
     a, b = [], []
     registry.subscribe("push_1", "on_value_changed", a.append)
     registry.subscribe("push_1", "on_value_changed", b.append)
@@ -177,13 +199,16 @@ connectors:
 def test_dispatch_no_handlers_does_not_raise():
     PushConnector._callbacks = {}
     registry = make_registry(PushConnector)
-    load_yaml_manifest(registry, """
+    load_yaml_manifest(
+        registry,
+        """
 connectors:
   - type: PushConnector
     id: push_1
     name: Push 1
     description: test
-""")
+""",
+    )
     registry.activate_events("push_1")
     # no subscribers — should not raise
     PushConnector._callbacks["on_value_changed"]({"value": 99})
@@ -191,13 +216,16 @@ connectors:
 
 def test_activate_poll_connector_returns_empty():
     registry = make_registry(PollConnector)
-    load_yaml_manifest(registry, """
+    load_yaml_manifest(
+        registry,
+        """
 connectors:
   - type: PollConnector
     id: poll_1
     name: Poll 1
     description: test
-""")
+""",
+    )
     activated = registry.activate_events("poll_1")
     assert activated == []
 
@@ -206,9 +234,12 @@ connectors:
 # polling_candidates
 # ---------------------------------------------------------------------------
 
+
 def test_polling_candidates_includes_poll_only_instances():
     registry = make_registry(PushConnector, PollConnector)
-    load_yaml_manifest(registry, """
+    load_yaml_manifest(
+        registry,
+        """
 connectors:
   - type: PushConnector
     id: push_1
@@ -218,7 +249,8 @@ connectors:
     id: poll_1
     name: Poll 1
     description: test
-""")
+""",
+    )
     candidates = registry.polling_candidates()
     instance_ids = {c["instance_id"] for c in candidates}
     assert "poll_1" in instance_ids
@@ -227,13 +259,16 @@ connectors:
 
 def test_polling_candidates_lists_queries():
     registry = make_registry(PollConnector)
-    load_yaml_manifest(registry, """
+    load_yaml_manifest(
+        registry,
+        """
 connectors:
   - type: PollConnector
     id: poll_1
     name: Poll 1
     description: test
-""")
+""",
+    )
     candidates = registry.polling_candidates()
     queries = {c["query"] for c in candidates if c["instance_id"] == "poll_1"}
     assert "get_temperature" in queries
@@ -242,11 +277,14 @@ connectors:
 
 def test_polling_candidates_empty_when_all_push():
     registry = make_registry(PushConnector)
-    load_yaml_manifest(registry, """
+    load_yaml_manifest(
+        registry,
+        """
 connectors:
   - type: PushConnector
     id: push_1
     name: Push 1
     description: test
-""")
+""",
+    )
     assert registry.polling_candidates() == []

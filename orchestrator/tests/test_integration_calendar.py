@@ -18,6 +18,8 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+from datetime import UTC
+
 import connectors_setup
 
 
@@ -35,8 +37,9 @@ def test_list_events_no_params_returns_list(registry):
 
 @pytest.mark.integration
 def test_list_events_explicit_range(registry):
-    from datetime import datetime, timezone, timedelta
-    now = datetime.now(timezone.utc)
+    from datetime import datetime, timedelta
+
+    now = datetime.now(UTC)
     start = now.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
     end = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
     result = registry.call("calendar_fred", "list_events", {"start_iso": start, "end_iso": end})
@@ -57,8 +60,9 @@ def test_list_events_fields_present(registry):
 
 @pytest.mark.integration
 def test_is_available_returns_bool(registry):
-    from datetime import datetime, timezone, timedelta
-    far_future = (datetime.now(timezone.utc) + timedelta(days=365))
+    from datetime import datetime, timedelta
+
+    far_future = datetime.now(UTC) + timedelta(days=365)
     start = far_future.replace(hour=3, minute=0, second=0, microsecond=0).isoformat()
     end = far_future.replace(hour=4, minute=0, second=0, microsecond=0).isoformat()
     result = registry.call("calendar_fred", "is_available", {"start_iso": start, "end_iso": end})

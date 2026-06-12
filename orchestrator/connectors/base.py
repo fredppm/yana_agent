@@ -39,19 +39,21 @@ class ReturnSchema:
 # Operation metadata
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class OperationMeta:
     name: str
     description: str
     kind: str  # "query" | "command" | "event"
     params: dict[str, ParamSchema] = field(default_factory=dict)
-    returns: ReturnSchema | None = None   # query / command
-    schema: ReturnSchema | None = None    # event payload schema
+    returns: ReturnSchema | None = None  # query / command
+    schema: ReturnSchema | None = None  # event payload schema
 
 
 # ---------------------------------------------------------------------------
 # Result envelope
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class ConnectorResult:
@@ -63,6 +65,7 @@ class ConnectorResult:
 # ---------------------------------------------------------------------------
 # Decorators
 # ---------------------------------------------------------------------------
+
 
 def query(
     description: str,
@@ -78,6 +81,7 @@ def query(
             returns=ReturnSchema(**returns) if returns else ReturnSchema(type="any"),
         )
         return fn
+
     return decorator
 
 
@@ -95,6 +99,7 @@ def command(
             returns=ReturnSchema(**returns) if returns else ReturnSchema(type="boolean"),
         )
         return fn
+
     return decorator
 
 
@@ -110,6 +115,7 @@ def event(
             schema=ReturnSchema(**schema) if schema else None,
         )
         return fn
+
     return decorator
 
 
@@ -122,6 +128,7 @@ def _parse_params(params: dict[str, dict] | None) -> dict[str, ParamSchema]:
 # ---------------------------------------------------------------------------
 # Connector base class
 # ---------------------------------------------------------------------------
+
 
 class Connector:
     """
@@ -184,13 +191,25 @@ class Connector:
             }
             if meta.params:
                 entry["params"] = {
-                    k: {f: getattr(v, f) for f in ("type", "required", "unit", "format") if getattr(v, f) is not None}
+                    k: {
+                        f: getattr(v, f)
+                        for f in ("type", "required", "unit", "format")
+                        if getattr(v, f) is not None
+                    }
                     for k, v in meta.params.items()
                 }
             if meta.returns:
-                entry["returns"] = {f: getattr(meta.returns, f) for f in ("type", "unit", "format") if getattr(meta.returns, f) is not None}
+                entry["returns"] = {
+                    f: getattr(meta.returns, f)
+                    for f in ("type", "unit", "format")
+                    if getattr(meta.returns, f) is not None
+                }
             if meta.schema:
-                entry["schema"] = {f: getattr(meta.schema, f) for f in ("type", "unit", "format") if getattr(meta.schema, f) is not None}
+                entry["schema"] = {
+                    f: getattr(meta.schema, f)
+                    for f in ("type", "unit", "format")
+                    if getattr(meta.schema, f) is not None
+                }
 
             if meta.kind == "query":
                 queries.append(entry)
@@ -215,12 +234,12 @@ class Connector:
 
 _TYPE_CHECKS: dict[str, Callable[[Any], bool]] = {
     "boolean": lambda v: isinstance(v, bool),
-    "number":  lambda v: isinstance(v, (int, float)) and not isinstance(v, bool),
-    "string":  lambda v: isinstance(v, str),
-    "array":   lambda v: isinstance(v, list),
-    "list":    lambda v: isinstance(v, list),
-    "object":  lambda v: isinstance(v, dict),
-    "any":     lambda v: True,
+    "number": lambda v: isinstance(v, (int, float)) and not isinstance(v, bool),
+    "string": lambda v: isinstance(v, str),
+    "array": lambda v: isinstance(v, list),
+    "list": lambda v: isinstance(v, list),
+    "object": lambda v: isinstance(v, dict),
+    "any": lambda v: True,
 }
 
 

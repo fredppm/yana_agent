@@ -14,12 +14,9 @@ from __future__ import annotations
 
 import re
 from datetime import datetime
-from pathlib import Path
-from typing import Optional
 
 import core
 import providers as prov
-
 
 # ---------------------------------------------------------------------------
 # Files YANA should write after First Breath
@@ -44,6 +41,7 @@ REGULAR_SESSION_FILES = [
 # ---------------------------------------------------------------------------
 # Prompt
 # ---------------------------------------------------------------------------
+
 
 def _build_sanctum_prompt(files: list[str], session_date: str) -> str:
     file_list = "\n".join(f"- {f}" for f in files)
@@ -79,12 +77,13 @@ Write every file. No skipping. No summarizing with "same as template". Real cont
 # Write sanctum
 # ---------------------------------------------------------------------------
 
+
 def write_sanctum(
     messages: list[dict],
     system_prompt: str,
     is_first_breath: bool,
-    config: Optional[dict] = None,
-    session_date: Optional[str] = None,
+    config: dict | None = None,
+    session_date: str | None = None,
 ) -> dict[str, str]:
     """
     Call YANA with the full conversation history + sanctum write prompt.
@@ -102,16 +101,16 @@ def write_sanctum(
     sanctum_prompt = _build_sanctum_prompt(files, session_date)
 
     # Add the write request as a final user message
-    write_messages = messages + [{"role": "user", "content": sanctum_prompt}]
+    write_messages = [*messages, {"role": "user", "content": sanctum_prompt}]
 
     print("\n[salvando sanctum...]", flush=True)
     response = prov.call_llm(
         write_messages,
         system_prompt,
         task="conversation",
-        stream=True,   # stream to avoid timeout on large responses
+        stream=True,  # stream to avoid timeout on large responses
         config=config,
-        timeout=300.0, # 5 min — writing 8 files takes time
+        timeout=300.0,  # 5 min — writing 8 files takes time
     )
 
     written = _parse_and_write(response)

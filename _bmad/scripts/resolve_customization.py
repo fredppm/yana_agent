@@ -191,11 +191,16 @@ def main():
         add_help=True,
     )
     parser.add_argument(
-        "--skill", "-s", required=True,
+        "--skill",
+        "-s",
+        required=True,
         help="Absolute path to the skill directory (must contain customize.toml)",
     )
     parser.add_argument(
-        "--key", "-k", action="append", default=[],
+        "--key",
+        "-k",
+        action="append",
+        default=[],
         help="Dotted field path to resolve (repeatable). Omit for full dump.",
     )
     args = parser.parse_args()

@@ -16,8 +16,9 @@ _PROJECT_ROOT = _HERE.parent
 if str(_HERE) not in sys.path:
     sys.path.insert(0, str(_HERE))  # so `import connectors` works inside connector files
 
-from connectors import ConnectorRegistry
-from connectors.loader import load_connectors
+from connectors.loader import load_connectors  # noqa: E402
+
+from connectors import ConnectorRegistry  # noqa: E402
 
 
 def build_registry() -> ConnectorRegistry:

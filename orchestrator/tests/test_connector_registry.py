@@ -9,11 +9,12 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from connectors import Connector, ConnectorInstance, ConnectorRegistry, ConnectorResult, query, command
+from connectors import Connector, ConnectorInstance, ConnectorRegistry, command, query
 
 # ---------------------------------------------------------------------------
 # Minimal test connector
 # ---------------------------------------------------------------------------
+
 
 class FakeGarmin(Connector):
     @query(description="Steps today", returns={"type": "number", "unit": "steps/day"})
@@ -49,8 +50,6 @@ def registry() -> ConnectorRegistry:
 @pytest.fixture
 def loaded_registry(registry: ConnectorRegistry) -> ConnectorRegistry:
     # Patch manifest type names to match test connector class names
-    import yaml
-    from io import StringIO
 
     manifest_yaml = """
 connectors:
@@ -74,7 +73,9 @@ connectors:
     name: "Luz da Sala"
     description: "Luz da sala de estar"
 """
-    import tempfile, os
+    import os
+    import tempfile
+
     with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
         f.write(manifest_yaml)
         tmp = f.name
@@ -88,6 +89,7 @@ connectors:
 # ---------------------------------------------------------------------------
 # ConnectorInstance
 # ---------------------------------------------------------------------------
+
 
 def test_instance_fields():
     inst = ConnectorInstance(
@@ -114,6 +116,7 @@ def test_instance_owner_optional():
 # ---------------------------------------------------------------------------
 # Registry — load_manifest
 # ---------------------------------------------------------------------------
+
 
 def test_load_manifest_populates_instances(loaded_registry):
     inst = loaded_registry.get_instance("garmin_fred")
@@ -143,6 +146,7 @@ def test_get_instance_unknown_raises(loaded_registry):
 # ---------------------------------------------------------------------------
 # Registry — lightweight_manifest (Level 1)
 # ---------------------------------------------------------------------------
+
 
 def test_lightweight_manifest_contains_all_instances(loaded_registry):
     manifest = loaded_registry.lightweight_manifest()
@@ -174,6 +178,7 @@ def test_lightweight_manifest_has_no_contract_details(loaded_registry):
 # Registry — load_contract (Level 2)
 # ---------------------------------------------------------------------------
 
+
 def test_load_contract_returns_full_schema(loaded_registry):
     contract = loaded_registry.load_contract("garmin_fred")
     assert contract["type"] == "FakeGarmin"
@@ -196,6 +201,7 @@ def test_load_contract_generic_has_no_owner_key(loaded_registry):
 # Registry — call (routes through instance → connector)
 # ---------------------------------------------------------------------------
 
+
 def test_call_routes_to_correct_instance(loaded_registry):
     result = loaded_registry.call("garmin_fred", "steps_today")
     assert result.ok is True
@@ -216,7 +222,9 @@ def test_call_two_instances_same_type_are_independent(loaded_registry):
 
 
 def test_call_missing_implementation_raises(registry):
-    import tempfile, os, yaml
+    import os
+    import tempfile
+
     manifest_yaml = """
 connectors:
   - type: UnknownType

@@ -13,14 +13,13 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Optional
 
 import yaml
-
 
 # ---------------------------------------------------------------------------
 # Config loading
 # ---------------------------------------------------------------------------
+
 
 def _config_path() -> Path:
     return Path(__file__).parent / "config" / "providers.yaml"
@@ -34,7 +33,7 @@ def load_providers() -> dict:
         return yaml.safe_load(f) or {}
 
 
-def resolve_model(task: str = "conversation", config: Optional[dict] = None) -> tuple[str, str]:
+def resolve_model(task: str = "conversation", config: dict | None = None) -> tuple[str, str]:
     """
     Return (provider_name, model_id) for the given task type.
 
@@ -73,7 +72,7 @@ def resolve_model(task: str = "conversation", config: Optional[dict] = None) -> 
     return "anthropic", llm.get("default", "claude-sonnet-4-6")
 
 
-def get_api_key(provider: str, config: Optional[dict] = None) -> Optional[str]:
+def get_api_key(provider: str, config: dict | None = None) -> str | None:
     """Return API key for provider, or None if provider uses ambient credentials (Bedrock)."""
     if provider == "bedrock":
         return None  # uses AWS env vars / profile
@@ -88,9 +87,7 @@ def get_api_key(provider: str, config: Optional[dict] = None) -> Optional[str]:
 
     key = os.environ.get(env_var, "")
     if not key:
-        raise EnvironmentError(
-            f"API key not found. Set the {env_var} environment variable."
-        )
+        raise OSError(f"API key not found. Set the {env_var} environment variable.")
     return key
 
 
@@ -148,12 +145,13 @@ CONNECTOR_TOOLS: list[dict] = [
 # LLM call — dispatcher
 # ---------------------------------------------------------------------------
 
+
 def call_llm(
     messages: list[dict],
     system_prompt: str,
     task: str = "conversation",
     stream: bool = True,
-    config: Optional[dict] = None,
+    config: dict | None = None,
     timeout: float = 60.0,
 ) -> str:
     """
@@ -182,7 +180,7 @@ def call_llm(
         raise ValueError(f"Unknown provider: {provider}")
 
 
-def _bedrock_config(config: dict) -> tuple[str, Optional[str]]:
+def _bedrock_config(config: dict) -> tuple[str, str | None]:
     """Return (region, profile) for Bedrock."""
     llm = config.get("llm", {})
     bedrock_cfg = llm.get("providers", {}).get("bedrock", {})
@@ -194,6 +192,7 @@ def _bedrock_config(config: dict) -> tuple[str, Optional[str]]:
 # ---------------------------------------------------------------------------
 # Anthropic (direct API)
 # ---------------------------------------------------------------------------
+
 
 def _call_anthropic(
     messages: list[dict],
@@ -235,12 +234,13 @@ def _call_anthropic(
 # Bedrock (AnthropicBedrock — same SDK, different client)
 # ---------------------------------------------------------------------------
 
+
 def _call_bedrock(
     messages: list[dict],
     system_prompt: str,
     model_id: str,
     region: str,
-    profile: Optional[str],
+    profile: str | None,
     stream: bool,
     timeout: float = 60.0,
 ) -> str:
@@ -280,6 +280,7 @@ def _call_bedrock(
 # OpenAI
 # ---------------------------------------------------------------------------
 
+
 def _call_openai(
     messages: list[dict],
     system_prompt: str,
@@ -291,7 +292,7 @@ def _call_openai(
     from openai import OpenAI
 
     client = OpenAI(api_key=api_key)
-    full_messages = [{"role": "system", "content": system_prompt}] + messages
+    full_messages = [{"role": "system", "content": system_prompt}, *messages]
 
     if stream:
         full_text = ""
@@ -319,12 +320,13 @@ def _call_openai(
 # Tool-aware LLM call (Anthropic only; other providers fall back to plain call)
 # ---------------------------------------------------------------------------
 
+
 def call_llm_with_tools(
     messages: list[dict],
     system_prompt: str,
     tools: list[dict],
     task: str = "conversation",
-    config: Optional[dict] = None,
+    config: dict | None = None,
     timeout: float = 60.0,
 ) -> tuple[str, list[dict], list]:
     """
@@ -357,7 +359,9 @@ def call_llm_with_tools(
         )
     else:
         # Provider doesn't support tools — fall back to plain call (no tool use)
-        text = call_llm(messages, system_prompt, task=task, stream=False, config=config, timeout=timeout)
+        text = call_llm(
+            messages, system_prompt, task=task, stream=False, config=config, timeout=timeout
+        )
         return text, [], [{"type": "text", "text": text}]
 
     response = client.messages.create(

@@ -5,25 +5,21 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-import pytest
-
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from connectors import (
     Connector,
-    ConnectorResult,
     command,
     event,
     query,
 )
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
 
-class SimpleConnector(Connector):
 
+class SimpleConnector(Connector):
     @query(
         description="Returns a number",
         returns={"type": "number", "unit": "steps/day"},
@@ -56,7 +52,6 @@ class SimpleConnector(Connector):
 
 
 class ErrorConnector(Connector):
-
     @query(description="Raises TimeoutError", returns={"type": "number"})
     def timeout_op(self) -> int:
         raise TimeoutError
@@ -73,6 +68,7 @@ class ErrorConnector(Connector):
 # ---------------------------------------------------------------------------
 # Operation discovery
 # ---------------------------------------------------------------------------
+
 
 def test_operations_collected():
     assert "get_steps" in SimpleConnector._operations
@@ -104,6 +100,7 @@ def test_params_schema():
 # ---------------------------------------------------------------------------
 # call() — happy paths
 # ---------------------------------------------------------------------------
+
 
 def test_call_query_no_params():
     c = SimpleConnector()
@@ -138,6 +135,7 @@ def test_call_command():
 # call() — validation errors
 # ---------------------------------------------------------------------------
 
+
 def test_call_unknown_operation():
     c = SimpleConnector()
     result = c.call("nonexistent")
@@ -170,6 +168,7 @@ def test_call_wrong_param_type():
 # call() — implementation errors mapped to envelope
 # ---------------------------------------------------------------------------
 
+
 def test_call_timeout_error():
     c = ErrorConnector()
     result = c.call("timeout_op")
@@ -194,6 +193,7 @@ def test_call_generic_error():
 # ---------------------------------------------------------------------------
 # contract()
 # ---------------------------------------------------------------------------
+
 
 def test_contract_structure():
     c = SimpleConnector()

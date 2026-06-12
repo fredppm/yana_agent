@@ -23,9 +23,9 @@ Usage:
 
 import argparse
 import json
-import sys
 import re
 import shutil
+import sys
 from datetime import date
 from pathlib import Path
 
@@ -153,12 +153,14 @@ def discover_capabilities(references_dir: Path, sanctum_refs_path: str) -> list[
             continue
         meta = parse_frontmatter(md_file)
         if meta.get("name") and meta.get("code"):
-            capabilities.append({
-                "name": meta["name"],
-                "description": meta.get("description", ""),
-                "code": meta["code"],
-                "source": f"{sanctum_refs_path}/{md_file.name}",
-            })
+            capabilities.append(
+                {
+                    "name": meta["name"],
+                    "description": meta.get("description", ""),
+                    "code": meta["code"],
+                    "source": f"{sanctum_refs_path}/{md_file.name}",
+                }
+            )
     return capabilities
 
 
@@ -178,44 +180,48 @@ def generate_capabilities_md(capabilities: list[dict], evolvable: bool) -> str:
         )
 
     if evolvable:
-        lines.extend([
-            "",
-            "## Learned",
-            "",
-            "_Capabilities added by the owner over time. Prompts live in `capabilities/`._",
-            "",
-            "| Code | Name | Description | Source | Added |",
-            "|------|------|-------------|--------|-------|",
-            "",
-            "## How to Add a Capability",
-            "",
-            'Tell me "I want you to be able to do X" and we\'ll create it together.',
-            "I'll write the prompt, save it to `capabilities/`, and register it here.",
-            "Next session, I'll know how.",
-            "Load `references/capability-authoring.md` for the full creation framework.",
-        ])
+        lines.extend(
+            [
+                "",
+                "## Learned",
+                "",
+                "_Capabilities added by the owner over time. Prompts live in `capabilities/`._",
+                "",
+                "| Code | Name | Description | Source | Added |",
+                "|------|------|-------------|--------|-------|",
+                "",
+                "## How to Add a Capability",
+                "",
+                'Tell me "I want you to be able to do X" and we\'ll create it together.',
+                "I'll write the prompt, save it to `capabilities/`, and register it here.",
+                "Next session, I'll know how.",
+                "Load `references/capability-authoring.md` for the full creation framework.",
+            ]
+        )
 
-    lines.extend([
-        "",
-        "## Tools",
-        "",
-        "Prefer crafting your own tools over depending on external ones where possible.",
-        "",
-        "### User-Provided Tools",
-        "",
-        "_MCP servers, APIs, or services the owner has made available. Document them here._",
-        "",
-        "### Configured Connections",
-        "",
-        "| Service | Account | Purpose | Status |",
-        "|---------|---------|---------|--------|",
-        "| Google Calendar | personal | Personal agenda | Not yet configured |",
-        "| Google Calendar | work | Work agenda | Not yet configured |",
-        "| Gmail | personal | Personal email digest | Not yet configured |",
-        "| Gmail | work | Work newsletters | Not yet configured |",
-        "| Garmin Connect | — | Health & stress data | Not yet configured |",
-        "| Home Assistant | local | Home automation | Not yet configured |",
-    ])
+    lines.extend(
+        [
+            "",
+            "## Tools",
+            "",
+            "Prefer crafting your own tools over depending on external ones where possible.",
+            "",
+            "### User-Provided Tools",
+            "",
+            "_MCP servers, APIs, or services the owner has made available. Document them here._",
+            "",
+            "### Configured Connections",
+            "",
+            "| Service | Account | Purpose | Status |",
+            "|---------|---------|---------|--------|",
+            "| Google Calendar | personal | Personal agenda | Not yet configured |",
+            "| Google Calendar | work | Work agenda | Not yet configured |",
+            "| Gmail | personal | Personal email digest | Not yet configured |",
+            "| Gmail | work | Work newsletters | Not yet configured |",
+            "| Garmin Connect | — | Health & stress data | Not yet configured |",
+            "| Home Assistant | local | Home automation | Not yet configured |",
+        ]
+    )
 
     return "\n".join(lines) + "\n"
 
@@ -260,7 +266,11 @@ def main():
 
     # Check if sanctum already exists
     if sanctum_path.exists():
-        msg = {"status": "skipped", "reason": "sanctum already exists", "sanctum": str(sanctum_path)}
+        msg = {
+            "status": "skipped",
+            "reason": "sanctum already exists",
+            "sanctum": str(sanctum_path),
+        }
         if json_output:
             print(json.dumps(msg))
         else:

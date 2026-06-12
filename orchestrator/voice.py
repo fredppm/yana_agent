@@ -10,19 +10,16 @@ from __future__ import annotations
 import asyncio
 import os
 import tempfile
-from pathlib import Path
-from typing import Optional
-
 
 # ---------------------------------------------------------------------------
 # STT — listen
 # ---------------------------------------------------------------------------
 
-_SAMPLE_RATE = 16000      # Hz — Whisper wants 16 kHz
+_SAMPLE_RATE = 16000  # Hz — Whisper wants 16 kHz
 _CHANNELS = 1
 _SILENCE_THRESHOLD = 0.01  # RMS below this = silence
-_SILENCE_SECONDS = 1.5    # seconds of silence to consider speech done
-_MAX_SECONDS = 60         # hard cap on recording length
+_SILENCE_SECONDS = 1.5  # seconds of silence to consider speech done
+_MAX_SECONDS = 60  # hard cap on recording length
 
 
 def listen(provider: str = "openai-whisper", model_name: str = "base", language: str = "pt") -> str:
@@ -55,7 +52,7 @@ def _record_until_silence():
         for _ in range(max_chunks):
             chunk, _ = stream.read(chunk_samples)
             frames.append(chunk.copy())
-            rms = float(np.sqrt(np.mean(chunk ** 2)))
+            rms = float(np.sqrt(np.mean(chunk**2)))
 
             if rms > _SILENCE_THRESHOLD:
                 started_speaking = True
@@ -71,6 +68,7 @@ def _record_until_silence():
 
 def _transcribe(audio, provider: str, model_name: str, language: str) -> str:
     import numpy as np
+
     audio_flat = audio.flatten().astype(np.float32)
 
     if provider == "faster-whisper":
@@ -80,7 +78,6 @@ def _transcribe(audio, provider: str, model_name: str, language: str) -> str:
 
 
 def _transcribe_openai_whisper(audio, model_name: str, language: str) -> str:
-    import whisper
 
     model = _get_whisper_model(model_name)
     result = model.transcribe(audio, language=language, fp16=False)
@@ -93,6 +90,7 @@ _whisper_model_cache: dict[str, object] = {}
 def _get_whisper_model(model_name: str):
     if model_name not in _whisper_model_cache:
         import whisper
+
         _whisper_model_cache[model_name] = whisper.load_model(model_name)
     return _whisper_model_cache[model_name]
 
@@ -109,7 +107,10 @@ def _transcribe_faster_whisper(audio, model_name: str, language: str) -> str:
 # TTS — speak
 # ---------------------------------------------------------------------------
 
-def speak(text: str, voice: str = "pt-BR-FranciscaNeural", rate: str = "+0%", volume: str = "+0%") -> None:
+
+def speak(
+    text: str, voice: str = "pt-BR-FranciscaNeural", rate: str = "+0%", volume: str = "+0%"
+) -> None:
     """
     Synthesise text with edge-tts and play it immediately.
     Blocks until playback is done.
@@ -119,8 +120,6 @@ def speak(text: str, voice: str = "pt-BR-FranciscaNeural", rate: str = "+0%", vo
 
 async def _speak_async(text: str, voice: str, rate: str, volume: str) -> None:
     import edge_tts
-    import soundfile as sf
-    import sounddevice as sd
 
     with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp:
         tmp_path = tmp.name
@@ -138,8 +137,8 @@ async def _speak_async(text: str, voice: str, rate: str, volume: str) -> None:
 
 def _play_audio_file(path: str) -> None:
     """Play an audio file (mp3/wav) via sounddevice."""
-    import soundfile as sf
     import sounddevice as sd
+    import soundfile as sf
 
     # soundfile can't read mp3 natively — use pydub if available, else convert
     try:
@@ -148,6 +147,7 @@ def _play_audio_file(path: str) -> None:
         # Fallback: convert mp3 → wav via pydub
         try:
             from pydub import AudioSegment
+
             audio = AudioSegment.from_mp3(path)
             wav_path = path.replace(".mp3", ".wav")
             audio.export(wav_path, format="wav")
@@ -164,6 +164,7 @@ def _play_audio_file(path: str) -> None:
 # ---------------------------------------------------------------------------
 # Voice config helpers
 # ---------------------------------------------------------------------------
+
 
 def load_voice_config(providers_config: dict) -> dict:
     """Extract STT/TTS config from providers.yaml content."""

@@ -1,6 +1,7 @@
 """Entry point — run from project root: python yana.py [args]"""
-import sys
+
 import runpy
+import sys
 from pathlib import Path
 
 orchestrator = Path(__file__).parent / "orchestrator"

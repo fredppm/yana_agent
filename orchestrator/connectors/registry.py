@@ -26,12 +26,13 @@ from .base import Connector, ConnectorResult
 # ConnectorInstance — manifest entry
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class ConnectorInstance:
     id: str
     name: str
     description: str
-    type: str               # ConnectorType class name
+    type: str  # ConnectorType class name
     owner: str | None = None
     config: dict[str, Any] = field(default_factory=dict)  # constructor kwargs
 
@@ -39,6 +40,7 @@ class ConnectorInstance:
 # ---------------------------------------------------------------------------
 # ConnectorRegistry
 # ---------------------------------------------------------------------------
+
 
 class ConnectorRegistry:
     """
@@ -212,9 +214,7 @@ class ConnectorRegistry:
         candidates: list[dict[str, str]] = []
         for instance_id in self._instances:
             connector = self._get_connector(instance_id)
-            has_events = any(
-                m.kind == "event" for m in connector._operations.values()
-            )
+            has_events = any(m.kind == "event" for m in connector._operations.values())
             if not has_events:
                 for name, meta in connector._operations.items():
                     if meta.kind == "query":
@@ -225,6 +225,7 @@ class ConnectorRegistry:
         def dispatch(payload: Any) -> None:
             for handler in self._handlers.get((instance_id, event_name), []):
                 handler(payload)
+
         return dispatch
 
     # ------------------------------------------------------------------

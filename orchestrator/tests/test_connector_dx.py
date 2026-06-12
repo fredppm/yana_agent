@@ -15,6 +15,7 @@ from connectors import Connector, ConnectorRegistry, command, query
 # Test connectors
 # ---------------------------------------------------------------------------
 
+
 class SensorConnector(Connector):
     connector_description = "Generic sensor — reads temperature and humidity"
 
@@ -39,8 +40,11 @@ class NoDescriptionConnector(Connector):
 # connector_description class attribute
 # ---------------------------------------------------------------------------
 
+
 def test_class_description_accessible():
-    assert SensorConnector.connector_description == "Generic sensor — reads temperature and humidity"
+    assert (
+        SensorConnector.connector_description == "Generic sensor — reads temperature and humidity"
+    )
 
 
 def test_default_connector_description_is_empty_string():
@@ -54,6 +58,7 @@ def test_base_connector_description_is_empty():
 # ---------------------------------------------------------------------------
 # add_instance() — programmatic registration
 # ---------------------------------------------------------------------------
+
 
 def test_add_instance_registers_type_and_instance():
     registry = ConnectorRegistry()
@@ -73,8 +78,10 @@ def test_add_instance_uses_class_description_as_default():
 def test_add_instance_explicit_description_overrides_class():
     registry = ConnectorRegistry()
     inst = registry.add_instance(
-        SensorConnector, "sensor_1", "Sensor da Sala",
-        description="Custom description for this instance"
+        SensorConnector,
+        "sensor_1",
+        "Sensor da Sala",
+        description="Custom description for this instance",
     )
     assert inst.description == "Custom description for this instance"
 
@@ -117,6 +124,7 @@ def test_add_instance_no_description_falls_back_to_empty():
 # ---------------------------------------------------------------------------
 # YAML load_manifest — description fallback from class
 # ---------------------------------------------------------------------------
+
 
 def _write_manifest(content: str) -> Path:
     f = tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False)
@@ -186,6 +194,7 @@ connectors:
 # ---------------------------------------------------------------------------
 # Full no-YAML flow: scan folder + add_instance
 # ---------------------------------------------------------------------------
+
 
 def test_full_no_yaml_flow():
     """Developer writes connector class, registers instance — zero YAML."""
