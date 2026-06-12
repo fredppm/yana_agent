@@ -52,12 +52,30 @@ _SANCTUM_FILES = [
 ]
 
 
-def load_system_prompt() -> str:
+def build_connector_manifest(registry) -> str:
+    """Return lightweight connector manifest formatted as a system-prompt section."""
+    try:
+        entries = registry.lightweight_manifest()
+    except Exception:
+        return ""
+    if not entries:
+        return ""
+    lines = ["---", "## Available Connectors", ""]
+    for e in entries:
+        owner_tag = f" [{e['owner']}]" if e.get("owner") else ""
+        lines.append(f"- **{e['id']}**{owner_tag}: {e['description']}")
+    return "\n".join(lines)
+
+
+def load_system_prompt(voice_mode: bool = False, registry=None) -> str:
     """
     Build the system prompt by concatenating SKILL.md + sanctum files.
 
     If sanctum doesn't exist yet, returns only SKILL.md so the orchestrator
     can still start and trigger First Breath.
+
+    voice_mode=True appends a no-markdown instruction.
+    registry: if provided, injects the lightweight connector manifest.
     """
     parts: list[str] = []
 
@@ -86,7 +104,18 @@ def load_system_prompt() -> str:
     if pulse_cfg.exists():
         parts.append(f"\n\n---\n## pulse-config.yaml\n\n```yaml\n{pulse_cfg.read_text(encoding='utf-8')}\n```\n")
 
-    return "\n\n".join(parts)
+    # 4. Connector manifest — lightweight, always injected when registry is present
+    if registry is not None:
+        manifest_section = build_connector_manifest(registry)
+        if manifest_section:
+            parts.append(manifest_section)
+
+    result = "\n\n".join(parts)
+
+    if voice_mode:
+        result += "\n\n---\n[VOICE MODE: Respond in plain spoken language only. No markdown, no bullet points, no headers.]"
+
+    return result
 
 
 def _read_file(path: Path, label: str) -> str:

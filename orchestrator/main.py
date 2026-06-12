@@ -43,6 +43,7 @@ sys.path.insert(0, str(_HERE))
 # ---------------------------------------------------------------------------
 
 import core
+import connectors_setup
 import providers as prov
 import sanctum_writer as sw
 import voice as v
@@ -138,12 +139,99 @@ def run_pulse(task: str, source: str = "", event: str = "", payload: str = "{}")
 
 
 # ---------------------------------------------------------------------------
+# Connector tool execution
+# ---------------------------------------------------------------------------
+
+def _execute_tool(tool_call: dict, registry) -> str:
+    """Execute a single connector tool call and return the result as a JSON string."""
+    import json
+
+    name = tool_call["name"]
+    inp = tool_call["input"]
+
+    if name == "call_connector":
+        result = registry.call(
+            inp["instance_id"],
+            inp["operation"],
+            inp.get("params") or {},
+        )
+        if result.ok:
+            return json.dumps({"ok": True, "data": result.data})
+        return json.dumps({"ok": False, "error": result.error})
+
+    if name == "get_connector_contract":
+        try:
+            contract = registry.load_contract(inp["instance_id"])
+            return json.dumps(contract)
+        except KeyError as exc:
+            return json.dumps({"error": str(exc)})
+
+    return json.dumps({"error": f"unknown tool: {name}"})
+
+
+def _call_with_tool_loop(
+    messages: list[dict],
+    system_prompt: str,
+    tools: list[dict],
+    registry,
+    providers_config: dict,
+    task: str,
+) -> str:
+    """
+    Run one conversation turn handling any connector tool calls.
+
+    *messages* must already include the latest user message.
+    Returns the final text reply after all tool calls are resolved.
+    """
+    work = list(messages)
+
+    while True:
+        text, tool_uses, raw_content = prov.call_llm_with_tools(
+            work, system_prompt, tools, task=task, config=providers_config
+        )
+
+        if not tool_uses:
+            # Final text response — print and return
+            if text:
+                print(text, end="", flush=True)
+                print()
+            return text
+
+        # Print any thinking text that preceded the tool calls
+        if text:
+            print(text, end="", flush=True)
+
+        # Add assistant message (with tool_use blocks) to working history
+        work.append({"role": "assistant", "content": raw_content})
+
+        # Execute each tool and collect results
+        tool_results = []
+        for tc in tool_uses:
+            result_str = _execute_tool(tc, registry)
+            instance = tc["input"].get("instance_id", "")
+            op = tc["input"].get("operation", tc["name"])
+            print(f"\n[connector] {instance}/{op}", flush=True)
+            tool_results.append({
+                "type": "tool_result",
+                "tool_use_id": tc["id"],
+                "content": result_str,
+            })
+
+        # Feed results back as a user message and loop
+        work.append({"role": "user", "content": tool_results})
+
+
+# ---------------------------------------------------------------------------
 # Conversation loop
 # ---------------------------------------------------------------------------
 
 def run_conversation(text_mode: bool) -> None:
     providers_config = prov.load_providers()
     voice_cfg = v.load_voice_config(providers_config)
+
+    # Build connector registry and inject manifest into system prompt
+    registry = connectors_setup.build_registry()
+    tools = prov.CONNECTOR_TOOLS
 
     if not core.sanctum_exists():
         print()
@@ -154,7 +242,7 @@ def run_conversation(text_mode: bool) -> None:
         print("=" * 60)
         print()
 
-    system_prompt = core.load_system_prompt()
+    system_prompt = core.load_system_prompt(voice_mode=not text_mode, registry=registry)
     session_id = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     messages: list[dict] = []
 
@@ -194,12 +282,12 @@ def run_conversation(text_mode: bool) -> None:
 
             messages.append({"role": "user", "content": user_input})
 
-            # --- LLM call ---
+            # --- LLM call (with connector tool loop) ---
             print("YANA: [pensando...]", end="\r", flush=True)
             print("YANA: " + " " * 14, end="\r", flush=True)  # clear thinking indicator
             print("YANA: ", end="", flush=True)
-            reply = prov.call_llm(
-                messages, system_prompt, task=task, stream=True, config=providers_config
+            reply = _call_with_tool_loop(
+                messages, system_prompt, tools, registry, providers_config, task=task
             )
             messages.append({"role": "assistant", "content": reply})
 

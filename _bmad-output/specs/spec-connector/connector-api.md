@@ -131,6 +131,55 @@ Complete set of decorated methods with descriptions, param schemas, and return s
 
 ---
 
+## LLM Invocation Surface (CAP-6)
+
+The orchestrator exposes connectors to the LLM through at most **2 tools**, regardless of how many connectors or operations are registered.
+
+### Tool: `call_connector`
+
+```json
+{
+  "name": "call_connector",
+  "description": "Invoke a connector operation by instance id and operation name.",
+  "parameters": {
+    "instance_id": { "type": "string" },
+    "operation":   { "type": "string" },
+    "params":      { "type": "object", "required": false }
+  }
+}
+```
+
+The orchestrator translates this tool call to `registry.call(instance_id, operation, params)` and injects the `ConnectorResult` back into the conversation as a tool result.
+
+### Tool: `get_connector_contract` *(open question — may be omitted)*
+
+```json
+{
+  "name": "get_connector_contract",
+  "description": "Load the full operation schema for a connector instance.",
+  "parameters": {
+    "instance_id": { "type": "string" }
+  }
+}
+```
+
+Returns the Level-2 contract (all operations, param schemas, return schemas) for the requested instance. The AI requests this when it cannot determine the correct operation or params from the lightweight manifest alone.
+
+### Session context at start
+
+The system prompt always includes the lightweight manifest (Level 1):
+
+```
+Available connectors:
+- garmin_fred: "Garmin do Fred — health and activity data (steps, sleep, stress, runs)"
+- calendar_fred: "Fred's Calendar — Google Calendar events and scheduling"
+- rgb_sala: "Sala RGB light — on/off and colour control"
+```
+
+The AI uses this to decide which connector to call. It calls `get_connector_contract` only when it needs param detail it cannot infer from the manifest description.
+
+---
+
 ## Example Connector
 
 ```python

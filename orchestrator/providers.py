@@ -95,6 +95,56 @@ def get_api_key(provider: str, config: Optional[dict] = None) -> Optional[str]:
 
 
 # ---------------------------------------------------------------------------
+# Connector tool definitions (CAP-6 — fixed surface, at most 2 tools)
+# ---------------------------------------------------------------------------
+
+CONNECTOR_TOOLS: list[dict] = [
+    {
+        "name": "call_connector",
+        "description": (
+            "Invoke a registered connector operation to read data or execute an action. "
+            "Use the connector manifest in the system prompt to find the right instance_id and operation."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "instance_id": {
+                    "type": "string",
+                    "description": "Connector instance ID from the manifest (e.g. 'calendar_fred', 'garmin_fred')",
+                },
+                "operation": {
+                    "type": "string",
+                    "description": "Operation name on the connector (e.g. 'events_today', 'steps_today')",
+                },
+                "params": {
+                    "type": "object",
+                    "description": "Optional parameters for the operation",
+                },
+            },
+            "required": ["instance_id", "operation"],
+        },
+    },
+    {
+        "name": "get_connector_contract",
+        "description": (
+            "Load the full operation schema for a connector instance — use this when you need "
+            "to know exact operation names or parameter details before calling call_connector."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "instance_id": {
+                    "type": "string",
+                    "description": "Connector instance ID from the manifest",
+                },
+            },
+            "required": ["instance_id"],
+        },
+    },
+]
+
+
+# ---------------------------------------------------------------------------
 # LLM call — dispatcher
 # ---------------------------------------------------------------------------
 
@@ -263,3 +313,61 @@ def _call_openai(
             messages=full_messages,
         )
         return response.choices[0].message.content
+
+
+# ---------------------------------------------------------------------------
+# Tool-aware LLM call (Anthropic only; other providers fall back to plain call)
+# ---------------------------------------------------------------------------
+
+def call_llm_with_tools(
+    messages: list[dict],
+    system_prompt: str,
+    tools: list[dict],
+    task: str = "conversation",
+    config: Optional[dict] = None,
+    timeout: float = 60.0,
+) -> tuple[str, list[dict], list]:
+    """
+    Single LLM call with tool support.
+
+    Returns (text, tool_use_blocks, raw_content_blocks):
+      - text: concatenated text from response (may be empty if only tool_use)
+      - tool_use_blocks: list of {id, name, input} dicts; empty if no tool calls
+      - raw_content_blocks: full content list for the assistant message in history
+
+    Non-Anthropic providers fall back to plain call_llm (no tool support).
+    """
+    if config is None:
+        config = load_providers()
+
+    provider, model_id = resolve_model(task, config)
+
+    if provider != "anthropic":
+        text = call_llm(messages, system_prompt, task=task, stream=False, config=config, timeout=timeout)
+        return text, [], [{"type": "text", "text": text}]
+
+    api_key = get_api_key("anthropic", config)
+    import anthropic
+    import httpx
+
+    client = anthropic.Anthropic(api_key=api_key, timeout=httpx.Timeout(timeout, connect=10.0))
+    response = client.messages.create(
+        model=model_id,
+        max_tokens=4096,
+        system=system_prompt,
+        messages=messages,
+        tools=tools,
+    )
+
+    text_parts: list[str] = []
+    tool_uses: list[dict] = []
+    raw_content: list = []
+
+    for block in response.content:
+        raw_content.append(block)
+        if block.type == "text":
+            text_parts.append(block.text)
+        elif block.type == "tool_use":
+            tool_uses.append({"id": block.id, "name": block.name, "input": block.input})
+
+    return "".join(text_parts), tool_uses, raw_content

@@ -36,6 +36,10 @@ YANA needs to interact with heterogeneous external systems — fitness trackers,
   intent: The framework validates call params against the declared input schema before invoking the implementation. All calls return a typed envelope `{ ok, data?, error? }` so the AI distinguishes "empty data" from "connector failure".
   success: Sending wrong param types to a command returns a schema-validation error before the implementation is called. An unavailable connector returns `{ ok: false, error: "unavailable" }` rather than an unhandled exception or null.
 
+- id: CAP-6
+  intent: The LLM invokes any registered connector operation through a fixed-size tool surface — the number of LLM-exposed tools does not grow with connector or operation count.
+  success: With 20 registered connectors totaling 100+ operations, the tool list in the LLM context contains at most 2 entries. YANA calls `call_connector("calendar_fred", "events_today", {})` and receives the `ConnectorResult` data in the same conversation turn.
+
 ## Constraints
 
 - Connector contract is pure abstraction: credentials, endpoints, and connection details belong in the implementation layer only — never in the contract or manifest.
@@ -45,6 +49,8 @@ YANA needs to interact with heterogeneous external systems — fitness trackers,
 - Every query, command, and event must carry a natural-language `description` field. Schema alone is not sufficient for AI consumption.
 - Input schema (params) and output schema (returns: type, unit?, format?) are both required on every query and command. A capability without a typed return is incomplete.
 - `owner` is optional on ConnectorInstance. Generic connectors (smart home devices, weather) omit it. Personal connectors (health, calendar) declare it.
+- The number of LLM-exposed tools is fixed and independent of connector count — it must not grow as connectors are added or removed.
+- The lightweight manifest is always present in the LLM system prompt at session start. It is the AI's sole means of connector discovery without an additional tool call.
 
 ## Non-goals
 
@@ -55,6 +61,7 @@ YANA needs to interact with heterogeneous external systems — fitness trackers,
 - Credential/authentication management — this is implementation-layer concern.
 - Filesystem auto-discovery of connectors — instances are explicitly registered in the manifest.
 - Multi-tenant or multi-household connector sharing beyond the single-household model.
+- One LLM tool per connector operation (MCP-style per-operation tool registration).
 
 ## Success signal
 
@@ -70,3 +77,4 @@ Fred asks "quanto andei hoje?" by voice. YANA reads the lightweight manifest, id
 - Connector Python files are discovered by scanning a designated folder (e.g. `connectors/`), not an explicit list in config.
 - The format used to inject a full connector contract into AI context is an implementation detail of the framework — not a contract concern. Python introspection is the source of truth.
 - `owner` values reference the same person identifiers defined for CAP-8 (voice profile to person mapping) in SPEC-yana. They are not free strings.
+- Level-2 contract loading uses a second LLM tool (`get_connector_contract`), not pre-injection. The AI requests the contract on demand when it needs param detail; this adds one extra round-trip but keeps initial context smaller.
