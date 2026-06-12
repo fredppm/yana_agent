@@ -4,12 +4,16 @@ connectors:
     name: "Garmin do Fred"
     description: "Dados de saúde e atividade física do Fred — passos, sono, stress, corridas"
     owner: fred
+    config:
+      token_dir: "~/.yana/tokens/garmin_fred"
 
   - type: GarminActivityConnector
     id: garmin_ana
     name: "Garmin da Ana"
     description: "Dados de saúde e atividade física da Ana — passos, sono, stress, corridas"
     owner: ana
+    config:
+      token_dir: "~/.yana/tokens/garmin_ana"
 
   - type: GoogleCalendarConnector
     id: calendar_fred
