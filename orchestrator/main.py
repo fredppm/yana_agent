@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import argparse
 import io
+import json
 import subprocess
 import sys
 from datetime import datetime
@@ -156,8 +157,6 @@ def run_pulse(task: str, source: str = "", event: str = "", payload: str = "{}")
 
 def _execute_tool(tool_call: dict, registry) -> str:
     """Execute a single connector tool call and return the result as a JSON string."""
-    import json
-
     name = tool_call["name"]
     inp = tool_call["input"]
 
@@ -222,7 +221,15 @@ def _call_with_tool_loop(
             result_str = _execute_tool(tc, registry)
             instance = tc["input"].get("instance_id", "")
             op = tc["input"].get("operation", tc["name"])
-            print(f"\n[{v.ts()}] [connector] {instance}/{op}", flush=True)
+            try:
+                _r = json.loads(result_str)
+                _err = _r.get("error") if not _r.get("ok", True) else None
+            except Exception:
+                _err = None
+            if _err:
+                print(f"\n[{v.ts()}] [connector] {instance}/{op} ERRO: {_err}", flush=True)
+            else:
+                print(f"\n[{v.ts()}] [connector] {instance}/{op}", flush=True)
             tool_results.append(
                 {
                     "type": "tool_result",
