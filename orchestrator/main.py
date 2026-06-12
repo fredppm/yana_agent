@@ -210,7 +210,7 @@ def _call_with_tool_loop(
             result_str = _execute_tool(tc, registry)
             instance = tc["input"].get("instance_id", "")
             op = tc["input"].get("operation", tc["name"])
-            print(f"\n[connector] {instance}/{op}", flush=True)
+            print(f"\n[{v.ts()}] [connector] {instance}/{op}", flush=True)
             tool_results.append({
                 "type": "tool_result",
                 "tool_use_id": tc["id"],
@@ -262,11 +262,11 @@ def run_conversation(text_mode: bool) -> None:
             # --- Input ---
             if text_mode:
                 try:
-                    user_input = input("Você: ").strip()
+                    user_input = input(f"[{v.ts()}] Você: ").strip()
                 except (EOFError, KeyboardInterrupt):
                     break
             else:
-                print("Você: ", end="", flush=True)
+                print(f"[{v.ts()}] Você: ", end="", flush=True)
                 try:
                     user_input = v.listen(
                         provider=voice_cfg["stt_provider"],
@@ -283,9 +283,10 @@ def run_conversation(text_mode: bool) -> None:
             messages.append({"role": "user", "content": user_input})
 
             # --- LLM call (with connector tool loop) ---
-            print("YANA: [pensando...]", end="\r", flush=True)
-            print("YANA: " + " " * 14, end="\r", flush=True)  # clear thinking indicator
-            print("YANA: ", end="", flush=True)
+            print(f"[{v.ts()}] YANA: [pensando...]", end="\r", flush=True)
+            ts_reply = v.ts()
+            print(f"[{ts_reply}] YANA: " + " " * 14, end="\r", flush=True)  # clear
+            print(f"[{ts_reply}] YANA: ", end="", flush=True)
             reply = _call_with_tool_loop(
                 messages, system_prompt, tools, registry, providers_config, task=task
             )
