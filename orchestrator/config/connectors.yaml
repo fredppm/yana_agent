@@ -36,6 +36,25 @@ connectors:
       credentials_file: "~/.yana/google_credentials.json"
       token_file: "~/.yana/tokens/tasks_fred.json"
 
+  - type: SpotifyMCPConnector
+    id: spotify_fred
+    name: "Spotify do Fred"
+    description: "Controle de playback e busca de músicas no Spotify do Fred — tocar, pausar, pular, volume, pesquisar"
+    owner: fred
+    config:
+      client_id: ""
+      client_secret: ""
+      token_file: "~/.yana/tokens/spotify_fred.json"
+
+  - type: YouTubeMusicConnector
+    id: ytmusic_fred
+    name: "YouTube Music do Fred"
+    description: "Controle de playback e busca no YouTube Music do Fred via mpv — tocar, pausar, pular, volume, pesquisar"
+    owner: fred
+    config:
+      auth_file: "~/.yana/ytmusic_auth.json"
+      ipc_socket: "/tmp/yana-ytmusic.sock"
+
   - type: RGBLightConnector
     id: rgb_sala
     name: "Luz da Sala"
