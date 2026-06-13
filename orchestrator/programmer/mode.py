@@ -223,8 +223,11 @@ def _session_loop(
     import output
     from strings import t
 
+    from programmer.methodology import load_methodology_defs
+
     current_mode = mode
     last_dispatch: object = None  # holds DispatchResult if a worktree needs cleanup
+    method_defs = load_methodology_defs()  # bundled defs, loaded once per session
 
     def _end_session() -> None:
         """AC-2.1.2: signal engine, cleanup worktree, output status."""
@@ -271,10 +274,11 @@ def _session_loop(
             # Methodology routing (Story 2.2 — explicit trigger required)
             from programmer.methodology import detect_methodology
 
-            methodology = detect_methodology(user_input)
+            methodology = detect_methodology(user_input, method_defs)
             if methodology:
                 last_dispatch = _handle_methodology_request(
                     methodology,
+                    method_defs,
                     sanctum,
                     speak_fn=speak_fn,
                     providers_config=providers_config,
@@ -450,6 +454,7 @@ def _handle_post_filter(
 
 def _handle_methodology_request(
     methodology: str,
+    defs: list,
     sanctum: SanctumContext,
     speak_fn: Callable[[str], None] | None = None,
     providers_config: dict | None = None,
@@ -478,7 +483,7 @@ def _handle_methodology_request(
     )
 
     # --- Collect methodology inputs conversationally ---
-    result = collect_methodology_inputs(methodology, speak_fn=speak_fn, listen_fn=None)
+    result = collect_methodology_inputs(methodology, defs, speak_fn=speak_fn, listen_fn=None)
     if isinstance(result, MethodologyCancelled):
         msg = t("programmer_cancelled")
         print(f"\n{msg}", flush=True)
@@ -502,7 +507,7 @@ def _handle_methodology_request(
             speak_fn(f"Could not dispatch methodology. {outcome.reason}")
         return None
 
-    dispatch_msg = f"{methodology.upper()} run dispatched. I'll surface decisions that need you."
+    dispatch_msg = f"{result.display_name} run dispatched. I'll surface decisions that need you."
     print(f"\n{dispatch_msg}", flush=True)
     if speak_fn:
         speak_fn(dispatch_msg)
