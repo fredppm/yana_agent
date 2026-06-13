@@ -1,25 +1,22 @@
 connectors:
-  # MCP-backed Garmin connectors (garmin-connect-mcp via eddmann/garmin-connect-mcp)
-  # Auth: run `GARMINTOKENS=~/.yana/tokens/garmin_fred garmin-connect-mcp auth` once per user
-  - type: GarminMCPConnector
+  # Python connectors — garmin-connect-mcp blocked (fastmcp 3.x API break + no interactive auth)
+  - type: GarminActivityConnector
     id: garmin_fred
     name: "Garmin do Fred"
     description: "Dados de saúde e atividade física do Fred — passos, sono, stress, corridas"
     owner: fred
     config:
-      mcp_command: ["garmin-connect-mcp"]
-      env:
-        GARMINTOKENS: "~/.yana/tokens/garmin_fred"
+      credentials_file: "~/.yana/credentials/garmin_fred.json"
+      token_dir: "~/.yana/tokens/garmin_fred"
 
-  - type: GarminMCPConnector
+  - type: GarminActivityConnector
     id: garmin_ana
     name: "Garmin da Ana"
     description: "Dados de saúde e atividade física da Ana — passos, sono, stress, corridas"
     owner: ana
     config:
-      mcp_command: ["garmin-connect-mcp"]
-      env:
-        GARMINTOKENS: "~/.yana/tokens/garmin_ana"
+      credentials_file: "~/.yana/credentials/garmin_ana.json"
+      token_dir: "~/.yana/tokens/garmin_ana"
 
   - type: GoogleCalendarConnector
     id: calendar_fred
