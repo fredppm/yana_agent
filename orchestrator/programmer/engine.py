@@ -23,8 +23,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 class EngineRequest:
     """Everything YANA sends to the engine when dispatching a request."""
 
-    prompt: str        # Fred's request
-    context: str       # sanctum summary (BOND.md + MEMORY.md)
+    prompt: str  # Fred's request
+    context: str  # sanctum summary (BOND.md + MEMORY.md)
     worktree_path: Path
     session_id: str
 
@@ -60,6 +60,7 @@ def load_engine(config: dict | None = None) -> CodingEngine:
     """
     if config is None:
         import providers as prov
+
         config = prov.load_providers()
 
     engines_cfg = config.get("engines", {})
@@ -68,6 +69,7 @@ def load_engine(config: dict | None = None) -> CodingEngine:
 
     if engine_name == "claude_code":
         from programmer.engines.claude_code import ClaudeCodeEngine
+
         return ClaudeCodeEngine(engine_cfg)
 
     raise ValueError(

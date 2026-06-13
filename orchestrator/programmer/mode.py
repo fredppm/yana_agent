@@ -319,5 +319,3 @@ def _handle_request(
         return None
 
     return outcome
-
-

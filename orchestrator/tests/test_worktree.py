@@ -181,5 +181,3 @@ class TestBranchDeletionLogic:
             mock_run.return_value = MagicMock(returncode=1, stdout="", stderr="no such worktree")
             with pytest.raises(WorktreeError, match="no such worktree"):
                 remove_worktree(tmp_path, "s1")
-
-

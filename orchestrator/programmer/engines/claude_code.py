@@ -43,7 +43,9 @@ class ClaudeCodeEngine(CodingEngine):
         context_file.write_text(request.context, encoding="utf-8")
 
         # Prepend context to prompt — Claude Code -p doesn't auto-read files
-        full_prompt = f"{request.context}\n\n---\n\n{request.prompt}" if request.context else request.prompt
+        full_prompt = (
+            f"{request.context}\n\n---\n\n{request.prompt}" if request.context else request.prompt
+        )
 
         cmd = ["claude", "-p", full_prompt]
         if self._model:
