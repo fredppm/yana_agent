@@ -60,6 +60,7 @@ class ConnectorResult:
     ok: bool
     data: Any = None
     error: str | None = None  # "timeout" | "auth" | "validation_error" | str(exc)
+    detail: str | None = None  # optional hint for the LLM (e.g. available operations)
 
 
 # ---------------------------------------------------------------------------
@@ -157,7 +158,8 @@ class Connector:
         params = params or {}
 
         if operation not in self._operations:
-            return ConnectorResult(ok=False, error="validation_error")
+            available = ", ".join(self._operations.keys())
+            return ConnectorResult(ok=False, error="validation_error", detail=f"available: {available}")
 
         meta = self._operations[operation]
 

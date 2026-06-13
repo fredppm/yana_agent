@@ -152,7 +152,10 @@ def _execute_tool(tool_call: dict, registry) -> str:
         )
         if result.ok:
             return json.dumps({"ok": True, "data": result.data})
-        return json.dumps({"ok": False, "error": result.error})
+        payload: dict = {"ok": False, "error": result.error}
+        if result.detail:
+            payload["detail"] = result.detail
+        return json.dumps(payload)
 
     if name == "get_connector_contract":
         try:
