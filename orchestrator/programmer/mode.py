@@ -292,45 +292,22 @@ def _handle_request(
     speak_fn: Callable[[str], None] | None = None,
     providers_config: dict | None = None,
 ) -> object:
-    """Returns the DispatchResult (for worktree tracking) or None."""
     """
     Handle a programmer request.
 
-    Story 1.2: clarification gate — detect gaps, ask Fred, stop on no answer.
-    Story 1.3: create worktree, dispatch to engine.
-    Story 1.4: decision-point filter on engine events.
+    Dispatches directly to the engine — clarification happens through the
+    decision-point loop (engine asks, YANA surfaces, Fred answers).
     """
-    from strings import t
-
-    from programmer.clarification import Cancelled, run_clarification_gate
     from programmer.dispatcher import (
         DispatchFailed,
         dispatch_request,
         new_session_id,
     )
 
-    context = sanctum.as_context_string()
-
-    # --- Clarification gate (Story 1.2) ---
-    clarification = run_clarification_gate(
-        request=request,
-        context=context,
-        speak_fn=speak_fn,
-        listen_fn=None,
-        config=providers_config,
-    )
-
-    if isinstance(clarification, Cancelled):
-        msg = t("programmer_cancelled")
-        print(f"\n{msg}", flush=True)
-        if speak_fn:
-            speak_fn(msg)
-        return None
-
-    # --- Dispatch to engine (Story 1.3) ---
+    # --- Dispatch to engine ---
     session_id = new_session_id()
     outcome = dispatch_request(
-        enriched_prompt=clarification.enriched_prompt,
+        enriched_prompt=request,
         sanctum=sanctum,
         session_id=session_id,
         config=providers_config,
