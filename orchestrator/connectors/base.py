@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, ClassVar, cast
+from typing import Any, ClassVar, cast
 
 # ---------------------------------------------------------------------------
 # Schema types

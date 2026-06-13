@@ -15,9 +15,8 @@ import os
 from collections.abc import Callable
 from pathlib import Path
 
-import yaml
-
 import errors
+import yaml
 
 # ---------------------------------------------------------------------------
 # Config loading
