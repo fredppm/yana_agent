@@ -109,6 +109,17 @@ def load_system_prompt(voice_mode: bool = False, registry=None) -> str:
         manifest_section = build_connector_manifest(registry)
         if manifest_section:
             parts.append(manifest_section)
+            parts.append(
+                "---\n"
+                "## Connector Auth Flow\n\n"
+                "When a connector call returns `{\"ok\": false, \"error\": \"auth\"}` or `\"error\": \"unavailable\"`:\n"
+                "1. Check if the connector entry in the manifest has a `credential_hint` — it tells you exactly what credentials are needed and how to get them.\n"
+                "2. Explain conversationally to Fred what's needed, why, and how to get it (keep it friendly, concise).\n"
+                "3. Ask Fred to provide the credentials (or run the setup command if needed).\n"
+                "4. Once Fred provides them, call `save_credentials` with `instance_id` and the credentials as a JSON object.\n"
+                "5. Immediately retry the original connector call — the connector reloads credentials automatically.\n"
+                "Do NOT ask Fred to manually edit files or run complex scripts unless the credential_hint explicitly says so."
+            )
 
     result = "\n\n".join(parts)
 

@@ -174,6 +174,17 @@ def _execute_tool(tool_call: dict, registry) -> str:
         except KeyError as exc:
             return json.dumps({"error": str(exc)})
 
+    if name == "save_credentials":
+        instance_id = inp["instance_id"]
+        credentials = inp["credentials"]
+        creds_dir = Path("~/.yana/credentials").expanduser()
+        creds_dir.mkdir(parents=True, exist_ok=True)
+        creds_file = creds_dir / f"{instance_id}.json"
+        creds_file.write_text(json.dumps(credentials, indent=2), encoding="utf-8")
+        # Evict cached instance so the connector reloads credentials on next call
+        registry.evict(instance_id)
+        return json.dumps({"ok": True, "saved_to": str(creds_file)})
+
     return json.dumps({"error": f"unknown tool: {name}"})
 
 

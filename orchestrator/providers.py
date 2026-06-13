@@ -142,6 +142,29 @@ CONNECTOR_TOOLS: list[dict] = [
             "required": ["instance_id"],
         },
     },
+    {
+        "name": "save_credentials",
+        "description": (
+            "Persist credentials for a connector to ~/.yana/credentials/<instance_id>.json. "
+            "Call this after the user provides credentials following an auth error. "
+            "After saving, immediately retry the original connector call — the connector will "
+            "reload credentials automatically."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "instance_id": {
+                    "type": "string",
+                    "description": "Connector instance ID (e.g. 'spotify_fred', 'ytmusic_fred')",
+                },
+                "credentials": {
+                    "type": "object",
+                    "description": "Credential fields as a JSON object (e.g. {\"client_id\": \"...\", \"client_secret\": \"...\"})",
+                },
+            },
+            "required": ["instance_id", "credentials"],
+        },
+    },
 ]
 
 

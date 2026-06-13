@@ -141,9 +141,13 @@ class Connector:
     Class attributes (optional):
         connector_description: str  — one-line description used in the lightweight
             manifest when no per-instance description is provided in connectors.yaml.
+        connector_credential_hint: str  — shown to YANA when auth fails; explains what
+            credentials are needed and how to obtain them. Leave empty if no credentials
+            required.
     """
 
     connector_description: str = ""
+    connector_credential_hint: str = ""
     _operations: ClassVar[dict[str, OperationMeta]] = {}
 
     def __init_subclass__(cls, **kwargs: Any) -> None:

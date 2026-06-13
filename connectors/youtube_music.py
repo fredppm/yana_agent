@@ -45,6 +45,13 @@ _YTM_PLAYLIST_URL = "https://music.youtube.com/playlist?list="
 
 class YouTubeMusicConnector(Connector):
     connector_description = "YouTube Music — full playback control (play, pause, skip, volume) + search and library via mpv + ytmusicapi"
+    connector_credential_hint = (
+        "Needs: ytmusicapi OAuth token. "
+        "Steps: run this once in PowerShell: "
+        "python -c \"from ytmusicapi import YTMusic; YTMusic.setup_oauth(filepath=r'~/.yana/ytmusic_auth.json')\" "
+        "A browser will open for Google login. After completing, the auth file is saved automatically. "
+        "Also requires mpv installed: winget install mpv.mpv"
+    )
 
     def __init__(
         self,

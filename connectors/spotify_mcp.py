@@ -41,6 +41,13 @@ from connectors import Connector, command, query
 
 class SpotifyMCPConnector(Connector):
     connector_description = "Spotify playback control and music search — play, pause, skip, volume, search"
+    connector_credential_hint = (
+        "Needs: client_id and client_secret. "
+        "Steps: (1) Go to developer.spotify.com/dashboard and create an app. "
+        "(2) Set redirect URI to http://localhost:8888/callback. "
+        "(3) Provide client_id and client_secret here. "
+        "On first use, a browser window will open for OAuth — complete it once and the token is saved."
+    )
 
     def __init__(
         self,
