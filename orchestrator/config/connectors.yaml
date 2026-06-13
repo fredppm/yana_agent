@@ -42,8 +42,7 @@ connectors:
     description: "Controle de playback e busca de músicas no Spotify do Fred — tocar, pausar, pular, volume, pesquisar"
     owner: fred
     config:
-      client_id: ""
-      client_secret: ""
+      credentials_file: "~/.yana/credentials/spotify_fred.json"
       token_file: "~/.yana/tokens/spotify_fred.json"
 
   - type: YouTubeMusicConnector

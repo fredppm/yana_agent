@@ -8,21 +8,22 @@ Backend: sespinosa/spotify-mcp (Python, pip-installable)
   pip install spotify-mcp
 
 Setup:
-  1. Install the MCP server:
-       pip install spotify-mcp
+  1. pip install spotify-mcp
   2. Create a Spotify app at https://developer.spotify.com/dashboard
      and set redirect URI to http://localhost:8888/callback
-  3. Run auth once:
-       python -m spotify_mcp auth
+  3. Create ~/.yana/credentials/spotify_fred.json:
+       {"client_id": "...", "client_secret": "..."}
   4. Register in orchestrator/config/connectors.yaml:
        - type: SpotifyMCPConnector
          id: spotify_fred
          name: "Spotify do Fred"
          owner: fred
          config:
-           client_id: "<your-client-id>"
-           client_secret: "<your-client-secret>"
+           credentials_file: "~/.yana/credentials/spotify_fred.json"
            token_file: "~/.yana/tokens/spotify_fred.json"
+
+  On first use, the MCP server opens a browser for OAuth and saves the token.
+  Subsequent runs use the saved token — no interaction needed.
 """
 
 from __future__ import annotations
@@ -32,6 +33,7 @@ import json
 import os
 import threading
 from contextlib import AsyncExitStack
+from pathlib import Path
 from typing import Any
 
 from connectors import Connector, command, query
@@ -42,16 +44,20 @@ class SpotifyMCPConnector(Connector):
 
     def __init__(
         self,
-        client_id: str | None = None,
-        client_secret: str | None = None,
+        credentials_file: str | None = None,
         token_file: str | None = None,
         mcp_command: list[str] | None = None,
     ) -> None:
         merged = dict(os.environ)
-        if client_id:
-            merged["SPOTIFY_CLIENT_ID"] = client_id
-        if client_secret:
-            merged["SPOTIFY_CLIENT_SECRET"] = client_secret
+
+        creds_path = Path(credentials_file or "~/.yana/credentials/spotify_fred.json").expanduser()
+        if creds_path.exists():
+            creds = json.loads(creds_path.read_text())
+            if creds.get("client_id"):
+                merged["SPOTIFY_CLIENT_ID"] = creds["client_id"]
+            if creds.get("client_secret"):
+                merged["SPOTIFY_CLIENT_SECRET"] = creds["client_secret"]
+
         if token_file:
             merged["SPOTIFY_TOKEN_PATH"] = os.path.expanduser(token_file)
         self._env = merged
