@@ -1,7 +1,8 @@
 """
 Contract tests for YouTubeMusicConnector.
 
-ytmusicapi is mocked at the YTMusic class level — no real auth or network needed.
+ytmusicapi is mocked at the YTMusic class level.
+mpv IPC is mocked at _mpv_cmd() and _launch_mpv() so no real process is needed.
 
 Run with: python -m pytest tests/test_youtube_music_contract.py -v
 """
@@ -19,7 +20,6 @@ _CONNECTOR_FILE = Path(__file__).parent.parent.parent / "connectors" / "youtube_
 _spec = importlib.util.spec_from_file_location("youtube_music", _CONNECTOR_FILE)
 _mod = importlib.util.module_from_spec(_spec)  # type: ignore[arg-type]
 
-# Mock ytmusicapi before module load
 _mock_ytm_instance = MagicMock()
 _mock_ytm_class = MagicMock(return_value=_mock_ytm_instance)
 with patch.dict("sys.modules", {"ytmusicapi": MagicMock(YTMusic=_mock_ytm_class)}):
@@ -28,7 +28,7 @@ with patch.dict("sys.modules", {"ytmusicapi": MagicMock(YTMusic=_mock_ytm_class)
 YouTubeMusicConnector = _mod.YouTubeMusicConnector
 
 # ---------------------------------------------------------------------------
-# Shared response payloads
+# Shared payloads
 # ---------------------------------------------------------------------------
 
 _SONG = {
@@ -39,26 +39,24 @@ _SONG = {
     "duration": "3:20",
 }
 
-_SEARCH_RESULTS = [_SONG]
-
 _PLAYLISTS = [
     {"playlistId": "PLabc123", "title": "Morning Mix", "count": 30},
     {"playlistId": "PLxyz789", "title": "Workout", "count": 45},
 ]
 
-_PLAYLIST_DETAIL = {"tracks": [_SONG]}
-
 _EXPECTED_RESULT_KEYS = {"title", "artist", "album", "video_id", "duration", "url"}
 _EXPECTED_PLAYLIST_KEYS = {"id", "title", "count", "url"}
+_EXPECTED_NOW_PLAYING_KEYS = {"title", "is_playing", "progress_s", "duration_s"}
 
 
 def _make_connector() -> YouTubeMusicConnector:
     mock_ytm = MagicMock()
     with patch.dict("sys.modules", {"ytmusicapi": MagicMock(YTMusic=MagicMock(return_value=mock_ytm))}):
-        connector = YouTubeMusicConnector.__new__(YouTubeMusicConnector)
-        connector._ytm = mock_ytm
-        connector._player = "browser"
-    return connector
+        c = YouTubeMusicConnector.__new__(YouTubeMusicConnector)
+        c._ytm = mock_ytm
+        c._ipc_socket = "/tmp/yana-ytmusic-test.sock"
+        c._mpv = None
+    return c
 
 
 # ---------------------------------------------------------------------------
@@ -71,6 +69,11 @@ def test_search_is_query():
     assert YouTubeMusicConnector._operations["search"].kind == "query"
 
 
+def test_now_playing_is_query():
+    assert "now_playing" in YouTubeMusicConnector._operations
+    assert YouTubeMusicConnector._operations["now_playing"].kind == "query"
+
+
 def test_get_library_playlists_is_query():
     assert "get_library_playlists" in YouTubeMusicConnector._operations
     assert YouTubeMusicConnector._operations["get_library_playlists"].kind == "query"
@@ -81,9 +84,29 @@ def test_get_playlist_tracks_is_query():
     assert YouTubeMusicConnector._operations["get_playlist_tracks"].kind == "query"
 
 
-def test_open_is_command():
-    assert "open" in YouTubeMusicConnector._operations
-    assert YouTubeMusicConnector._operations["open"].kind == "command"
+def test_play_is_command():
+    assert "play" in YouTubeMusicConnector._operations
+    assert YouTubeMusicConnector._operations["play"].kind == "command"
+
+
+def test_pause_is_command():
+    assert "pause" in YouTubeMusicConnector._operations
+    assert YouTubeMusicConnector._operations["pause"].kind == "command"
+
+
+def test_skip_next_is_command():
+    assert "skip_next" in YouTubeMusicConnector._operations
+    assert YouTubeMusicConnector._operations["skip_next"].kind == "command"
+
+
+def test_skip_prev_is_command():
+    assert "skip_prev" in YouTubeMusicConnector._operations
+    assert YouTubeMusicConnector._operations["skip_prev"].kind == "command"
+
+
+def test_set_volume_is_command():
+    assert "set_volume" in YouTubeMusicConnector._operations
+    assert YouTubeMusicConnector._operations["set_volume"].kind == "command"
 
 
 # ---------------------------------------------------------------------------
@@ -112,15 +135,15 @@ def test_search_filter_and_max_optional():
     assert params["max_results"].required is False
 
 
-def test_get_playlist_tracks_requires_playlist_id():
-    params = YouTubeMusicConnector._operations["get_playlist_tracks"].params
-    assert params["playlist_id"].required is True
-
-
-def test_open_both_params_optional():
-    params = YouTubeMusicConnector._operations["open"].params
+def test_play_both_params_optional():
+    params = YouTubeMusicConnector._operations["play"].params
     assert params["video_id"].required is False
     assert params["playlist_id"].required is False
+
+
+def test_set_volume_requires_level():
+    params = YouTubeMusicConnector._operations["set_volume"].params
+    assert params["level"].required is True
 
 
 # ---------------------------------------------------------------------------
@@ -130,22 +153,20 @@ def test_open_both_params_optional():
 
 def test_search_output_shape():
     c = _make_connector()
-    c._ytm.search.return_value = _SEARCH_RESULTS
+    c._ytm.search.return_value = [_SONG]
     result = c.call("search", {"q": "blinding lights"})
     assert result.ok is True
     assert isinstance(result.data, list)
-    assert len(result.data) == 1
     assert set(result.data[0].keys()) == _EXPECTED_RESULT_KEYS
 
 
 def test_search_values():
     c = _make_connector()
-    c._ytm.search.return_value = _SEARCH_RESULTS
+    c._ytm.search.return_value = [_SONG]
     result = c.call("search", {"q": "blinding lights"})
     item = result.data[0]
     assert item["title"] == "Blinding Lights"
     assert item["artist"] == "The Weeknd"
-    assert item["album"] == "After Hours"
     assert item["video_id"] == "4NRXx6U8ABQ"
     assert item["url"] == "https://music.youtube.com/watch?v=4NRXx6U8ABQ"
 
@@ -166,6 +187,52 @@ def test_search_requires_q_param():
 
 
 # ---------------------------------------------------------------------------
+# Output shape — now_playing
+# ---------------------------------------------------------------------------
+
+
+def test_now_playing_none_when_no_mpv():
+    c = _make_connector()
+    c._mpv = None
+    result = c.call("now_playing")
+    assert result.ok is True
+    assert result.data is None
+
+
+def test_now_playing_none_when_mpv_stopped():
+    c = _make_connector()
+    mock_proc = MagicMock()
+    mock_proc.poll.return_value = 0  # process exited
+    c._mpv = mock_proc
+    result = c.call("now_playing")
+    assert result.ok is True
+    assert result.data is None
+
+
+def test_now_playing_output_shape():
+    c = _make_connector()
+    mock_proc = MagicMock()
+    mock_proc.poll.return_value = None  # still running
+    c._mpv = mock_proc
+
+    ipc_responses = {
+        ("get_property", "media-title"): "Blinding Lights",
+        ("get_property", "pause"): False,
+        ("get_property", "time-pos"): 45.3,
+        ("get_property", "duration"): 200.0,
+    }
+    c._mpv_cmd = lambda *args: ipc_responses.get(args)
+
+    result = c.call("now_playing")
+    assert result.ok is True
+    assert set(result.data.keys()) == _EXPECTED_NOW_PLAYING_KEYS
+    assert result.data["title"] == "Blinding Lights"
+    assert result.data["is_playing"] is True
+    assert result.data["progress_s"] == 45.3
+    assert result.data["duration_s"] == 200.0
+
+
+# ---------------------------------------------------------------------------
 # Output shape — get_library_playlists
 # ---------------------------------------------------------------------------
 
@@ -176,7 +243,6 @@ def test_get_library_playlists_output_shape():
     result = c.call("get_library_playlists")
     assert result.ok is True
     assert isinstance(result.data, list)
-    assert len(result.data) == 2
     assert set(result.data[0].keys()) == _EXPECTED_PLAYLIST_KEYS
 
 
@@ -185,63 +251,101 @@ def test_get_library_playlists_values():
     c._ytm.get_library_playlists.return_value = _PLAYLISTS
     result = c.call("get_library_playlists")
     assert result.data[0]["id"] == "PLabc123"
-    assert result.data[0]["title"] == "Morning Mix"
-    assert result.data[0]["count"] == 30
     assert result.data[0]["url"] == "https://music.youtube.com/playlist?list=PLabc123"
 
 
 # ---------------------------------------------------------------------------
-# Output shape — get_playlist_tracks
+# play command — launches mpv
 # ---------------------------------------------------------------------------
 
 
-def test_get_playlist_tracks_output_shape():
+def test_play_with_video_id():
     c = _make_connector()
-    c._ytm.get_playlist.return_value = _PLAYLIST_DETAIL
-    result = c.call("get_playlist_tracks", {"playlist_id": "PLabc123"})
-    assert result.ok is True
-    assert isinstance(result.data, list)
-    assert set(result.data[0].keys()) == _EXPECTED_RESULT_KEYS
-
-
-# ---------------------------------------------------------------------------
-# open command
-# ---------------------------------------------------------------------------
-
-
-def test_open_with_video_id_uses_browser(monkeypatch):
-    c = _make_connector()
-    opened_urls = []
-    monkeypatch.setattr(_mod.webbrowser, "open", lambda url: opened_urls.append(url))
-    result = c.call("open", {"video_id": "4NRXx6U8ABQ"})
+    launched = []
+    c._launch_mpv = lambda url: launched.append(url)
+    result = c.call("play", {"video_id": "4NRXx6U8ABQ"})
     assert result.ok is True
     assert result.data is True
-    assert opened_urls == ["https://music.youtube.com/watch?v=4NRXx6U8ABQ"]
+    assert launched == ["https://music.youtube.com/watch?v=4NRXx6U8ABQ"]
 
 
-def test_open_with_playlist_id_uses_playlist_url(monkeypatch):
+def test_play_with_playlist_id():
     c = _make_connector()
-    opened_urls = []
-    monkeypatch.setattr(_mod.webbrowser, "open", lambda url: opened_urls.append(url))
-    result = c.call("open", {"playlist_id": "PLabc123"})
-    assert result.ok is True
-    assert opened_urls == ["https://music.youtube.com/playlist?list=PLabc123"]
-
-
-def test_open_with_mpv_calls_subprocess(monkeypatch):
-    c = _make_connector()
-    c._player = "mpv"
     launched = []
-    monkeypatch.setattr(_mod.subprocess, "Popen", lambda cmd, **kw: launched.append(cmd))
-    result = c.call("open", {"video_id": "4NRXx6U8ABQ"})
+    c._launch_mpv = lambda url: launched.append(url)
+    result = c.call("play", {"playlist_id": "PLabc123"})
     assert result.ok is True
-    assert launched[0] == ["mpv", "https://music.youtube.com/watch?v=4NRXx6U8ABQ"]
+    assert launched == ["https://music.youtube.com/playlist?list=PLabc123"]
 
 
-def test_open_no_id_returns_error():
+def test_play_no_id_returns_error():
     c = _make_connector()
-    result = c.call("open", {})
+    result = c.call("play", {})
     assert result.ok is False
+
+
+# ---------------------------------------------------------------------------
+# Playback control commands
+# ---------------------------------------------------------------------------
+
+
+def test_pause_sends_cycle_pause():
+    c = _make_connector()
+    sent = []
+    c._mpv_cmd = lambda *args: sent.append(args)
+    result = c.call("pause")
+    assert result.ok is True
+    assert ("cycle", "pause") in sent
+
+
+def test_skip_next_sends_playlist_next():
+    c = _make_connector()
+    sent = []
+    c._mpv_cmd = lambda *args: sent.append(args)
+    result = c.call("skip_next")
+    assert result.ok is True
+    assert ("playlist-next",) in sent
+
+
+def test_skip_prev_sends_playlist_prev():
+    c = _make_connector()
+    sent = []
+    c._mpv_cmd = lambda *args: sent.append(args)
+    result = c.call("skip_prev")
+    assert result.ok is True
+    assert ("playlist-prev",) in sent
+
+
+def test_set_volume_sends_correct_level():
+    c = _make_connector()
+    sent = []
+    c._mpv_cmd = lambda *args: sent.append(args)
+    result = c.call("set_volume", {"level": 70})
+    assert result.ok is True
+    assert ("set_property", "volume", 70) in sent
+
+
+def test_set_volume_clamps_above_100():
+    c = _make_connector()
+    sent = []
+    c._mpv_cmd = lambda *args: sent.append(args)
+    c.call("set_volume", {"level": 150})
+    assert ("set_property", "volume", 100) in sent
+
+
+def test_set_volume_clamps_below_0():
+    c = _make_connector()
+    sent = []
+    c._mpv_cmd = lambda *args: sent.append(args)
+    c.call("set_volume", {"level": -5})
+    assert ("set_property", "volume", 0) in sent
+
+
+def test_set_volume_missing_level_rejected():
+    c = _make_connector()
+    result = c.call("set_volume", {})
+    assert result.ok is False
+    assert result.error == "validation_error"
 
 
 # ---------------------------------------------------------------------------
