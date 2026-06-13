@@ -48,16 +48,21 @@ def _read_password(prompt: str) -> str:
             if ch in ("\r", "\n"):
                 break
             if ch == "\x03":  # Ctrl+C
-                print()
+                sys.stdout.write("\r\n")
+                sys.stdout.flush()
                 raise KeyboardInterrupt
             if ch == "\x08":  # backspace
                 if chars:
                     chars.pop()
-                    print("\b \b", end="", flush=True)
+                    sys.stdout.write("\b \b")
+                    sys.stdout.flush()
             else:
                 chars.append(ch)
-                print("*", end="", flush=True)
-        print()
+                sys.stdout.write("*")
+                sys.stdout.flush()
+        # \r\n: carriage-return moves cursor to col 0, then linefeed moves down
+        sys.stdout.write("\r\n")
+        sys.stdout.flush()
         return "".join(chars)
 
     import getpass
@@ -218,24 +223,45 @@ class GarminActivityConnector(Connector):
 
         creds = json.loads(self._credentials_file.read_text())
         client = Garmin(email=creds["email"], password=creds["password"])
+        # flush stdout so our messages appear before garminconnect's stderr output
+        import sys as _sys
+
+        _sys.stdout.flush()
         try:
             client.login()
         except Exception as exc:
-            from garminconnect import (
-                GarminConnectAuthenticationError,
-                GarminConnectTooManyRequestsError,
-            )
+            exc_str = str(exc)
+            try:
+                from garminconnect import (
+                    GarminConnectAuthenticationError,
+                    GarminConnectTooManyRequestsError,
+                )
 
-            if isinstance(exc, GarminConnectTooManyRequestsError):
+                is_rate_limit = isinstance(exc, GarminConnectTooManyRequestsError)
+                is_auth_err = isinstance(exc, GarminConnectAuthenticationError)
+            except ImportError:
+                is_rate_limit = is_auth_err = False
+
+            # fallback detection by message content
+            if not is_rate_limit and ("429" in exc_str or "rate limit" in exc_str.lower()):
+                is_rate_limit = True
+            if not is_auth_err and (
+                "401" in exc_str
+                or "authentication" in exc_str.lower()
+                or "incorrect" in exc_str.lower()
+            ):
+                is_auth_err = True
+
+            if is_rate_limit:
                 raise RuntimeError(
                     "Garmin bloqueou por excesso de tentativas (IP rate limit). "
                     "Aguarde alguns minutos e tente de novo."
                 ) from exc
-            if isinstance(exc, GarminConnectAuthenticationError):
+            if is_auth_err:
                 self._credentials_file.unlink(missing_ok=True)
                 raise RuntimeError(
                     "Email ou senha incorretos. "
-                    "As credenciais foram removidas — tente de novo para reinserir."
+                    "Credenciais removidas — tente de novo para reinserir."
                 ) from exc
             raise
 
