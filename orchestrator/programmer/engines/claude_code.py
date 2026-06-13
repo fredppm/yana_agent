@@ -38,11 +38,14 @@ class ClaudeCodeEngine(CodingEngine):
 
         Returns the process exit code.
         """
-        # Write context into the worktree so Claude Code reads it
+        # Write context as CLAUDE.md so Claude Code picks it up as project instructions
         context_file = request.worktree_path / _CONTEXT_FILENAME
         context_file.write_text(request.context, encoding="utf-8")
 
-        cmd = ["claude", "-p", request.prompt]
+        # Prepend context to prompt — Claude Code -p doesn't auto-read files
+        full_prompt = f"{request.context}\n\n---\n\n{request.prompt}" if request.context else request.prompt
+
+        cmd = ["claude", "-p", full_prompt]
         if self._model:
             cmd += ["--model", self._model]
         cmd += self._extra_flags
