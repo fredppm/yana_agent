@@ -1,31 +1,24 @@
 """
 connectors/youtube_music.py — YouTubeMusicConnector.
 
-Full playback control via mpv + yt-dlp + IPC socket, plus search/library
-via ytmusicapi. Equivalent capability to SpotifyMCPConnector — both play,
-pause, skip, set volume.
+Full playback control via mpv + yt-dlp + IPC socket.
+Search uses yt-dlp (no auth required). Library access (playlists, liked songs)
+uses ytmusicapi with browser-cookie auth.
 
 Architecture:
-  google-auth-oauthlib → OAuth flow (same as Google Calendar connector)
-  ytmusicapi  → search, library, playlist queries (unofficial YTM API)
+  yt-dlp       → search YouTube Music (no auth, uses ytmsearch: prefix)
   mpv + yt-dlp → actual audio playback (streams YTM URLs locally)
   mpv IPC      → play, pause, skip, volume commands
+  ytmusicapi   → library queries (optional, requires one-time browser-cookie setup)
 
 Setup:
   1. Install mpv:
        Windows: winget install mpv.mpv  (in PowerShell)
        macOS:   brew install mpv yt-dlp
-  2. Uses the same google_credentials.json as Google Calendar — no separate
-     setup needed if Calendar is already configured. First use opens a
-     browser window for Google authentication and saves the token.
-  3. Entry in orchestrator/config/connectors.yaml:
-       - type: YouTubeMusicConnector
-         id: ytmusic_fred
-         name: "YouTube Music do Fred"
-         owner: fred
-         config:
-           credentials_file: "~/.yana/google_credentials.json"
-           token_file: "~/.yana/tokens/ytmusic_fred.json"
+  2. For search and playback: no credentials needed.
+  3. For library access (playlists, liked songs): one-time browser setup:
+       ytmusicapi browser --file ~/.yana/ytmusic_auth.json
+     Follow the on-screen instructions to paste your browser request headers.
 """
 
 from __future__ import annotations
@@ -43,100 +36,82 @@ _YTM_BASE_URL = "https://music.youtube.com/watch?v="
 _YTM_PLAYLIST_URL = "https://music.youtube.com/playlist?list="
 _IS_WINDOWS = sys.platform == "win32"
 
-_YTM_SCOPE = "https://www.googleapis.com/auth/youtube"
-
 
 class YouTubeMusicConnector(Connector):
-    connector_description = "YouTube Music — full playback control (play, pause, skip, volume) + search and library via mpv + ytmusicapi"
+    connector_description = "YouTube Music — search and play via yt-dlp/mpv (no auth needed), library access optional"
     connector_credential_hint = (
-        "Uses the same Google credentials as the Calendar connector. "
-        "Ensure ~/.yana/google_credentials.json exists (download from console.cloud.google.com). "
-        "On first use a browser window opens for Google authentication — no manual setup needed. "
-        "Also requires mpv: run `winget install mpv.mpv` in PowerShell."
+        "Search and playback require no credentials — just mpv installed "
+        "(Windows: winget install mpv.mpv in PowerShell). "
+        "For library access run once: ytmusicapi browser --file ~/.yana/ytmusic_auth.json"
     )
 
     def __init__(
         self,
-        credentials_file: str | None = None,
-        token_file: str | None = None,
+        auth_file: str | None = None,
         ipc_socket: str | None = None,
     ) -> None:
-        self._credentials_file = Path(
-            credentials_file or "~/.yana/google_credentials.json"
-        ).expanduser()
-        self._token_file = Path(
-            token_file or "~/.yana/tokens/ytmusic_fred.json"
-        ).expanduser()
+        self._auth_file = Path(auth_file or "~/.yana/ytmusic_auth.json").expanduser()
         # On Windows mpv uses named pipes; default to a pipe name (no path separators).
         # On Unix use a socket file path.
         if _IS_WINDOWS:
             self._ipc_socket = ipc_socket or "yana-ytmusic"
         else:
             self._ipc_socket = ipc_socket or "/tmp/yana-ytmusic.sock"
-
-        self._ytm: Any = None
+        self._ytm: Any = None  # lazy — only loaded when library access is needed
         self._mpv: subprocess.Popen | None = None  # type: ignore[type-arg]
 
-        # Eagerly initialize YTMusic if token already exists
-        if self._token_file.exists():
-            self._init_ytm()
-        elif not self._credentials_file.exists():
-            raise PermissionError(
-                f"Google credentials not found: {self._credentials_file}. "
-                "Download from console.cloud.google.com."
-            )
-        # If token doesn't exist but credentials do — lazy setup on first call
-
     # ------------------------------------------------------------------
-    # Auth helpers
+    # ytmusicapi (library access, optional)
     # ------------------------------------------------------------------
 
-    def _client_info(self) -> dict:
-        """Extract client_id and client_secret from the Google credentials file."""
-        data = json.loads(self._credentials_file.read_text(encoding="utf-8"))
-        return data.get("installed") or data.get("web") or {}
-
-    def _ensure_auth(self) -> None:
-        """Run browser OAuth flow if token doesn't exist, then init YTMusic."""
+    def _ensure_ytm(self) -> None:
+        """Initialize ytmusicapi if auth file exists. Raises PermissionError if not."""
         if self._ytm is not None:
             return
-        if not self._token_file.exists():
-            self._run_oauth_flow()
-        self._init_ytm()
-
-    def _run_oauth_flow(self) -> None:
-        """Open browser for Google OAuth (same flow as Calendar connector)."""
-        from google_auth_oauthlib.flow import InstalledAppFlow  # type: ignore[import-untyped]
-
-        flow = InstalledAppFlow.from_client_secrets_file(
-            str(self._credentials_file), scopes=[_YTM_SCOPE]
-        )
-        google_creds = flow.run_local_server(port=0)
-
-        # Write ytmusicapi-compatible OAuth JSON
-        expiry_ts = int(google_creds.expiry.timestamp()) if google_creds.expiry else int(time.time()) + 3600
-        token_data = {
-            "scope": _YTM_SCOPE,
-            "token_type": "Bearer",
-            "access_token": google_creds.token,
-            "refresh_token": google_creds.refresh_token,
-            "expires_at": expiry_ts,
-            "expires_in": max(0, expiry_ts - int(time.time())),
-        }
-        self._token_file.parent.mkdir(parents=True, exist_ok=True)
-        self._token_file.write_text(json.dumps(token_data, indent=2), encoding="utf-8")
-
-    def _init_ytm(self) -> None:
-        """Create YTMusic instance with saved OAuth token."""
+        if not self._auth_file.exists():
+            raise PermissionError(
+                f"YouTube Music library auth not set up. "
+                f"Run: ytmusicapi browser --file {self._auth_file}"
+            )
         from ytmusicapi import YTMusic  # type: ignore[import-untyped]
-        from ytmusicapi.auth.oauth import OAuthCredentials  # type: ignore[import-untyped]
+        self._ytm = YTMusic(str(self._auth_file))
 
-        client = self._client_info()
-        oauth_creds = OAuthCredentials(
-            client_id=client["client_id"],
-            client_secret=client["client_secret"],
-        )
-        self._ytm = YTMusic(str(self._token_file), oauth_credentials=oauth_creds)
+    # ------------------------------------------------------------------
+    # yt-dlp search (no auth)
+    # ------------------------------------------------------------------
+
+    def _ytdlp_search(self, query: str, max_results: int) -> list[dict]:
+        """Search YouTube Music via yt-dlp — no credentials required."""
+        cmd = [
+            "yt-dlp",
+            "--dump-json",
+            "--no-playlist",
+            "--flat-playlist",
+            f"ytmsearch{max_results}:{query}",
+        ]
+        try:
+            result = subprocess.run(
+                cmd, capture_output=True, text=True, timeout=30
+            )
+        except (FileNotFoundError, subprocess.TimeoutExpired) as exc:
+            raise RuntimeError(f"yt-dlp unavailable: {exc}") from exc
+
+        items = []
+        for line in result.stdout.strip().splitlines():
+            try:
+                data = json.loads(line)
+                video_id = data.get("id") or data.get("url", "").split("v=")[-1]
+                items.append({
+                    "title": data.get("title"),
+                    "artist": data.get("uploader") or data.get("channel"),
+                    "album": None,
+                    "video_id": video_id,
+                    "duration": data.get("duration_string") or str(data.get("duration", "")),
+                    "url": _YTM_BASE_URL + video_id if video_id else None,
+                })
+            except (json.JSONDecodeError, KeyError):
+                continue
+        return items
 
     # ------------------------------------------------------------------
     # mpv IPC
@@ -147,19 +122,23 @@ class YouTubeMusicConnector(Connector):
         if self._mpv and self._mpv.poll() is None:
             self._mpv.terminate()
 
-        # Windows: --input-ipc-server=<name> creates \\.\pipe\<name>
-        # Unix:    --input-ipc-server=<path> creates a Unix socket file
-        self._mpv = subprocess.Popen(
-            [
-                "mpv",
-                f"--input-ipc-server={self._ipc_socket}",
-                "--no-video",
-                "--ytdl",
-                url,
-            ],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
+        try:
+            self._mpv = subprocess.Popen(
+                [
+                    "mpv",
+                    f"--input-ipc-server={self._ipc_socket}",
+                    "--no-video",
+                    "--ytdl",
+                    url,
+                ],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        except FileNotFoundError as exc:
+            raise RuntimeError(
+                "mpv not found. Install with: winget install mpv.mpv (PowerShell)"
+            ) from exc
+
         # Wait for the pipe/socket to become available
         pipe_path = rf"\\.\pipe\{self._ipc_socket}" if _IS_WINDOWS else self._ipc_socket
         for _ in range(30):
@@ -212,7 +191,7 @@ class YouTubeMusicConnector(Connector):
     # ------------------------------------------------------------------
 
     @query(
-        description="Search YouTube Music. filter: 'songs' | 'albums' | 'playlists' | 'artists' | 'videos'. Returns up to max_results items.",
+        description="Search YouTube Music via yt-dlp. No authentication required. filter ignored (yt-dlp always returns mixed results). Returns up to max_results items.",
         params={
             "q": {"type": "string"},
             "filter": {"type": "string", "required": False},
@@ -221,9 +200,7 @@ class YouTubeMusicConnector(Connector):
         returns={"type": "list"},
     )
     def search(self, q: str, filter: str = "songs", max_results: int = 5) -> list[dict]:
-        self._ensure_auth()
-        results = self._ytm.search(q, filter=filter, limit=max_results)
-        return [self._format_result(r) for r in (results or [])[:max_results]]
+        return self._ytdlp_search(q, max_results)
 
     @query(
         description="Currently playing track in mpv. Returns None if nothing is playing.",
@@ -244,12 +221,12 @@ class YouTubeMusicConnector(Connector):
         }
 
     @query(
-        description="List the user's YouTube Music library playlists",
+        description="List the user's YouTube Music library playlists. Requires browser-cookie auth setup.",
         params={"max_results": {"type": "number", "required": False}},
         returns={"type": "list"},
     )
     def get_library_playlists(self, max_results: int = 20) -> list[dict]:
-        self._ensure_auth()
+        self._ensure_ytm()
         playlists = self._ytm.get_library_playlists(limit=max_results)
         return [
             {
@@ -262,12 +239,12 @@ class YouTubeMusicConnector(Connector):
         ]
 
     @query(
-        description="Get tracks in a playlist by playlist ID",
+        description="Get tracks in a playlist by playlist ID. Requires browser-cookie auth setup.",
         params={"playlist_id": {"type": "string"}},
         returns={"type": "list"},
     )
     def get_playlist_tracks(self, playlist_id: str) -> list[dict]:
-        self._ensure_auth()
+        self._ensure_ytm()
         playlist = self._ytm.get_playlist(playlist_id)
         tracks = (playlist or {}).get("tracks") or []
         return [self._format_result(t) for t in tracks]
@@ -277,20 +254,32 @@ class YouTubeMusicConnector(Connector):
     # ------------------------------------------------------------------
 
     @command(
-        description="Play a song or playlist via mpv. Pass video_id for a track or playlist_id for a full playlist.",
+        description="Search and play a song or playlist via mpv. Pass video_id for a specific track, playlist_id for a playlist, or query to search and play the top result.",
         params={
             "video_id": {"type": "string", "required": False},
             "playlist_id": {"type": "string", "required": False},
+            "query": {"type": "string", "required": False},
         },
         returns={"type": "boolean"},
     )
-    def play(self, video_id: str | None = None, playlist_id: str | None = None) -> bool:
+    def play(
+        self,
+        video_id: str | None = None,
+        playlist_id: str | None = None,
+        query: str | None = None,
+    ) -> bool:
         if playlist_id:
             url = _YTM_PLAYLIST_URL + playlist_id
         elif video_id:
             url = _YTM_BASE_URL + video_id
+        elif query:
+            # Search via yt-dlp and play the first result
+            results = self._ytdlp_search(query, max_results=1)
+            if not results or not results[0].get("url"):
+                raise ValueError(f"No results found for: {query}")
+            url = results[0]["url"]
         else:
-            raise ValueError("Provide video_id or playlist_id")
+            raise ValueError("Provide video_id, playlist_id, or query")
         self._launch_mpv(url)
         return True
 
@@ -328,7 +317,7 @@ class YouTubeMusicConnector(Connector):
         return True
 
     # ------------------------------------------------------------------
-    # Response transformer
+    # Response transformer (ytmusicapi results)
     # ------------------------------------------------------------------
 
     def _format_result(self, raw: dict) -> dict:

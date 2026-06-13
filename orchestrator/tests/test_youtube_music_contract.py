@@ -1,7 +1,8 @@
 """
 Contract tests for YouTubeMusicConnector.
 
-ytmusicapi is mocked at the YTMusic class level.
+yt-dlp search is mocked at _ytdlp_search().
+ytmusicapi is only used for library access and is mocked at _ytm.
 mpv IPC is mocked at _mpv_cmd() and _launch_mpv() so no real process is needed.
 
 Run with: python -m pytest tests/test_youtube_music_contract.py -v
@@ -12,18 +13,14 @@ from __future__ import annotations
 import importlib.util
 import sys
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 _CONNECTOR_FILE = Path(__file__).parent.parent.parent / "connectors" / "youtube_music.py"
 _spec = importlib.util.spec_from_file_location("youtube_music", _CONNECTOR_FILE)
 _mod = importlib.util.module_from_spec(_spec)  # type: ignore[arg-type]
-
-_mock_ytm_instance = MagicMock()
-_mock_ytm_class = MagicMock(return_value=_mock_ytm_instance)
-with patch.dict("sys.modules", {"ytmusicapi": MagicMock(YTMusic=_mock_ytm_class)}):
-    _spec.loader.exec_module(_mod)  # type: ignore[union-attr]
+_spec.loader.exec_module(_mod)  # type: ignore[union-attr]
 
 YouTubeMusicConnector = _mod.YouTubeMusicConnector
 
@@ -31,12 +28,13 @@ YouTubeMusicConnector = _mod.YouTubeMusicConnector
 # Shared payloads
 # ---------------------------------------------------------------------------
 
-_SONG = {
+_SONG_YTDLP = {
     "title": "Blinding Lights",
-    "artists": [{"name": "The Weeknd"}],
-    "album": {"name": "After Hours"},
-    "videoId": "4NRXx6U8ABQ",
+    "artist": "The Weeknd",
+    "album": None,
+    "video_id": "4NRXx6U8ABQ",
     "duration": "3:20",
+    "url": "https://music.youtube.com/watch?v=4NRXx6U8ABQ",
 }
 
 _PLAYLISTS = [
@@ -50,12 +48,13 @@ _EXPECTED_NOW_PLAYING_KEYS = {"title", "is_playing", "progress_s", "duration_s"}
 
 
 def _make_connector() -> YouTubeMusicConnector:
+    """Return a connector with all external dependencies bypassed."""
     mock_ytm = MagicMock()
-    with patch.dict("sys.modules", {"ytmusicapi": MagicMock(YTMusic=MagicMock(return_value=mock_ytm))}):
-        c = YouTubeMusicConnector.__new__(YouTubeMusicConnector)
-        c._ytm = mock_ytm
-        c._ipc_socket = "/tmp/yana-ytmusic-test.sock"
-        c._mpv = None
+    c = YouTubeMusicConnector.__new__(YouTubeMusicConnector)
+    c._ytm = mock_ytm  # pre-set so _ensure_ytm() returns immediately
+    c._auth_file = Path("/tmp/fake_auth.json")
+    c._ipc_socket = "/tmp/yana-ytmusic-test.sock"
+    c._mpv = None
     return c
 
 
@@ -109,6 +108,13 @@ def test_set_volume_is_command():
     assert YouTubeMusicConnector._operations["set_volume"].kind == "command"
 
 
+def test_no_events_declared():
+    event_ops = [
+        name for name, op in YouTubeMusicConnector._operations.items() if op.kind == "event"
+    ]
+    assert event_ops == []
+
+
 # ---------------------------------------------------------------------------
 # CAP-1: Descriptions
 # ---------------------------------------------------------------------------
@@ -135,10 +141,11 @@ def test_search_filter_and_max_optional():
     assert params["max_results"].required is False
 
 
-def test_play_both_params_optional():
+def test_play_all_params_optional():
     params = YouTubeMusicConnector._operations["play"].params
     assert params["video_id"].required is False
     assert params["playlist_id"].required is False
+    assert params["query"].required is False
 
 
 def test_set_volume_requires_level():
@@ -147,13 +154,13 @@ def test_set_volume_requires_level():
 
 
 # ---------------------------------------------------------------------------
-# Output shape — search
+# Output shape — search (uses _ytdlp_search)
 # ---------------------------------------------------------------------------
 
 
 def test_search_output_shape():
     c = _make_connector()
-    c._ytm.search.return_value = [_SONG]
+    c._ytdlp_search = lambda q, max_results: [_SONG_YTDLP]
     result = c.call("search", {"q": "blinding lights"})
     assert result.ok is True
     assert isinstance(result.data, list)
@@ -162,7 +169,7 @@ def test_search_output_shape():
 
 def test_search_values():
     c = _make_connector()
-    c._ytm.search.return_value = [_SONG]
+    c._ytdlp_search = lambda q, max_results: [_SONG_YTDLP]
     result = c.call("search", {"q": "blinding lights"})
     item = result.data[0]
     assert item["title"] == "Blinding Lights"
@@ -173,7 +180,7 @@ def test_search_values():
 
 def test_search_empty_returns_empty_list():
     c = _make_connector()
-    c._ytm.search.return_value = []
+    c._ytdlp_search = lambda q, max_results: []
     result = c.call("search", {"q": "nonexistent"})
     assert result.ok is True
     assert result.data == []
@@ -233,7 +240,7 @@ def test_now_playing_output_shape():
 
 
 # ---------------------------------------------------------------------------
-# Output shape — get_library_playlists
+# Output shape — get_library_playlists (uses _ytm, optional auth)
 # ---------------------------------------------------------------------------
 
 
@@ -278,7 +285,17 @@ def test_play_with_playlist_id():
     assert launched == ["https://music.youtube.com/playlist?list=PLabc123"]
 
 
-def test_play_no_id_returns_error():
+def test_play_with_query_searches_and_plays_top_result():
+    c = _make_connector()
+    launched = []
+    c._launch_mpv = lambda url: launched.append(url)
+    c._ytdlp_search = lambda q, max_results: [_SONG_YTDLP]
+    result = c.call("play", {"query": "blinding lights"})
+    assert result.ok is True
+    assert launched == ["https://music.youtube.com/watch?v=4NRXx6U8ABQ"]
+
+
+def test_play_no_params_returns_error():
     c = _make_connector()
     result = c.call("play", {})
     assert result.ok is False
@@ -353,17 +370,24 @@ def test_set_volume_missing_level_rejected():
 # ---------------------------------------------------------------------------
 
 
-def test_auth_error_propagates():
+def test_search_error_propagates():
     c = _make_connector()
-    c._ytm.search.side_effect = PermissionError
+
+    def _fail(q, max_results):
+        raise RuntimeError("yt-dlp unavailable")
+
+    c._ytdlp_search = _fail
     result = c.call("search", {"q": "test"})
     assert result.ok is False
-    assert result.error == "auth"
 
 
 def test_timeout_error_propagates():
     c = _make_connector()
-    c._ytm.search.side_effect = TimeoutError
+
+    def _fail(q, max_results):
+        raise TimeoutError
+
+    c._ytdlp_search = _fail
     result = c.call("search", {"q": "test"})
     assert result.ok is False
     assert result.error == "timeout"

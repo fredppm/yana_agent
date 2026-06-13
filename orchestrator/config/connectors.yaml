@@ -51,8 +51,7 @@ connectors:
     description: "Controle de playback e busca no YouTube Music do Fred via mpv — tocar, pausar, pular, volume, pesquisar"
     owner: fred
     config:
-      credentials_file: "~/.yana/google_credentials.json"
-      token_file: "~/.yana/tokens/ytmusic_fred.json"
+      auth_file: "~/.yana/ytmusic_auth.json"
       # Windows: named pipe name → \\.\pipe\yana-ytmusic
       # Unix:    socket path → /tmp/yana-ytmusic.sock
       ipc_socket: "yana-ytmusic"
