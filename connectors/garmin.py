@@ -218,7 +218,27 @@ class GarminActivityConnector(Connector):
 
         creds = json.loads(self._credentials_file.read_text())
         client = Garmin(email=creds["email"], password=creds["password"])
-        client.login()
+        try:
+            client.login()
+        except Exception as exc:
+            from garminconnect import (
+                GarminConnectAuthenticationError,
+                GarminConnectTooManyRequestsError,
+            )
+
+            if isinstance(exc, GarminConnectTooManyRequestsError):
+                raise RuntimeError(
+                    "Garmin bloqueou por excesso de tentativas (IP rate limit). "
+                    "Aguarde alguns minutos e tente de novo."
+                ) from exc
+            if isinstance(exc, GarminConnectAuthenticationError):
+                self._credentials_file.unlink(missing_ok=True)
+                raise RuntimeError(
+                    "Email ou senha incorretos. "
+                    "As credenciais foram removidas — tente de novo para reinserir."
+                ) from exc
+            raise
+
         self._token_dir.mkdir(parents=True, exist_ok=True)
         client.garth.dump(str(self._token_dir))
         return client
