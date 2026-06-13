@@ -244,7 +244,7 @@ def _session_loop(
     try:
         while True:
             try:
-                user_input = input(f"[programmer/{current_mode.value}] ").strip()
+                user_input = input(f"{t('user_label')}: ").strip()
             except (EOFError, KeyboardInterrupt):
                 break
 
