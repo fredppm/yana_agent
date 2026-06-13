@@ -62,6 +62,8 @@ def build_connector_manifest(registry) -> str:
     for e in entries:
         owner_tag = f" [{e['owner']}]" if e.get("owner") else ""
         lines.append(f"- **{e['id']}**{owner_tag}: {e['description']}")
+        if e.get("operations"):
+            lines.append(f"  operations: {', '.join(e['operations'])}")
     return "\n".join(lines)
 
 

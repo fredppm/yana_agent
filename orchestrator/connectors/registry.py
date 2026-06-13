@@ -136,6 +136,14 @@ class ConnectorRegistry:
             }
             if inst.owner:
                 entry["owner"] = inst.owner
+            cls = self._types.get(inst.type)
+            if cls is not None:
+                ops = [
+                    name for name, meta in cls._operations.items()
+                    if meta.kind in ("query", "command")
+                ]
+                if ops:
+                    entry["operations"] = ops
             result.append(entry)
         return result
 
