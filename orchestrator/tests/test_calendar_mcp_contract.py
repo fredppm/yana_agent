@@ -13,6 +13,7 @@ from __future__ import annotations
 import importlib.util
 import sys
 from pathlib import Path
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -43,9 +44,9 @@ _RAW_EVENT = {
 }
 
 _GET_EVENTS_ONE = {"items": [_RAW_EVENT]}
-_GET_EVENTS_EMPTY = {"items": []}
+_GET_EVENTS_EMPTY: dict[str, Any] = {"items": []}
 
-_FREEBUSY_FREE = {"calendars": {"primary": {"busy": []}}}
+_FREEBUSY_FREE: dict[str, Any] = {"calendars": {"primary": {"busy": []}}}
 _FREEBUSY_BUSY = {"calendars": {"primary": {"busy": [{"start": "2026-06-14T10:00:00Z", "end": "2026-06-14T11:00:00Z"}]}}}
 
 _CREATE_SUCCESS = {
@@ -61,7 +62,7 @@ _DELETE_SUCCESS = {"success": True, "message": "Event abc123 deleted successfull
 _EXPECTED_EVENT_KEYS = {"id", "title", "start", "end", "location", "notes", "link"}
 
 
-def _make_connector() -> GoogleCalendarMCPConnector:
+def _make_connector() -> Any:
     with (
         patch("asyncio.new_event_loop") as mock_loop,
         patch("threading.Thread"),
@@ -75,10 +76,10 @@ def _make_connector() -> GoogleCalendarMCPConnector:
     return connector
 
 
-def _with_tool(connector: GoogleCalendarMCPConnector, responses: dict[str, object]):
+def _with_tool(connector: Any, responses: dict[str, object]) -> Any:
     def _fake(tool: str, args: dict) -> object:
         return responses.get(tool)
-    connector._call_tool = _fake  # type: ignore[method-assign]
+    connector._call_tool = _fake
     return connector
 
 
@@ -333,7 +334,7 @@ def test_cancel_event_missing_id_rejected():
 def test_auth_error_propagates():
     c = _make_connector()
     def _fail(tool, args): raise PermissionError
-    c._call_tool = _fail  # type: ignore[method-assign]
+    c._call_tool = _fail
     result = c.call("list_events")
     assert result.ok is False
     assert result.error == "auth"
@@ -342,7 +343,7 @@ def test_auth_error_propagates():
 def test_timeout_error_propagates():
     c = _make_connector()
     def _fail(tool, args): raise TimeoutError
-    c._call_tool = _fail  # type: ignore[method-assign]
+    c._call_tool = _fail
     result = c.call("list_events")
     assert result.ok is False
     assert result.error == "timeout"

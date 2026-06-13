@@ -13,6 +13,7 @@ from __future__ import annotations
 import importlib.util
 import sys
 from pathlib import Path
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -46,7 +47,7 @@ _RAW_EVENT = {
 _EXPECTED_EVENT_KEYS = {"id", "title", "start", "end", "location", "notes", "link"}
 
 
-def _make_connector() -> tuple[GoogleCalendarConnector, MagicMock]:
+def _make_connector() -> tuple[Any, MagicMock]:
     """Return a connector instance with the Google service layer mocked out."""
     connector = GoogleCalendarConnector(
         credentials_file="/dev/null",

@@ -13,6 +13,7 @@ from __future__ import annotations
 import importlib.util
 import sys
 from pathlib import Path
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -77,7 +78,7 @@ _EXPECTED_ACTIVITY_KEYS = {
 _EXPECTED_HR_ENTRY_KEYS = {"timestamp_ms", "bpm"}
 
 
-def _make_connector() -> tuple[GarminActivityConnector, MagicMock]:
+def _make_connector() -> tuple[Any, MagicMock]:
     """Return a connector with the Garmin client layer mocked out."""
     connector = GarminActivityConnector(
         credentials_file="/dev/null",

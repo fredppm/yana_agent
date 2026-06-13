@@ -13,6 +13,7 @@ from __future__ import annotations
 import importlib.util
 import sys
 from pathlib import Path
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -92,7 +93,7 @@ _EXPECTED_ACTIVITY_KEYS = {
 }
 
 
-def _make_connector() -> GarminMCPConnector:
+def _make_connector() -> Any:
     """Return a GarminMCPConnector with MCP session startup fully bypassed."""
     with (
         patch("asyncio.new_event_loop") as mock_loop,
@@ -107,11 +108,11 @@ def _make_connector() -> GarminMCPConnector:
     return connector
 
 
-def _with_tool(connector: GarminMCPConnector, responses: dict[str, object]):
+def _with_tool(connector: Any, responses: dict[str, object]) -> Any:
     """Patch _call_tool to return canned responses per tool name."""
     def _fake_call_tool(tool: str, args: dict) -> object:
         return responses.get(tool)
-    connector._call_tool = _fake_call_tool  # type: ignore[method-assign]
+    connector._call_tool = _fake_call_tool
     return connector
 
 
@@ -312,7 +313,7 @@ def test_heart_rate_history_empty_when_no_data():
 def test_auth_error_propagates():
     c = _make_connector()
     def _fail(tool, args): raise PermissionError
-    c._call_tool = _fail  # type: ignore[method-assign]
+    c._call_tool = _fail
     result = c.call("steps_today")
     assert result.ok is False
     assert result.error == "auth"
@@ -321,7 +322,7 @@ def test_auth_error_propagates():
 def test_timeout_error_propagates():
     c = _make_connector()
     def _fail(tool, args): raise TimeoutError
-    c._call_tool = _fail  # type: ignore[method-assign]
+    c._call_tool = _fail
     result = c.call("steps_today")
     assert result.ok is False
     assert result.error == "timeout"
