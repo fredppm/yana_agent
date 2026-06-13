@@ -87,7 +87,7 @@ class YouTubeMusicConnector(Connector):
             "--dump-json",
             "--no-playlist",
             "--flat-playlist",
-            f"ytmsearch{max_results}:{query}",
+            f"ytsearch{max_results}:{query}",
         ]
         try:
             result = subprocess.run(
@@ -100,14 +100,15 @@ class YouTubeMusicConnector(Connector):
         for line in result.stdout.strip().splitlines():
             try:
                 data = json.loads(line)
-                video_id = data.get("id") or data.get("url", "").split("v=")[-1]
+                video_id = data.get("id")
+                url = data.get("url") or data.get("webpage_url")
                 items.append({
                     "title": data.get("title"),
                     "artist": data.get("uploader") or data.get("channel"),
                     "album": None,
                     "video_id": video_id,
                     "duration": data.get("duration_string") or str(data.get("duration", "")),
-                    "url": _YTM_BASE_URL + video_id if video_id else None,
+                    "url": url,
                 })
             except (json.JSONDecodeError, KeyError):
                 continue
