@@ -1,9 +1,13 @@
 """
 methodology.py — Methodology routing for YANA programmer mode (Story 2.2).
 
-YANA detects methodology intent (BMAD, SpecKit), collects inputs conversationally,
-assembles a structured prompt for the engine, and verifies artifacts exist after
-engine completion.
+Methodology definitions live in YAML files — YANA's code is agnostic about
+which methodologies exist. Adding a new methodology requires only a YAML file,
+not a code change.
+
+Two sources of definitions (merged, project-specific wins on collision):
+  1. Bundled:          programmer/methodologies/*.yaml  (shipped with YANA)
+  2. Project-specific: {repo_root}/.yana/methodologies/*.yaml  (optional)
 
 YANA never executes methodology herself — that is the engine's responsibility.
 Design Principle 1: YANA is the interface; the engine is the executor.
@@ -16,46 +20,21 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 # ---------------------------------------------------------------------------
-# Trigger phrases — map methodology name → set of recognised phrases
+# Methodology definition — loaded from YAML
 # ---------------------------------------------------------------------------
 
-METHODOLOGY_TRIGGERS: dict[str, set[str]] = {
-    "bmad": {
-        "vamos fazer um bmad",
-        "start a bmad run",
-        "start bmad",
-        "/methodology bmad",
-        "bmad run",
-        "fazer bmad",
-    },
-    "speckit": {
-        "start a speckit run",
-        "start speckit",
-        "/methodology speckit",
-        "speckit run",
-        "fazer speckit",
-    },
-}
 
-# ---------------------------------------------------------------------------
-# Input questions per methodology
-# ---------------------------------------------------------------------------
+@dataclass
+class MethodologyDef:
+    """
+    Defines one methodology: its trigger phrases and input questions.
+    Loaded from a YAML file; never hardcoded in Python.
+    """
 
-METHODOLOGY_QUESTIONS: dict[str, list[str]] = {
-    "bmad": [
-        "What is the project name?",
-        "What would you like to build?",
-        "What are your goals for this session?",
-    ],
-    "speckit": [
-        "What is the project name?",
-        "Describe what you want to specify.",
-        "Any constraints or non-goals to capture now?",
-    ],
-}
-
-# Phrases that cancel input collection (mirrors clarification gate)
-_CANCEL_PHRASES = {"", "/cancel", "cancela", "cancel"}
+    name: str           # machine name: "bmad", "speckit"
+    display_name: str   # human label used in prompts and messages: "BMAD", "SpecKit"
+    triggers: list[str] # exact-match trigger phrases (stored lowercased)
+    questions: list[str]  # questions to ask Fred before dispatching
 
 
 # ---------------------------------------------------------------------------
@@ -67,7 +46,8 @@ _CANCEL_PHRASES = {"", "/cancel", "cancela", "cancel"}
 class MethodologyInputs:
     """Successfully collected inputs for a methodology run."""
 
-    methodology: str
+    methodology: str          # methodology name ("bmad", "speckit", ...)
+    display_name: str         # human label for messages
     answers: dict[str, str] = field(default_factory=dict)  # question → answer
 
 
@@ -79,36 +59,93 @@ class MethodologyCancelled:
 
 
 # ---------------------------------------------------------------------------
+# Loading
+# ---------------------------------------------------------------------------
+
+_BUNDLED_DIR = Path(__file__).parent / "methodologies"
+
+# Cancel phrases — mirror clarification gate and filter
+_CANCEL_PHRASES = {"", "/cancel", "cancela", "cancel"}
+
+
+def load_methodology_defs(repo_root: Path | None = None) -> list[MethodologyDef]:
+    """
+    Load methodology definitions from YAML files.
+
+    Bundled definitions (shipped with YANA) are loaded first; project-specific
+    definitions override them by name. repo_root=None loads bundled only.
+    """
+    defs: dict[str, MethodologyDef] = {}
+
+    for yaml_file in sorted(_BUNDLED_DIR.glob("*.yaml")):
+        defn = _load_yaml_def(yaml_file)
+        if defn:
+            defs[defn.name] = defn
+
+    if repo_root is not None:
+        project_dir = repo_root / ".yana" / "methodologies"
+        if project_dir.exists():
+            for yaml_file in sorted(project_dir.glob("*.yaml")):
+                defn = _load_yaml_def(yaml_file)
+                if defn:
+                    defs[defn.name] = defn  # project wins
+
+    return list(defs.values())
+
+
+def _load_yaml_def(yaml_file: Path) -> MethodologyDef | None:
+    """Parse one YAML file into a MethodologyDef. Returns None on any error."""
+    try:
+        import yaml
+
+        data = yaml.safe_load(yaml_file.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            return None
+        name = str(data.get("name", yaml_file.stem))
+        return MethodologyDef(
+            name=name,
+            display_name=str(data.get("display_name", name.upper())),
+            triggers=[str(t).strip().lower() for t in data.get("triggers", [])],
+            questions=[str(q) for q in data.get("questions", [])],
+        )
+    except Exception:
+        return None
+
+
+# ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
 
-def detect_methodology(text: str) -> str | None:
+def detect_methodology(text: str, defs: list[MethodologyDef]) -> str | None:
     """
-    Return the methodology name if text is a methodology activation trigger.
+    Return the methodology name if text matches a trigger phrase.
 
     Comparison is case-insensitive and strips surrounding whitespace.
-    Returns None if not a recognised trigger.
+    Returns None if no match.
     """
     low = text.strip().lower()
-    for methodology, triggers in METHODOLOGY_TRIGGERS.items():
-        if low in triggers:
-            return methodology
+    for defn in defs:
+        if low in defn.triggers:
+            return defn.name
     return None
 
 
 def collect_methodology_inputs(
     methodology: str,
+    defs: list[MethodologyDef],
     speak_fn: Callable[[str], None] | None = None,
     listen_fn: Callable[[], str] | None = None,
 ) -> MethodologyInputs | MethodologyCancelled:
     """
-    Ask Fred the methodology-specific questions one at a time.
+    Ask Fred the questions defined for this methodology, one at a time.
 
-    Questions are asked sequentially. An empty answer or /cancel cancels the run.
+    An empty answer or /cancel cancels the run.
     Returns MethodologyInputs on success, MethodologyCancelled on cancel.
     """
-    questions = METHODOLOGY_QUESTIONS.get(methodology, [])
+    defn = _find_def(methodology, defs)
+    questions = defn.questions if defn else []
+    display_name = defn.display_name if defn else methodology.upper()
     answers: dict[str, str] = {}
 
     for question in questions:
@@ -131,7 +168,11 @@ def collect_methodology_inputs(
 
         answers[question] = answer
 
-    return MethodologyInputs(methodology=methodology, answers=answers)
+    return MethodologyInputs(
+        methodology=methodology,
+        display_name=display_name,
+        answers=answers,
+    )
 
 
 def assemble_methodology_prompt(inputs: MethodologyInputs) -> str:
@@ -139,10 +180,10 @@ def assemble_methodology_prompt(inputs: MethodologyInputs) -> str:
     Build the structured prompt for the engine.
 
     The engine receives: which methodology to run + Fred's answers.
-    The engine is responsible for resolving what to execute inside the worktree.
+    The engine resolves what to execute inside the worktree.
     """
     lines = [
-        f"Run the {inputs.methodology.upper()} methodology inside the worktree.",
+        f"Run the {inputs.display_name} methodology inside the worktree.",
         "",
         "## Inputs",
     ]
@@ -162,3 +203,12 @@ def check_artifacts(worktree_path: Path) -> bool:
     if not worktree_path.exists():
         return False
     return any(f for f in worktree_path.rglob("*") if f.is_file())
+
+
+# ---------------------------------------------------------------------------
+# Internal helpers
+# ---------------------------------------------------------------------------
+
+
+def _find_def(methodology: str, defs: list[MethodologyDef]) -> MethodologyDef | None:
+    return next((d for d in defs if d.name == methodology), None)

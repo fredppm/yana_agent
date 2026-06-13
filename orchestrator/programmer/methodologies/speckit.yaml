@@ -1,0 +1,12 @@
+name: speckit
+display_name: SpecKit
+triggers:
+  - "start a speckit run"
+  - "start speckit"
+  - "/methodology speckit"
+  - "speckit run"
+  - "fazer speckit"
+questions:
+  - "What is the project name?"
+  - "Describe what you want to specify."
+  - "Any constraints or non-goals to capture now?"

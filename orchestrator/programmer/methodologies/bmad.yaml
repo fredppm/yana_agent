@@ -1,0 +1,13 @@
+name: bmad
+display_name: BMAD
+triggers:
+  - "vamos fazer um bmad"
+  - "start a bmad run"
+  - "start bmad"
+  - "/methodology bmad"
+  - "bmad run"
+  - "fazer bmad"
+questions:
+  - "What is the project name?"
+  - "What would you like to build?"
+  - "What are your goals for this session?"
