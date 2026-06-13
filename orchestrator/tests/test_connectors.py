@@ -47,7 +47,7 @@ class SimpleConnector(Connector):
         description="Fires when a new record is set",
         schema={"type": "object"},
     )
-    def on_new_record(self, callback) -> None:  # type: ignore[type-arg]
+    def on_new_record(self, callback) -> None:  # noqa: ANN001
         pass
 
 

@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any, ClassVar, cast
 
 # ---------------------------------------------------------------------------
 # Schema types
@@ -73,7 +73,7 @@ def query(
     returns: dict | None = None,
 ) -> Callable:
     def decorator(fn: Callable) -> Callable:
-        fn._connector_meta = OperationMeta(
+        cast(Any, fn)._connector_meta = OperationMeta(
             name=fn.__name__,
             description=description,
             kind="query",
@@ -91,7 +91,7 @@ def command(
     returns: dict | None = None,
 ) -> Callable:
     def decorator(fn: Callable) -> Callable:
-        fn._connector_meta = OperationMeta(
+        cast(Any, fn)._connector_meta = OperationMeta(
             name=fn.__name__,
             description=description,
             kind="command",
@@ -108,7 +108,7 @@ def event(
     schema: dict | None = None,
 ) -> Callable:
     def decorator(fn: Callable) -> Callable:
-        fn._connector_meta = OperationMeta(
+        cast(Any, fn)._connector_meta = OperationMeta(
             name=fn.__name__,
             description=description,
             kind="event",
@@ -143,13 +143,14 @@ class Connector:
     """
 
     connector_description: str = ""
+    _operations: ClassVar[dict[str, OperationMeta]] = {}
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
         super().__init_subclass__(**kwargs)
-        cls._operations: dict[str, OperationMeta] = {}
+        cls._operations = {}
         for attr in vars(cls).values():
             if hasattr(attr, "_connector_meta"):
-                meta: OperationMeta = attr._connector_meta
+                meta: OperationMeta = cast(Any, attr)._connector_meta
                 cls._operations[meta.name] = meta
 
     def call(self, operation: str, params: dict[str, Any] | None = None) -> ConnectorResult:

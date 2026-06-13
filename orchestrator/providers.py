@@ -169,13 +169,13 @@ def call_llm(
 
     if provider == "anthropic":
         api_key = get_api_key("anthropic", config)
-        return _call_anthropic(messages, system_prompt, model_id, api_key, stream, timeout)
+        return _call_anthropic(messages, system_prompt, model_id, api_key or "", stream, timeout)
     elif provider == "bedrock":
         region, profile = _bedrock_config(config)
         return _call_bedrock(messages, system_prompt, model_id, region, profile, stream, timeout)
     elif provider == "openai":
         api_key = get_api_key("openai", config)
-        return _call_openai(messages, system_prompt, model_id, api_key, stream, timeout)
+        return _call_openai(messages, system_prompt, model_id, api_key or "", stream, timeout)
     else:
         raise ValueError(f"Unknown provider: {provider}")
 
@@ -213,7 +213,7 @@ def _call_anthropic(
             model=model_id,
             max_tokens=4096,
             system=system_prompt,
-            messages=messages,
+            messages=messages,  # type: ignore[arg-type]
         ) as s:
             for text in s.text_stream:
                 print(text, end="", flush=True)
@@ -225,9 +225,10 @@ def _call_anthropic(
             model=model_id,
             max_tokens=4096,
             system=system_prompt,
-            messages=messages,
+            messages=messages,  # type: ignore[arg-type]
         )
-        return response.content[0].text
+        block = response.content[0]
+        return block.text if hasattr(block, "text") else ""
 
 
 # ---------------------------------------------------------------------------
@@ -259,7 +260,7 @@ def _call_bedrock(
             model=model_id,
             max_tokens=4096,
             system=system_prompt,
-            messages=messages,
+            messages=messages,  # type: ignore[arg-type]
         ) as s:
             for text in s.text_stream:
                 print(text, end="", flush=True)
@@ -271,9 +272,10 @@ def _call_bedrock(
             model=model_id,
             max_tokens=4096,
             system=system_prompt,
-            messages=messages,
+            messages=messages,  # type: ignore[arg-type]
         )
-        return response.content[0].text
+        block = response.content[0]
+        return block.text if hasattr(block, "text") else ""
 
 
 # ---------------------------------------------------------------------------
@@ -298,11 +300,11 @@ def _call_openai(
         full_text = ""
         response = client.chat.completions.create(
             model=model_id,
-            messages=full_messages,
+            messages=full_messages,  # type: ignore[arg-type]
             stream=True,
         )
         for chunk in response:
-            delta = chunk.choices[0].delta
+            delta = chunk.choices[0].delta  # type: ignore[union-attr]
             if delta.content:
                 print(delta.content, end="", flush=True)
                 full_text += delta.content
@@ -311,9 +313,9 @@ def _call_openai(
     else:
         response = client.chat.completions.create(
             model=model_id,
-            messages=full_messages,
+            messages=full_messages,  # type: ignore[arg-type]
         )
-        return response.choices[0].message.content
+        return response.choices[0].message.content or ""
 
 
 # ---------------------------------------------------------------------------
@@ -352,7 +354,7 @@ def call_llm_with_tools(
         client = anthropic.Anthropic(api_key=api_key, timeout=httpx.Timeout(timeout, connect=10.0))
     elif provider == "bedrock":
         region, profile = _bedrock_config(config)
-        client = anthropic.AnthropicBedrock(
+        client = anthropic.AnthropicBedrock(  # type: ignore[assignment]
             aws_region=region,
             aws_profile=profile,
             timeout=httpx.Timeout(timeout, connect=10.0),
@@ -368,8 +370,8 @@ def call_llm_with_tools(
         model=model_id,
         max_tokens=4096,
         system=system_prompt,
-        messages=messages,
-        tools=tools,
+        messages=messages,  # type: ignore[arg-type]
+        tools=tools,  # type: ignore[arg-type]
     )
 
     text_parts: list[str] = []

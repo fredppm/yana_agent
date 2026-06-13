@@ -14,6 +14,7 @@ from __future__ import annotations
 import importlib.util
 import sys
 from pathlib import Path
+from typing import Any, cast
 
 from .base import Connector
 from .registry import ConnectorRegistry
@@ -57,7 +58,7 @@ def _extract_connectors(path: Path) -> list[type[Connector]]:
     module = importlib.util.module_from_spec(spec)
     sys.modules[module_name] = module
     try:
-        spec.loader.exec_module(module)  # type: ignore[union-attr]
+        cast(Any, spec.loader).exec_module(module)
     except Exception as exc:
         raise RuntimeError(f"failed to load connector module {path.name}: {exc}") from exc
 
