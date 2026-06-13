@@ -52,7 +52,9 @@ connectors:
     owner: fred
     config:
       auth_file: "~/.yana/ytmusic_auth.json"
-      ipc_socket: "/tmp/yana-ytmusic.sock"
+      # Windows: named pipe name (no path separators) → \\.\pipe\yana-ytmusic
+      # Unix:    full socket path → /tmp/yana-ytmusic.sock
+      ipc_socket: "yana-ytmusic"
 
   - type: RGBLightConnector
     id: rgb_sala

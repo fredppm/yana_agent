@@ -31,8 +31,8 @@ Setup:
 from __future__ import annotations
 
 import json
-import socket
 import subprocess
+import sys
 import time
 from pathlib import Path
 from typing import Any
@@ -41,6 +41,7 @@ from connectors import Connector, command, query
 
 _YTM_BASE_URL = "https://music.youtube.com/watch?v="
 _YTM_PLAYLIST_URL = "https://music.youtube.com/playlist?list="
+_IS_WINDOWS = sys.platform == "win32"
 
 
 class YouTubeMusicConnector(Connector):
@@ -62,7 +63,12 @@ class YouTubeMusicConnector(Connector):
 
         auth = str(Path(auth_file or "~/.yana/ytmusic_auth.json").expanduser())
         self._ytm = YTMusic(auth)
-        self._ipc_socket = ipc_socket or "/tmp/yana-ytmusic.sock"
+        # On Windows mpv uses named pipes; default to a pipe name (no path separators).
+        # On Unix use a socket file path.
+        if _IS_WINDOWS:
+            self._ipc_socket = ipc_socket or "yana-ytmusic"
+        else:
+            self._ipc_socket = ipc_socket or "/tmp/yana-ytmusic.sock"
         self._mpv: subprocess.Popen | None = None  # type: ignore[type-arg]
 
     # ------------------------------------------------------------------
@@ -70,10 +76,12 @@ class YouTubeMusicConnector(Connector):
     # ------------------------------------------------------------------
 
     def _launch_mpv(self, url: str) -> None:
-        """Start mpv with IPC socket, replacing any existing process."""
+        """Start mpv with IPC, replacing any existing process."""
         if self._mpv and self._mpv.poll() is None:
             self._mpv.terminate()
 
+        # Windows: --input-ipc-server=<name> creates \\.\pipe\<name>
+        # Unix:    --input-ipc-server=<path> creates a Unix socket file
         self._mpv = subprocess.Popen(
             [
                 "mpv",
@@ -85,25 +93,50 @@ class YouTubeMusicConnector(Connector):
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
-        # Wait briefly for the IPC socket to become available
-        for _ in range(20):
-            if Path(self._ipc_socket).exists():
+        # Wait for the pipe/socket to become available
+        pipe_path = rf"\\.\pipe\{self._ipc_socket}" if _IS_WINDOWS else self._ipc_socket
+        for _ in range(30):
+            if Path(pipe_path).exists():
                 break
             time.sleep(0.1)
 
     def _mpv_cmd(self, *args: Any) -> Any:
         """Send a JSON IPC command to the running mpv process."""
-        payload = json.dumps({"command": list(args)}) + "\n"
+        payload = (json.dumps({"command": list(args)}) + "\n").encode()
         try:
-            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
-                s.connect(self._ipc_socket)
-                s.sendall(payload.encode())
-                s.settimeout(2.0)
+            if _IS_WINDOWS:
+                import win32file  # type: ignore[import-untyped]
+
+                pipe_path = rf"\\.\pipe\{self._ipc_socket}"
+                handle = win32file.CreateFile(
+                    pipe_path,
+                    win32file.GENERIC_READ | win32file.GENERIC_WRITE,
+                    0,
+                    None,
+                    win32file.OPEN_EXISTING,
+                    0,
+                    None,
+                )
                 try:
-                    data = s.recv(4096)
+                    win32file.WriteFile(handle, payload)
+                    _, data = win32file.ReadFile(handle, 65536)
                     return json.loads(data).get("data")
-                except (TimeoutError, json.JSONDecodeError):
+                except (json.JSONDecodeError, Exception):
                     return None
+                finally:
+                    win32file.CloseHandle(handle)
+            else:
+                import socket
+
+                with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
+                    s.connect(self._ipc_socket)
+                    s.sendall(payload)
+                    s.settimeout(2.0)
+                    try:
+                        data = s.recv(4096)
+                        return json.loads(data).get("data")
+                    except (TimeoutError, json.JSONDecodeError):
+                        return None
         except OSError as exc:
             raise RuntimeError(f"mpv IPC unavailable: {exc}") from exc
 
