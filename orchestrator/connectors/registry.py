@@ -138,10 +138,15 @@ class ConnectorRegistry:
                 entry["owner"] = inst.owner
             cls = self._types.get(inst.type)
             if cls is not None:
-                ops = [
-                    name for name, meta in cls._operations.items()
-                    if meta.kind in ("query", "command")
-                ]
+                ops = []
+                for name, meta in cls._operations.items():
+                    if meta.kind not in ("query", "command"):
+                        continue
+                    if meta.params:
+                        params_str = ", ".join(meta.params.keys())
+                        ops.append(f"{name}({params_str})")
+                    else:
+                        ops.append(name)
                 if ops:
                     entry["operations"] = ops
             result.append(entry)
