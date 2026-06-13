@@ -431,6 +431,7 @@ def main() -> None:
             voice_flag=args.voice,
             sanctum_path=core.sanctum_path(),
             speak_fn=speak_fn,
+            providers_config=providers_config,
         )
         return
 
