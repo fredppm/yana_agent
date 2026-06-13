@@ -1,4 +1,5 @@
 connectors:
+  # Python connectors — garmin-connect-mcp blocked (fastmcp 3.x API break + no interactive auth)
   - type: GarminActivityConnector
     id: garmin_fred
     name: "Garmin do Fred"
@@ -17,7 +18,7 @@ connectors:
       credentials_file: "~/.yana/credentials/garmin_ana.json"
       token_dir: "~/.yana/tokens/garmin_ana"
 
-  - type: GoogleCalendarConnector
+  - type: GoogleCalendarMCPConnector
     id: calendar_fred
     name: "Agenda do Fred"
     description: "Eventos e compromissos do calendário pessoal do Fred"

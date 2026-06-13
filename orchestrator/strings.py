@@ -27,6 +27,12 @@ _STRINGS: dict[str, dict[str, str]] = {
         # -- Communication --
         "user_label": "Você",
         "greeting": "Oi, estou ouvindo.",
+        # -- Programmer mode --
+        "programmer_ready": "Programmer mode active — {mode}. Ready for your request.",
+        "programmer_sanctum_missing": "Programmer mode requires a sanctum. Run: python main.py --init",
+        "programmer_choose_mode": "Choose interaction mode — [v]oice or [t]ext: ",
+        "programmer_cancelled": "Request cancelled — clarification was needed to proceed. Start a new request when ready.",
+        "programmer_session_end": "Programmer session ended.",
     },
 }
 

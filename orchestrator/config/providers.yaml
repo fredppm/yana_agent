@@ -32,6 +32,16 @@ llm:
     pulse_triggered: fast
     first_breath: powerful
 
+engines:
+  # Coding engine for programmer mode (Story 0.1).
+  # default: name of the engine implementation to use.
+  # claude_code: config passed to ClaudeCodeEngine.__init__()
+  default: claude_code
+  claude_code:
+    sdk: subprocess           # subprocess (current) | anthropic_agent (future SDK)
+    model: claude-sonnet-4-6  # passed to claude --model; remove to use Claude Code's default
+    flags: []                 # extra CLI flags (e.g. ["--dangerously-skip-permissions"])
+
 stt:
   provider: faster-whisper   # openai-whisper | faster-whisper
   model: tiny                # tiny | base | small | medium | large
