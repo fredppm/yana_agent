@@ -235,23 +235,20 @@ class TestWorktreeCreatedBeforeDispatch:
             call_order.append("create_worktree")
             return tmp_path / "wt"
 
-        original_dispatch = mock_engine.dispatch
-
         def _fake_dispatch(request):
             call_order.append("engine.dispatch")
-            return original_dispatch(request)
+            return 0
 
-        mock_engine.dispatch = _fake_dispatch
-
-        with patch("programmer.dispatcher.detect_repo_root", return_value=tmp_path):
-            with patch("programmer.worktree.create_worktree", side_effect=_fake_create):
-                dispatch_request(
-                    enriched_prompt="add hello()",
-                    sanctum=sanctum,
-                    session_id="s1",
-                    engine=mock_engine,
-                    repo_root=tmp_path,
-                )
+        with patch.object(mock_engine, "dispatch", side_effect=_fake_dispatch):
+            with patch("programmer.dispatcher.detect_repo_root", return_value=tmp_path):
+                with patch("programmer.worktree.create_worktree", side_effect=_fake_create):
+                    dispatch_request(
+                        enriched_prompt="add hello()",
+                        sanctum=sanctum,
+                        session_id="s1",
+                        engine=mock_engine,
+                        repo_root=tmp_path,
+                    )
 
         assert call_order == ["create_worktree", "engine.dispatch"]
 
