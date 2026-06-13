@@ -29,6 +29,44 @@ from pathlib import Path
 from connectors import Connector, command, event, query
 
 
+def _read_password(prompt: str) -> str:
+    """Read a password from the terminal with echo suppressed.
+
+    Uses msvcrt on Windows (getpass doesn't suppress echo in PowerShell/cmd),
+    falls back to getpass on other platforms.
+    """
+    import sys
+
+    print(prompt, end="", flush=True)
+
+    if sys.platform == "win32":
+        import msvcrt
+
+        chars: list[str] = []
+        while True:
+            ch = msvcrt.getwch()
+            if ch in ("\r", "\n"):
+                break
+            if ch == "\x03":  # Ctrl+C
+                print()
+                raise KeyboardInterrupt
+            if ch == "\x08":  # backspace
+                if chars:
+                    chars.pop()
+                    print("\b \b", end="", flush=True)
+            else:
+                chars.append(ch)
+                print("*", end="", flush=True)
+        print()
+        return "".join(chars)
+
+    import getpass
+
+    # getpass handles echo suppression on Unix/macOS
+    password = getpass.getpass("")
+    return password
+
+
 class GarminActivityConnector(Connector):
     connector_description = "Health and activity data via Garmin — steps, sleep, stress, runs"
 
@@ -187,14 +225,12 @@ class GarminActivityConnector(Connector):
 
     def _prompt_and_save_credentials(self) -> Path:
         """Interactively ask for Garmin credentials and save them to disk."""
-        import getpass
-
         print(f"\n[Garmin] Credenciais não encontradas: {self._credentials_file}")
         print(
             "[Garmin] Informe suas credenciais Garmin Connect (salvas localmente, usadas uma vez):"
         )
         email = input("  Email: ").strip()
-        password = getpass.getpass("  Senha: ")
+        password = _read_password("  Senha: ")
 
         self._credentials_file.parent.mkdir(parents=True, exist_ok=True)
         self._credentials_file.write_text(
