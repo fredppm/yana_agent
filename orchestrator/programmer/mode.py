@@ -16,6 +16,70 @@ from enum import Enum
 from pathlib import Path
 
 # ---------------------------------------------------------------------------
+# Methodology definitions — loaded from YAML, never hardcoded
+# ---------------------------------------------------------------------------
+
+_METHODOLOGY_DIR = Path(__file__).parent / "methodologies"
+
+
+@dataclass
+class _MethodologyDef:
+    name: str
+    display_name: str
+    triggers: list[str]  # lowercased exact-match phrases
+    prompt: str  # dispatched verbatim to the engine
+
+
+def _load_methodology_defs(repo_root: Path | None = None) -> list[_MethodologyDef]:
+    """
+    Load methodology definitions from YAML files.
+
+    Bundled (programmer/methodologies/*.yaml) loaded first;
+    project-specific ({repo_root}/.yana/methodologies/*.yaml) override by name.
+    """
+    defs: dict[str, _MethodologyDef] = {}
+    for f in sorted(_METHODOLOGY_DIR.glob("*.yaml")):
+        d = _parse_methodology_yaml(f)
+        if d:
+            defs[d.name] = d
+    if repo_root is not None:
+        project_dir = repo_root / ".yana" / "methodologies"
+        if project_dir.exists():
+            for f in sorted(project_dir.glob("*.yaml")):
+                d = _parse_methodology_yaml(f)
+                if d:
+                    defs[d.name] = d
+    return list(defs.values())
+
+
+def _parse_methodology_yaml(path: Path) -> _MethodologyDef | None:
+    try:
+        import yaml
+
+        data = yaml.safe_load(path.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            return None
+        name = str(data.get("name", path.stem))
+        return _MethodologyDef(
+            name=name,
+            display_name=str(data.get("display_name", name.upper())),
+            triggers=[str(t).strip().lower() for t in data.get("triggers", [])],
+            prompt=str(data.get("prompt", f"Run {name.upper()} in the worktree.")),
+        )
+    except Exception:
+        return None
+
+
+def _match_methodology(text: str, defs: list[_MethodologyDef]) -> _MethodologyDef | None:
+    low = text.strip().lower()
+    return next((d for d in defs if low in d.triggers), None)
+
+
+def _worktree_has_files(path: Path) -> bool:
+    return path.exists() and any(f for f in path.rglob("*") if f.is_file())
+
+
+# ---------------------------------------------------------------------------
 # Interaction mode
 # ---------------------------------------------------------------------------
 
@@ -223,11 +287,9 @@ def _session_loop(
     import output
     from strings import t
 
-    from programmer.methodology import load_methodology_defs
-
     current_mode = mode
     last_dispatch: object = None  # holds DispatchResult if a worktree needs cleanup
-    method_defs = load_methodology_defs()  # bundled defs, loaded once per session
+    method_defs = _load_methodology_defs()  # bundled defs, loaded once per session
 
     def _end_session() -> None:
         """AC-2.1.2: signal engine, cleanup worktree, output status."""
@@ -271,10 +333,8 @@ def _session_loop(
                 _end_session()
                 return
 
-            # Methodology routing (Story 2.2 — explicit trigger required)
-            from programmer.methodology import detect_methodology
-
-            method_def = detect_methodology(user_input, method_defs)
+            # Methodology routing — explicit trigger required (never inferred)
+            method_def = _match_methodology(user_input, method_defs)
             if method_def:
                 last_dispatch = _handle_methodology_request(
                     method_def,
@@ -472,9 +532,8 @@ def _handle_methodology_request(
         new_session_id,
     )
     from programmer.filter import FilterStatus
-    from programmer.methodology import MethodologyDef, check_artifacts
 
-    if not isinstance(method_def, MethodologyDef):
+    if not isinstance(method_def, _MethodologyDef):
         return None
 
     # --- Dispatch directly — engine owns input collection (Design Principle 1) ---
@@ -508,7 +567,7 @@ def _handle_methodology_request(
     # --- Verify artifacts on COMPLETED ---
     if status is FilterStatus.COMPLETED and isinstance(outcome, DispatchResult):
         wm = outcome.worktree_manager
-        if check_artifacts(wm.path):
+        if _worktree_has_files(wm.path):
             msg = f"Methodology run complete. Artifacts are in the worktree at {wm.path}."
             print(f"\n{msg}", flush=True)
             if speak_fn:
