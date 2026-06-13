@@ -47,7 +47,11 @@ _GET_EVENTS_ONE = {"items": [_RAW_EVENT]}
 _GET_EVENTS_EMPTY: dict[str, Any] = {"items": []}
 
 _FREEBUSY_FREE: dict[str, Any] = {"calendars": {"primary": {"busy": []}}}
-_FREEBUSY_BUSY = {"calendars": {"primary": {"busy": [{"start": "2026-06-14T10:00:00Z", "end": "2026-06-14T11:00:00Z"}]}}}
+_FREEBUSY_BUSY = {
+    "calendars": {
+        "primary": {"busy": [{"start": "2026-06-14T10:00:00Z", "end": "2026-06-14T11:00:00Z"}]}
+    }
+}
 
 _CREATE_SUCCESS = {
     "success": True,
@@ -79,6 +83,7 @@ def _make_connector() -> Any:
 def _with_tool(connector: Any, responses: dict[str, object]) -> Any:
     def _fake(tool: str, args: dict) -> object:
         return responses.get(tool)
+
     connector._call_tool = _fake
     return connector
 
@@ -86,6 +91,7 @@ def _with_tool(connector: Any, responses: dict[str, object]) -> Any:
 # ---------------------------------------------------------------------------
 # CAP-1: Operation discovery
 # ---------------------------------------------------------------------------
+
 
 def test_list_events_is_query():
     assert "list_events" in GoogleCalendarMCPConnector._operations
@@ -110,8 +116,7 @@ def test_cancel_event_is_command():
 def test_no_events_declared():
     """MCP backend is polling-only — no @event operations."""
     event_ops = [
-        name for name, op in GoogleCalendarMCPConnector._operations.items()
-        if op.kind == "event"
+        name for name, op in GoogleCalendarMCPConnector._operations.items() if op.kind == "event"
     ]
     assert event_ops == []
 
@@ -119,6 +124,7 @@ def test_no_events_declared():
 # ---------------------------------------------------------------------------
 # CAP-1: Descriptions
 # ---------------------------------------------------------------------------
+
 
 def test_all_operations_have_descriptions():
     for name, op in GoogleCalendarMCPConnector._operations.items():
@@ -128,6 +134,7 @@ def test_all_operations_have_descriptions():
 # ---------------------------------------------------------------------------
 # CAP-5: Param schemas
 # ---------------------------------------------------------------------------
+
 
 def test_list_events_params_are_optional():
     params = GoogleCalendarMCPConnector._operations["list_events"].params
@@ -159,6 +166,7 @@ def test_cancel_event_requires_event_id():
 # CAP-5: Return schemas
 # ---------------------------------------------------------------------------
 
+
 def test_list_events_returns_list():
     assert GoogleCalendarMCPConnector._operations["list_events"].returns.type == "list"
 
@@ -178,6 +186,7 @@ def test_cancel_event_returns_boolean():
 # ---------------------------------------------------------------------------
 # Output shape — list_events
 # ---------------------------------------------------------------------------
+
 
 def test_list_events_output_shape():
     c = _with_tool(_make_connector(), {"get-events": _GET_EVENTS_ONE})
@@ -210,7 +219,8 @@ def test_list_events_empty_returns_empty_list():
 
 def test_list_events_optional_fields_are_none_when_absent():
     raw = {
-        "id": "x1", "summary": "No frills",
+        "id": "x1",
+        "summary": "No frills",
         "start": {"dateTime": "2026-06-14T09:00:00+00:00"},
         "end": {"dateTime": "2026-06-14T10:00:00+00:00"},
     }
@@ -224,7 +234,8 @@ def test_list_events_optional_fields_are_none_when_absent():
 
 def test_list_events_all_day_event_uses_date_not_datetime():
     raw = {
-        "id": "allday1", "summary": "Holiday",
+        "id": "allday1",
+        "summary": "Holiday",
         "start": {"date": "2026-06-20"},
         "end": {"date": "2026-06-21"},
     }
@@ -244,22 +255,29 @@ def test_list_events_no_params_succeeds():
 # Output shape — is_available
 # ---------------------------------------------------------------------------
 
+
 def test_is_available_true_when_no_events():
     c = _with_tool(_make_connector(), {"check-availability": _FREEBUSY_FREE})
-    result = c.call("is_available", {
-        "start_iso": "2026-06-14T10:00:00+00:00",
-        "end_iso": "2026-06-14T11:00:00+00:00",
-    })
+    result = c.call(
+        "is_available",
+        {
+            "start_iso": "2026-06-14T10:00:00+00:00",
+            "end_iso": "2026-06-14T11:00:00+00:00",
+        },
+    )
     assert result.ok is True
     assert result.data is True
 
 
 def test_is_available_false_when_events_exist():
     c = _with_tool(_make_connector(), {"check-availability": _FREEBUSY_BUSY})
-    result = c.call("is_available", {
-        "start_iso": "2026-06-14T10:00:00+00:00",
-        "end_iso": "2026-06-14T11:00:00+00:00",
-    })
+    result = c.call(
+        "is_available",
+        {
+            "start_iso": "2026-06-14T10:00:00+00:00",
+            "end_iso": "2026-06-14T11:00:00+00:00",
+        },
+    )
     assert result.ok is True
     assert result.data is False
 
@@ -268,13 +286,17 @@ def test_is_available_false_when_events_exist():
 # Output shape — create_event
 # ---------------------------------------------------------------------------
 
+
 def test_create_event_output_shape():
     c = _with_tool(_make_connector(), {"create-event": _CREATE_SUCCESS})
-    result = c.call("create_event", {
-        "title": "Team meeting",
-        "start_iso": "2026-06-14T10:00:00+00:00",
-        "end_iso": "2026-06-14T11:00:00+00:00",
-    })
+    result = c.call(
+        "create_event",
+        {
+            "title": "Team meeting",
+            "start_iso": "2026-06-14T10:00:00+00:00",
+            "end_iso": "2026-06-14T11:00:00+00:00",
+        },
+    )
     assert result.ok is True
     assert isinstance(result.data, dict)
     assert set(result.data.keys()) == _EXPECTED_EVENT_KEYS
@@ -284,13 +306,18 @@ def test_create_event_output_shape():
 
 def test_create_event_with_notes():
     raw_with_notes = {**_RAW_EVENT, "description": "Bring slides"}
-    c = _with_tool(_make_connector(), {"create-event": {**_CREATE_SUCCESS, "event": raw_with_notes}})
-    result = c.call("create_event", {
-        "title": "Presentation",
-        "start_iso": "2026-06-14T10:00:00+00:00",
-        "end_iso": "2026-06-14T11:00:00+00:00",
-        "notes": "Bring slides",
-    })
+    c = _with_tool(
+        _make_connector(), {"create-event": {**_CREATE_SUCCESS, "event": raw_with_notes}}
+    )
+    result = c.call(
+        "create_event",
+        {
+            "title": "Presentation",
+            "start_iso": "2026-06-14T10:00:00+00:00",
+            "end_iso": "2026-06-14T11:00:00+00:00",
+            "notes": "Bring slides",
+        },
+    )
     assert result.ok is True
     assert result.data["notes"] == "Bring slides"
 
@@ -298,6 +325,7 @@ def test_create_event_with_notes():
 # ---------------------------------------------------------------------------
 # Output shape — cancel_event
 # ---------------------------------------------------------------------------
+
 
 def test_cancel_event_returns_true():
     c = _with_tool(_make_connector(), {"delete-event": _DELETE_SUCCESS})
@@ -310,12 +338,16 @@ def test_cancel_event_returns_true():
 # CAP-5: Validation errors
 # ---------------------------------------------------------------------------
 
+
 def test_create_event_missing_title_rejected():
     c = _make_connector()
-    result = c.call("create_event", {
-        "start_iso": "2026-06-14T10:00:00+00:00",
-        "end_iso": "2026-06-14T11:00:00+00:00",
-    })
+    result = c.call(
+        "create_event",
+        {
+            "start_iso": "2026-06-14T10:00:00+00:00",
+            "end_iso": "2026-06-14T11:00:00+00:00",
+        },
+    )
     assert result.ok is False
     assert result.error == "validation_error"
 
@@ -331,9 +363,13 @@ def test_cancel_event_missing_id_rejected():
 # CAP-5: Error envelope
 # ---------------------------------------------------------------------------
 
+
 def test_auth_error_propagates():
     c = _make_connector()
-    def _fail(tool, args): raise PermissionError
+
+    def _fail(tool, args):
+        raise PermissionError
+
     c._call_tool = _fail
     result = c.call("list_events")
     assert result.ok is False
@@ -342,7 +378,10 @@ def test_auth_error_propagates():
 
 def test_timeout_error_propagates():
     c = _make_connector()
-    def _fail(tool, args): raise TimeoutError
+
+    def _fail(tool, args):
+        raise TimeoutError
+
     c._call_tool = _fail
     result = c.call("list_events")
     assert result.ok is False

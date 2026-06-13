@@ -103,7 +103,7 @@ CONNECTOR_TOOLS: list[dict] = [
         "description": (
             "Invoke a registered connector operation to read data or execute an action. "
             "Use the connector manifest in the system prompt to find the right instance_id and operation. "
-            "If the response contains {\"error\": \"validation_error\", \"detail\": \"available: ...\"}, "
+            'If the response contains {"error": "validation_error", "detail": "available: ..."}, '
             "the operation name was wrong — use the listed names directly without calling get_connector_contract."
         ),
         "input_schema": {

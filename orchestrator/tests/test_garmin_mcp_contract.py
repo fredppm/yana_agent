@@ -43,9 +43,7 @@ _METRICS_STEPS = {
     }
 }
 
-_METRICS_STRESS = {
-    "stress": {"avgStressLevel": 42}
-}
+_METRICS_STRESS = {"stress": {"avgStressLevel": 42}}
 
 _SLEEP_DATA = {
     "dailySleepDTO": {
@@ -83,13 +81,27 @@ _HR_DATA = {
 }
 
 _EXPECTED_SLEEP_KEYS = {
-    "total_sleep_h", "deep_h", "light_h", "rem_h", "awake_h",
-    "score", "start_gmt", "end_gmt",
+    "total_sleep_h",
+    "deep_h",
+    "light_h",
+    "rem_h",
+    "awake_h",
+    "score",
+    "start_gmt",
+    "end_gmt",
 }
 
 _EXPECTED_ACTIVITY_KEYS = {
-    "id", "name", "type", "start", "duration_min", "distance_km",
-    "calories", "avg_hr", "max_hr", "avg_pace_min_km",
+    "id",
+    "name",
+    "type",
+    "start",
+    "duration_min",
+    "distance_km",
+    "calories",
+    "avg_hr",
+    "max_hr",
+    "avg_pace_min_km",
 }
 
 
@@ -110,8 +122,10 @@ def _make_connector() -> Any:
 
 def _with_tool(connector: Any, responses: dict[str, object]) -> Any:
     """Patch _call_tool to return canned responses per tool name."""
+
     def _fake_call_tool(tool: str, args: dict) -> object:
         return responses.get(tool)
+
     connector._call_tool = _fake_call_tool
     return connector
 
@@ -148,10 +162,7 @@ def test_heart_rate_history_is_query():
 
 def test_no_events_declared():
     """MCP backend is polling-only — no @event operations."""
-    event_ops = [
-        name for name, op in GarminMCPConnector._operations.items()
-        if op.kind == "event"
-    ]
+    event_ops = [name for name, op in GarminMCPConnector._operations.items() if op.kind == "event"]
     assert event_ops == []
 
 
@@ -291,9 +302,14 @@ def test_heart_rate_history_shape():
 
 
 def test_heart_rate_history_filters_null_bpm():
-    c = _with_tool(_make_connector(), {
-        "query_heart_rate_data": {"heartRateValues": [[1718350000000, 72], [1718350060000, None]]}
-    })
+    c = _with_tool(
+        _make_connector(),
+        {
+            "query_heart_rate_data": {
+                "heartRateValues": [[1718350000000, 72], [1718350060000, None]]
+            }
+        },
+    )
     result = c.call("heart_rate_history")
     assert len(result.data) == 1
 
@@ -312,7 +328,10 @@ def test_heart_rate_history_empty_when_no_data():
 
 def test_auth_error_propagates():
     c = _make_connector()
-    def _fail(tool, args): raise PermissionError
+
+    def _fail(tool, args):
+        raise PermissionError
+
     c._call_tool = _fail
     result = c.call("steps_today")
     assert result.ok is False
@@ -321,7 +340,10 @@ def test_auth_error_propagates():
 
 def test_timeout_error_propagates():
     c = _make_connector()
-    def _fail(tool, args): raise TimeoutError
+
+    def _fail(tool, args):
+        raise TimeoutError
+
     c._call_tool = _fail
     result = c.call("steps_today")
     assert result.ok is False

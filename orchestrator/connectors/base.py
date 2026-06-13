@@ -159,7 +159,9 @@ class Connector:
 
         if operation not in self._operations:
             available = ", ".join(self._operations.keys())
-            return ConnectorResult(ok=False, error="validation_error", detail=f"available: {available}")
+            return ConnectorResult(
+                ok=False, error="validation_error", detail=f"available: {available}"
+            )
 
         meta = self._operations[operation]
 

@@ -158,9 +158,7 @@ def test_cancel_event_returns_boolean():
 
 def test_list_events_output_shape():
     connector, mock_svc = _make_connector()
-    mock_svc.events.return_value.list.return_value.execute.return_value = {
-        "items": [_RAW_EVENT]
-    }
+    mock_svc.events.return_value.list.return_value.execute.return_value = {"items": [_RAW_EVENT]}
 
     result = connector.call("list_events")
 
@@ -173,9 +171,7 @@ def test_list_events_output_shape():
 
 def test_list_events_event_values():
     connector, mock_svc = _make_connector()
-    mock_svc.events.return_value.list.return_value.execute.return_value = {
-        "items": [_RAW_EVENT]
-    }
+    mock_svc.events.return_value.list.return_value.execute.return_value = {"items": [_RAW_EVENT]}
 
     result = connector.call("list_events")
     event = result.data[0]
@@ -201,7 +197,12 @@ def test_list_events_empty_returns_empty_list():
 
 def test_list_events_optional_fields_are_none_when_absent():
     connector, mock_svc = _make_connector()
-    raw = {"id": "x1", "summary": "No frills", "start": {"dateTime": "2026-06-14T09:00:00+00:00"}, "end": {"dateTime": "2026-06-14T10:00:00+00:00"}}
+    raw = {
+        "id": "x1",
+        "summary": "No frills",
+        "start": {"dateTime": "2026-06-14T09:00:00+00:00"},
+        "end": {"dateTime": "2026-06-14T10:00:00+00:00"},
+    }
     mock_svc.events.return_value.list.return_value.execute.return_value = {"items": [raw]}
 
     result = connector.call("list_events")
@@ -234,11 +235,14 @@ def test_create_event_output_shape():
     connector, mock_svc = _make_connector()
     mock_svc.events.return_value.insert.return_value.execute.return_value = _RAW_EVENT
 
-    result = connector.call("create_event", {
-        "title": "Team meeting",
-        "start_iso": "2026-06-14T10:00:00+00:00",
-        "end_iso": "2026-06-14T11:00:00+00:00",
-    })
+    result = connector.call(
+        "create_event",
+        {
+            "title": "Team meeting",
+            "start_iso": "2026-06-14T10:00:00+00:00",
+            "end_iso": "2026-06-14T11:00:00+00:00",
+        },
+    )
 
     assert result.ok is True
     assert isinstance(result.data, dict)
@@ -250,15 +254,19 @@ def test_create_event_output_shape():
 def test_create_event_with_notes():
     connector, mock_svc = _make_connector()
     mock_svc.events.return_value.insert.return_value.execute.return_value = {
-        **_RAW_EVENT, "description": "Bring slides"
+        **_RAW_EVENT,
+        "description": "Bring slides",
     }
 
-    result = connector.call("create_event", {
-        "title": "Presentation",
-        "start_iso": "2026-06-14T10:00:00+00:00",
-        "end_iso": "2026-06-14T11:00:00+00:00",
-        "notes": "Bring slides",
-    })
+    result = connector.call(
+        "create_event",
+        {
+            "title": "Presentation",
+            "start_iso": "2026-06-14T10:00:00+00:00",
+            "end_iso": "2026-06-14T11:00:00+00:00",
+            "notes": "Bring slides",
+        },
+    )
 
     assert result.ok is True
     assert result.data["notes"] == "Bring slides"
@@ -268,10 +276,13 @@ def test_is_available_true_when_no_events():
     connector, mock_svc = _make_connector()
     mock_svc.events.return_value.list.return_value.execute.return_value = {"items": []}
 
-    result = connector.call("is_available", {
-        "start_iso": "2026-06-14T10:00:00+00:00",
-        "end_iso": "2026-06-14T11:00:00+00:00",
-    })
+    result = connector.call(
+        "is_available",
+        {
+            "start_iso": "2026-06-14T10:00:00+00:00",
+            "end_iso": "2026-06-14T11:00:00+00:00",
+        },
+    )
 
     assert result.ok is True
     assert result.data is True
@@ -279,14 +290,15 @@ def test_is_available_true_when_no_events():
 
 def test_is_available_false_when_events_exist():
     connector, mock_svc = _make_connector()
-    mock_svc.events.return_value.list.return_value.execute.return_value = {
-        "items": [_RAW_EVENT]
-    }
+    mock_svc.events.return_value.list.return_value.execute.return_value = {"items": [_RAW_EVENT]}
 
-    result = connector.call("is_available", {
-        "start_iso": "2026-06-14T10:00:00+00:00",
-        "end_iso": "2026-06-14T11:00:00+00:00",
-    })
+    result = connector.call(
+        "is_available",
+        {
+            "start_iso": "2026-06-14T10:00:00+00:00",
+            "end_iso": "2026-06-14T11:00:00+00:00",
+        },
+    )
 
     assert result.ok is True
     assert result.data is False
@@ -318,10 +330,13 @@ def test_list_events_no_params_succeeds():
 
 def test_create_event_missing_title_rejected():
     connector, _ = _make_connector()
-    result = connector.call("create_event", {
-        "start_iso": "2026-06-14T10:00:00+00:00",
-        "end_iso": "2026-06-14T11:00:00+00:00",
-    })
+    result = connector.call(
+        "create_event",
+        {
+            "start_iso": "2026-06-14T10:00:00+00:00",
+            "end_iso": "2026-06-14T11:00:00+00:00",
+        },
+    )
     assert result.ok is False
     assert result.error == "validation_error"
 

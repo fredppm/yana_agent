@@ -42,11 +42,11 @@ _RAW_STATS = {
 _RAW_STRESS = {"avgStressLevel": 42}
 
 _RAW_SLEEP_DTO = {
-    "sleepTimeSeconds": 27000,   # 7.5 h
-    "deepSleepSeconds": 5400,    # 1.5 h
+    "sleepTimeSeconds": 27000,  # 7.5 h
+    "deepSleepSeconds": 5400,  # 1.5 h
     "lightSleepSeconds": 14400,  # 4.0 h
-    "remSleepSeconds": 7200,     # 2.0 h
-    "awakeSleepSeconds": 600,    # 0.17 h
+    "remSleepSeconds": 7200,  # 2.0 h
+    "awakeSleepSeconds": 600,  # 0.17 h
     "sleepScores": {"overall": {"value": 78}},
     "sleepStartTimestampGMT": 1718319600000,
     "sleepEndTimestampGMT": 1718348400000,
@@ -57,22 +57,36 @@ _RAW_ACTIVITY = {
     "activityName": "Morning Run",
     "activityType": {"typeKey": "running"},
     "startTimeLocal": "2026-06-13 07:30:00",
-    "duration": 3000.0,        # 50 min in seconds
-    "distance": 8500.0,        # 8.5 km in metres
+    "duration": 3000.0,  # 50 min in seconds
+    "distance": 8500.0,  # 8.5 km in metres
     "calories": 620,
     "averageHR": 155,
     "maxHR": 178,
-    "averageSpeed": 5.88,      # raw unit — AI converts
+    "averageSpeed": 5.88,  # raw unit — AI converts
 }
 
 _EXPECTED_SLEEP_KEYS = {
-    "total_sleep_h", "deep_h", "light_h", "rem_h", "awake_h",
-    "score", "start_gmt", "end_gmt",
+    "total_sleep_h",
+    "deep_h",
+    "light_h",
+    "rem_h",
+    "awake_h",
+    "score",
+    "start_gmt",
+    "end_gmt",
 }
 
 _EXPECTED_ACTIVITY_KEYS = {
-    "id", "name", "type", "start", "duration_min", "distance_km",
-    "calories", "avg_hr", "max_hr", "avg_pace_min_km",
+    "id",
+    "name",
+    "type",
+    "start",
+    "duration_min",
+    "distance_km",
+    "calories",
+    "avg_hr",
+    "max_hr",
+    "avg_pace_min_km",
 }
 
 _EXPECTED_HR_ENTRY_KEYS = {"timestamp_ms", "bpm"}

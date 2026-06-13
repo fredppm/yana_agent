@@ -65,6 +65,16 @@ def parse_args() -> argparse.Namespace:
         help="Text mode. Without MESSAGE: interactive loop. With MESSAGE: single-shot query and exit.",
     )
     mode.add_argument("--init", action="store_true", help="Initialise sanctum and exit")
+    mode.add_argument(
+        "--programmer",
+        action="store_true",
+        help="Programmer mode — YANA as coding co-pilot. Use with --text or --voice.",
+    )
+    parser.add_argument(
+        "--voice",
+        action="store_true",
+        help="Voice interaction for programmer mode (spoken input/output).",
+    )
 
     # Headless / PULSE modes
     parser.add_argument(
@@ -396,6 +406,30 @@ def main() -> None:
 
     if args.init:
         run_init()
+        return
+
+    if args.programmer:
+        import core
+        from programmer.mode import run_programmer_mode
+
+        providers_config = prov.load_providers()
+        voice_cfg = v.load_voice_config(providers_config)
+
+        speak_fn = None
+        if args.voice:
+            _cfg = voice_cfg
+
+            def _speak(text: str) -> None:
+                v.speak(text, voice=_cfg["tts_voice"], rate=_cfg["tts_rate"], volume=_cfg["tts_volume"])
+
+            speak_fn = _speak
+
+        run_programmer_mode(
+            text_flag=bool(args.text),
+            voice_flag=args.voice,
+            sanctum_path=core.sanctum_path(),
+            speak_fn=speak_fn,
+        )
         return
 
     if args.headless is not None:
