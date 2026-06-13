@@ -1,9 +1,0 @@
-name: speckit
-display_name: SpecKit
-triggers:
-  - "start a speckit run"
-  - "start speckit"
-  - "/methodology speckit"
-  - "speckit run"
-  - "fazer speckit"
-prompt: "Run the SpecKit methodology in the worktree. Collect the necessary inputs from the user and execute the full workflow."
