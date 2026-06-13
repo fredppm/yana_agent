@@ -28,16 +28,17 @@ from __future__ import annotations
 
 import sys
 from abc import ABC, abstractmethod
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Iterator, Union
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     pass
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from programmer.decision_points import DecisionPointKind  # noqa: E402
+from programmer.decision_points import DecisionPointKind
 
 # ---------------------------------------------------------------------------
 # Request / Session / Event types
@@ -97,7 +98,7 @@ class EngineError:
 
 
 # The union type that engine.events() yields
-EngineEvent = Union[DecisionPoint, ProgressUpdate, CompletionSignal, EngineError]
+EngineEvent = DecisionPoint | ProgressUpdate | CompletionSignal | EngineError
 
 
 # ---------------------------------------------------------------------------
@@ -169,7 +170,7 @@ def load_engine(config: dict | None = None) -> CodingEngine:
     """
     if config is None:
         # Import here to avoid circular imports at module load time
-        import providers as prov  # noqa: PLC0415
+        import providers as prov
 
         config = prov.load_providers()
 

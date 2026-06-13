@@ -14,9 +14,7 @@ import importlib.util
 import sys
 from pathlib import Path
 from typing import Any
-from unittest.mock import MagicMock, patch
-
-import pytest
+from unittest.mock import MagicMock
 
 # orchestrator/ must be on sys.path so that google_calendar.py can resolve
 # its own `from connectors import ...` against the framework package.
