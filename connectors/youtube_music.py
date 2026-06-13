@@ -6,26 +6,26 @@ via ytmusicapi. Equivalent capability to SpotifyMCPConnector — both play,
 pause, skip, set volume.
 
 Architecture:
+  google-auth-oauthlib → OAuth flow (same as Google Calendar connector)
   ytmusicapi  → search, library, playlist queries (unofficial YTM API)
   mpv + yt-dlp → actual audio playback (streams YTM URLs locally)
-  mpv IPC socket → play, pause, skip, volume commands
+  mpv IPC      → play, pause, skip, volume commands
 
 Setup:
-  1. Install dependencies:
-       pip install ytmusicapi
-       # install mpv and yt-dlp via system package manager:
-       # Windows: winget install mpv  &&  pip install yt-dlp
-       # macOS:   brew install mpv yt-dlp
-  2. Authenticate ytmusicapi once:
-       python -c "from ytmusicapi import YTMusic; YTMusic.setup(filepath='~/.yana/ytmusic_auth.json')"
-  3. Register in orchestrator/config/connectors.yaml:
+  1. Install mpv:
+       Windows: winget install mpv.mpv  (in PowerShell)
+       macOS:   brew install mpv yt-dlp
+  2. Uses the same google_credentials.json as Google Calendar — no separate
+     setup needed if Calendar is already configured. First use opens a
+     browser window for Google authentication and saves the token.
+  3. Entry in orchestrator/config/connectors.yaml:
        - type: YouTubeMusicConnector
          id: ytmusic_fred
          name: "YouTube Music do Fred"
          owner: fred
          config:
-           auth_file: "~/.yana/ytmusic_auth.json"
-           ipc_socket: "/tmp/yana-ytmusic.sock"
+           credentials_file: "~/.yana/google_credentials.json"
+           token_file: "~/.yana/tokens/ytmusic_fred.json"
 """
 
 from __future__ import annotations
@@ -43,33 +43,100 @@ _YTM_BASE_URL = "https://music.youtube.com/watch?v="
 _YTM_PLAYLIST_URL = "https://music.youtube.com/playlist?list="
 _IS_WINDOWS = sys.platform == "win32"
 
+_YTM_SCOPE = "https://www.googleapis.com/auth/youtube"
+
 
 class YouTubeMusicConnector(Connector):
     connector_description = "YouTube Music — full playback control (play, pause, skip, volume) + search and library via mpv + ytmusicapi"
     connector_credential_hint = (
-        "Needs: ytmusicapi OAuth token. "
-        "Steps: run this once in PowerShell: "
-        "python -c \"from ytmusicapi import YTMusic; YTMusic.setup_oauth(filepath=r'~/.yana/ytmusic_auth.json')\" "
-        "A browser will open for Google login. After completing, the auth file is saved automatically. "
-        "Also requires mpv installed: winget install mpv.mpv"
+        "Uses the same Google credentials as the Calendar connector. "
+        "Ensure ~/.yana/google_credentials.json exists (download from console.cloud.google.com). "
+        "On first use a browser window opens for Google authentication — no manual setup needed. "
+        "Also requires mpv: run `winget install mpv.mpv` in PowerShell."
     )
 
     def __init__(
         self,
-        auth_file: str | None = None,
+        credentials_file: str | None = None,
+        token_file: str | None = None,
         ipc_socket: str | None = None,
     ) -> None:
-        from ytmusicapi import YTMusic  # type: ignore[import-untyped]
-
-        auth = str(Path(auth_file or "~/.yana/ytmusic_auth.json").expanduser())
-        self._ytm = YTMusic(auth)
+        self._credentials_file = Path(
+            credentials_file or "~/.yana/google_credentials.json"
+        ).expanduser()
+        self._token_file = Path(
+            token_file or "~/.yana/tokens/ytmusic_fred.json"
+        ).expanduser()
         # On Windows mpv uses named pipes; default to a pipe name (no path separators).
         # On Unix use a socket file path.
         if _IS_WINDOWS:
             self._ipc_socket = ipc_socket or "yana-ytmusic"
         else:
             self._ipc_socket = ipc_socket or "/tmp/yana-ytmusic.sock"
+
+        self._ytm: Any = None
         self._mpv: subprocess.Popen | None = None  # type: ignore[type-arg]
+
+        # Eagerly initialize YTMusic if token already exists
+        if self._token_file.exists():
+            self._init_ytm()
+        elif not self._credentials_file.exists():
+            raise PermissionError(
+                f"Google credentials not found: {self._credentials_file}. "
+                "Download from console.cloud.google.com."
+            )
+        # If token doesn't exist but credentials do — lazy setup on first call
+
+    # ------------------------------------------------------------------
+    # Auth helpers
+    # ------------------------------------------------------------------
+
+    def _client_info(self) -> dict:
+        """Extract client_id and client_secret from the Google credentials file."""
+        data = json.loads(self._credentials_file.read_text(encoding="utf-8"))
+        return data.get("installed") or data.get("web") or {}
+
+    def _ensure_auth(self) -> None:
+        """Run browser OAuth flow if token doesn't exist, then init YTMusic."""
+        if self._ytm is not None:
+            return
+        if not self._token_file.exists():
+            self._run_oauth_flow()
+        self._init_ytm()
+
+    def _run_oauth_flow(self) -> None:
+        """Open browser for Google OAuth (same flow as Calendar connector)."""
+        from google_auth_oauthlib.flow import InstalledAppFlow  # type: ignore[import-untyped]
+
+        flow = InstalledAppFlow.from_client_secrets_file(
+            str(self._credentials_file), scopes=[_YTM_SCOPE]
+        )
+        google_creds = flow.run_local_server(port=0)
+
+        # Write ytmusicapi-compatible OAuth JSON
+        expiry_ts = int(google_creds.expiry.timestamp()) if google_creds.expiry else int(time.time()) + 3600
+        token_data = {
+            "scope": _YTM_SCOPE,
+            "token_type": "Bearer",
+            "access_token": google_creds.token,
+            "refresh_token": google_creds.refresh_token,
+            "expires_at": expiry_ts,
+            "expires_in": max(0, expiry_ts - int(time.time())),
+        }
+        self._token_file.parent.mkdir(parents=True, exist_ok=True)
+        self._token_file.write_text(json.dumps(token_data, indent=2), encoding="utf-8")
+
+    def _init_ytm(self) -> None:
+        """Create YTMusic instance with saved OAuth token."""
+        from ytmusicapi import YTMusic  # type: ignore[import-untyped]
+        from ytmusicapi.auth.oauth import OAuthCredentials  # type: ignore[import-untyped]
+
+        client = self._client_info()
+        oauth_creds = OAuthCredentials(
+            client_id=client["client_id"],
+            client_secret=client["client_secret"],
+        )
+        self._ytm = YTMusic(str(self._token_file), oauth_credentials=oauth_creds)
 
     # ------------------------------------------------------------------
     # mpv IPC
@@ -154,6 +221,7 @@ class YouTubeMusicConnector(Connector):
         returns={"type": "list"},
     )
     def search(self, q: str, filter: str = "songs", max_results: int = 5) -> list[dict]:
+        self._ensure_auth()
         results = self._ytm.search(q, filter=filter, limit=max_results)
         return [self._format_result(r) for r in (results or [])[:max_results]]
 
@@ -181,6 +249,7 @@ class YouTubeMusicConnector(Connector):
         returns={"type": "list"},
     )
     def get_library_playlists(self, max_results: int = 20) -> list[dict]:
+        self._ensure_auth()
         playlists = self._ytm.get_library_playlists(limit=max_results)
         return [
             {
@@ -198,6 +267,7 @@ class YouTubeMusicConnector(Connector):
         returns={"type": "list"},
     )
     def get_playlist_tracks(self, playlist_id: str) -> list[dict]:
+        self._ensure_auth()
         playlist = self._ytm.get_playlist(playlist_id)
         tracks = (playlist or {}).get("tracks") or []
         return [self._format_result(t) for t in tracks]
