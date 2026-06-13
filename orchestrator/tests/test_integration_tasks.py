@@ -74,16 +74,12 @@ def test_create_complete_delete_task(registry):
     task_id = task["id"]
 
     # complete
-    complete_result = registry.call(
-        "tasks_fred", "complete_task", {"task_id": task_id}
-    )
+    complete_result = registry.call("tasks_fred", "complete_task", {"task_id": task_id})
     assert complete_result.ok is True, f"complete failed: {complete_result.error}"
     assert complete_result.data["status"] == "completed"
 
     # delete
-    delete_result = registry.call(
-        "tasks_fred", "delete_task", {"task_id": task_id}
-    )
+    delete_result = registry.call("tasks_fred", "delete_task", {"task_id": task_id})
     assert delete_result.ok is True, f"delete failed: {delete_result.error}"
     assert delete_result.data is True
 

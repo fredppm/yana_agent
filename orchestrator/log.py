@@ -62,7 +62,9 @@ def connector_ok(ts: str, instance: str, op: str) -> None:
 
 
 def connector_err(ts: str, instance: str, op: str, error: str) -> None:
-    console.print(f"\n[dim]{ts}[/dim] [red]{_CONNECTOR}[/red] {instance}/{op} [red]ERRO:[/red] {error}")
+    console.print(
+        f"\n[dim]{ts}[/dim] [red]{_CONNECTOR}[/red] {instance}/{op} [red]ERRO:[/red] {error}"
+    )
 
 
 # ---------------------------------------------------------------------------

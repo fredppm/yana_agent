@@ -272,7 +272,12 @@ def run_conversation(text_mode: bool) -> None:
         greeting = t("greeting")
         log.yana_prefix(v.ts())
         log.console.print(greeting)
-        v.speak(greeting, voice=voice_cfg["tts_voice"], rate=voice_cfg["tts_rate"], volume=voice_cfg["tts_volume"])
+        v.speak(
+            greeting,
+            voice=voice_cfg["tts_voice"],
+            rate=voice_cfg["tts_rate"],
+            volume=voice_cfg["tts_volume"],
+        )
 
     output.announce(t("banner"))
 
@@ -307,8 +312,14 @@ def run_conversation(text_mode: bool) -> None:
             log.yana_thinking(v.ts())
             _t0 = time.monotonic()
             reply = _call_with_tool_loop(
-                messages, system_prompt, tools, registry, providers_config,
-                task=task, text_mode=text_mode, clear_line=True,
+                messages,
+                system_prompt,
+                tools,
+                registry,
+                providers_config,
+                task=task,
+                text_mode=text_mode,
+                clear_line=True,
             )
             _llm_ms = int((time.monotonic() - _t0) * 1000)
             messages.append({"role": "assistant", "content": reply})
@@ -356,8 +367,13 @@ def run_single_shot(message: str) -> None:
 
     messages = [{"role": "user", "content": message}]
     _call_with_tool_loop(
-        messages, system_prompt, tools, registry, providers_config,
-        task="conversation", text_mode=True,
+        messages,
+        system_prompt,
+        tools,
+        registry,
+        providers_config,
+        task="conversation",
+        text_mode=True,
     )
     log.console.print()
 

@@ -22,11 +22,7 @@ _CONNECTORS_DIR = Path(__file__).parent.parent.parent / "connectors"
 def _connector_files() -> list[Path]:
     if not _CONNECTORS_DIR.exists():
         return []
-    return [
-        p
-        for p in sorted(_CONNECTORS_DIR.glob("*.py"))
-        if not p.name.startswith("_")
-    ]
+    return [p for p in sorted(_CONNECTORS_DIR.glob("*.py")) if not p.name.startswith("_")]
 
 
 @pytest.mark.parametrize("path", _connector_files(), ids=lambda p: p.name)
