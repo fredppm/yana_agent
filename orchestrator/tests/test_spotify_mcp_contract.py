@@ -65,12 +65,25 @@ _SEARCH_RESULTS = {
 
 _PLAYLISTS = {
     "items": [
-        {"id": "pl1", "name": "Morning Mix", "uri": "spotify:playlist:pl1", "tracks": {"total": 30}},
+        {
+            "id": "pl1",
+            "name": "Morning Mix",
+            "uri": "spotify:playlist:pl1",
+            "tracks": {"total": 30},
+        },
         {"id": "pl2", "name": "Workout", "uri": "spotify:playlist:pl2", "tracks": {"total": 45}},
     ]
 }
 
-_EXPECTED_PLAYBACK_KEYS = {"track", "artist", "album", "uri", "is_playing", "progress_ms", "duration_ms"}
+_EXPECTED_PLAYBACK_KEYS = {
+    "track",
+    "artist",
+    "album",
+    "uri",
+    "is_playing",
+    "progress_ms",
+    "duration_ms",
+}
 _EXPECTED_TRACK_KEYS = {"name", "artist", "album", "uri", "duration_ms"}
 _EXPECTED_PLAYLIST_KEYS = {"id", "name", "uri", "tracks"}
 

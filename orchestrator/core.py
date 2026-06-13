@@ -112,7 +112,7 @@ def load_system_prompt(voice_mode: bool = False, registry=None) -> str:
             parts.append(
                 "---\n"
                 "## Connector Auth Flow\n\n"
-                "When a connector call returns `{\"ok\": false, \"error\": \"auth\"}` or `\"error\": \"unavailable\"`:\n"
+                'When a connector call returns `{"ok": false, "error": "auth"}` or `"error": "unavailable"`:\n'
                 "1. Check if the connector entry in the manifest has a `credential_hint` — it tells you exactly what credentials are needed and how to get them.\n"
                 "2. Explain conversationally to Fred what's needed, why, and how to get it (keep it friendly, concise).\n"
                 "3. Ask Fred to provide the credentials (or run the setup command if needed).\n"

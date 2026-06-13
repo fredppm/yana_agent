@@ -57,7 +57,9 @@ def test_search_returns_list(registry):
 
 @pytest.mark.integration
 def test_search_empty_query_returns_results(registry):
-    result = registry.call("ytmusic_fred", "search", {"q": "jazz", "filter": "songs", "max_results": 3})
+    result = registry.call(
+        "ytmusic_fred", "search", {"q": "jazz", "filter": "songs", "max_results": 3}
+    )
     assert result.ok is True, f"call failed: {result.error}"
     assert isinstance(result.data, list)
     assert len(result.data) <= 3
@@ -87,7 +89,9 @@ def test_now_playing_none_when_idle(registry):
 @pytest.mark.integration
 def test_play_video_launches_mpv(registry):
     # Search for a short track and play it briefly
-    search = registry.call("ytmusic_fred", "search", {"q": "lofi chill", "filter": "songs", "max_results": 1})
+    search = registry.call(
+        "ytmusic_fred", "search", {"q": "lofi chill", "filter": "songs", "max_results": 1}
+    )
     assert search.ok and search.data, "search returned nothing"
 
     video_id = search.data[0]["video_id"]

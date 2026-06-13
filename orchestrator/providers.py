@@ -159,7 +159,7 @@ CONNECTOR_TOOLS: list[dict] = [
                 },
                 "credentials": {
                     "type": "object",
-                    "description": "Credential fields as a JSON object (e.g. {\"client_id\": \"...\", \"client_secret\": \"...\"})",
+                    "description": 'Credential fields as a JSON object (e.g. {"client_id": "...", "client_secret": "..."})',
                 },
             },
             "required": ["instance_id", "credentials"],

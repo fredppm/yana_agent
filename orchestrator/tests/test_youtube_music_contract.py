@@ -47,7 +47,7 @@ _EXPECTED_PLAYLIST_KEYS = {"id", "title", "count", "url"}
 _EXPECTED_NOW_PLAYING_KEYS = {"title", "is_playing", "progress_s", "duration_s"}
 
 
-def _make_connector() -> YouTubeMusicConnector:
+def _make_connector():
     """Return a connector with all external dependencies bypassed."""
     mock_ytm = MagicMock()
     c = YouTubeMusicConnector.__new__(YouTubeMusicConnector)
