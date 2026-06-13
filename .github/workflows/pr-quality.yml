@@ -5,6 +5,7 @@ on:
     branches: [main]
     # 'edited' catches title changes after the PR is open
     types: [opened, edited, synchronize, reopened]
+  workflow_dispatch:
 
 jobs:
   pr-title:
