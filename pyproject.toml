@@ -25,8 +25,11 @@ module = ["providers"]
 warn_unused_ignores = false
 
 [tool.pytest.ini_options]
-addopts = "--color=yes --tb=short"
+addopts = "--color=yes --tb=short -m 'not integration'"
 testpaths = ["orchestrator/tests"]
+markers = [
+    "integration: tests that hit real external services (run with -m integration)",
+]
 
 [tool.vulture]
 min_confidence = 80
