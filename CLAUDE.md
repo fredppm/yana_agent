@@ -45,9 +45,9 @@ yana_agent/
 |---|---|---|
 | `sanctum_exists()` | `() -> bool` | True iff `data/agent-yana/PERSONA.md` exists |
 | `sanctum_path()` | `() -> Path` | Always `project_root/data/agent-yana` |
-| `load_system_prompt(voice_mode)` | `(bool) -> str` | Raises `FileNotFoundError` if SKILL.md missing; voice_mode=True appends no-markdown instruction |
+| `load_system_prompt()` | `() -> str` | Raises `FileNotFoundError` if SKILL.md missing |
 | `is_quiet_hours(pulse_config?)` | `(dict?) -> bool` | Parses `quiet_hours: "HH:MM-HH:MM"` — handles overnight windows (e.g. 23:00–07:00) |
-| `save_session_log(messages, session_id?)` | `(list[dict], str?) -> Path` | Writes to `data/agent-yana/sessions/session-{id}.md` |
+| `save_session_log(messages, session_id)` | `(list[dict], str) -> None` | Writes to `data/agent-yana/sessions/session-{id}.md` |
 
 ### providers.py
 
@@ -154,10 +154,58 @@ Errors from ruff and mypy appear **inline in the PR diff**. The full table is in
 
 ---
 
+## Text Layers
+
+All user-facing text is separated into three distinct layers:
+
+### 1. UI + Communication → `strings.py` (i18n-ready)
+
+Any text the user reads as interface or conversation lives in `orchestrator/strings.py`.
+Access via `t("key")` — never hardcode these strings at call sites.
+
+```python
+from strings import t
+print(t("banner"))           # UI chrome
+input(f"{t('user_label')}: ")  # conversation label
+```
+
+| Category | Examples | Keys |
+|---|---|---|
+| UI | banner, setup messages, output prefixes | `banner`, `sanctum_missing`, `warn_prefix`, `error_prefix` |
+| Communication | greetings, conversational labels | `greeting`, `user_label` |
+
+To add a string: add a key to `_STRINGS["pt_BR"]` in `strings.py`.
+To add a locale: add a new locale dict and change `_LOCALE`. Call sites don't change.
+
+### 2. Technical errors → `errors.py` (English, coded)
+
+Exceptions and error output use coded messages via `errors.e("CODE", **kwargs)`.
+Format: `{MODULE}-{SEQ}: {message}` — always English.
+
+| Module | File |
+|---|---|
+| `CFG` | config / providers.yaml |
+| `LLM` | providers.py |
+| `SYS` | core.py |
+| `MEM` | sanctum_writer.py |
+| `VOX` | voice.py |
+
+### 3. Operational logs → English, inline
+
+Debug/status messages that go through `output.debug/status` are English inline strings.
+These are for developers and operators, not end users — no catalog needed.
+
+```python
+output.debug("listening...")
+output.status("saving sanctum...")
+```
+
+---
+
 ## What NOT to change without discussion
 
 1. Sanctum path: `data/agent-yana/` — changing breaks all existing sanctums
 2. Session log filename pattern: `session-{id}.md` — changing breaks `load_recent_sessions()`
 3. Sanctum writer block format: `<<<FILE:name>>>..<<<END>>>` — changing breaks all existing LLM prompts
 4. `_auto_task` thresholds (120 chars, 6 turns) — affects cost/quality tradeoff calibrated for Portuguese conversation
-5. Voice mode system prompt instruction — YANA must never output markdown in voice mode
+5. `strip_markdown()` in `voice.py` — called before TTS to clean symbols. YANA writes naturally; the pipeline handles conversion.

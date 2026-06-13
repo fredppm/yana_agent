@@ -250,9 +250,7 @@ def main():
     result: dict = {"status": "ok", "sanctum": "", "files_created": [], "warnings": []}
 
     # Paths
-    bmad_dir = project_root / "_bmad"
-    memory_dir = bmad_dir / "memory"
-    sanctum_path = memory_dir / SANCTUM_DIR
+    sanctum_path = project_root / "data" / SANCTUM_DIR
     assets_dir = skill_path / "assets"
     references_dir = skill_path / "references"
     scripts_dir = skill_path / "scripts"

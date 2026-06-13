@@ -12,9 +12,12 @@ Routing resolution order:
 from __future__ import annotations
 
 import os
+from collections.abc import Callable
 from pathlib import Path
 
 import yaml
+
+import errors
 
 # ---------------------------------------------------------------------------
 # Config loading
@@ -28,7 +31,7 @@ def _config_path() -> Path:
 def load_providers() -> dict:
     path = _config_path()
     if not path.exists():
-        raise FileNotFoundError(f"providers.yaml not found at {path}")
+        raise FileNotFoundError(errors.e("CFG-001", path=path))
     with path.open(encoding="utf-8") as f:
         return yaml.safe_load(f) or {}
 
@@ -69,7 +72,7 @@ def resolve_model(task: str = "conversation", config: dict | None = None) -> tup
         if model_id:
             return provider_name, model_id
 
-    return "anthropic", llm.get("default", "claude-sonnet-4-6")
+    raise ValueError(errors.e("LLM-001", task=task, tier=tier_spec))
 
 
 def get_api_key(provider: str, config: dict | None = None) -> str | None:
@@ -87,7 +90,7 @@ def get_api_key(provider: str, config: dict | None = None) -> str | None:
 
     key = os.environ.get(env_var, "")
     if not key:
-        raise OSError(f"API key not found. Set the {env_var} environment variable.")
+        raise OSError(errors.e("LLM-002", env_var=env_var))
     return key
 
 
@@ -146,6 +149,20 @@ CONNECTOR_TOOLS: list[dict] = [
 # ---------------------------------------------------------------------------
 
 
+def _auto_task(messages: list[dict], task: str) -> str:
+    """
+    Auto-downgrade 'conversation' to 'conversation_fast' for short/simple exchanges.
+    Saves cost and latency — Haiku handles small talk, Sonnet handles depth.
+    """
+    if task != "conversation":
+        return task
+    last = messages[-1].get("content", "") if messages else ""
+    # Short message + short history = fast tier
+    if len(last) < 120 and len(messages) <= 6:
+        return "conversation_fast"
+    return task
+
+
 def call_llm(
     messages: list[dict],
     system_prompt: str,
@@ -153,29 +170,42 @@ def call_llm(
     stream: bool = True,
     config: dict | None = None,
     timeout: float = 60.0,
+    on_token: Callable[[str], None] | None = None,
 ) -> str:
     """
     Route to the correct provider and return the assistant's reply as a string.
 
-    messages: list of {role, content} — the conversation history
-    system_prompt: YANA's assembled identity context
-    task: routing key (conversation | pulse_scheduled | pulse_triggered | first_breath)
-    stream: stream tokens to stdout while accumulating
+    messages:  list of {role, content} — the conversation history
+    system:    YANA's assembled identity context
+    task:      routing key (conversation | conversation_fast | pulse_scheduled | first_breath)
+    stream:    stream tokens while accumulating
+    on_token:  callback(char) for each streamed token — output layer hooks in here.
+               Normalised to a no-op internally so internals never guard against None.
     """
     if config is None:
         config = load_providers()
 
+    # Normalise once — internals receive a guaranteed callable
+    _on_token: Callable[[str], None] = on_token if on_token is not None else lambda _: None
+
+    task = _auto_task(messages, task)
     provider, model_id = resolve_model(task, config)
 
     if provider == "anthropic":
         api_key = get_api_key("anthropic", config)
-        return _call_anthropic(messages, system_prompt, model_id, api_key or "", stream, timeout)
+        assert api_key is not None  # get_api_key raises OSError if key is missing
+        return _call_anthropic(
+            messages, system_prompt, model_id, api_key, stream, timeout, _on_token
+        )
     elif provider == "bedrock":
         region, profile = _bedrock_config(config)
-        return _call_bedrock(messages, system_prompt, model_id, region, profile, stream, timeout)
+        return _call_bedrock(
+            messages, system_prompt, model_id, region, profile, stream, timeout, _on_token
+        )
     elif provider == "openai":
         api_key = get_api_key("openai", config)
-        return _call_openai(messages, system_prompt, model_id, api_key or "", stream, timeout)
+        assert api_key is not None  # get_api_key raises OSError if key is missing
+        return _call_openai(messages, system_prompt, model_id, api_key, stream, timeout, _on_token)
     else:
         raise ValueError(f"Unknown provider: {provider}")
 
@@ -200,7 +230,8 @@ def _call_anthropic(
     model_id: str,
     api_key: str,
     stream: bool,
-    timeout: float = 60.0,
+    timeout: float,
+    on_token: Callable[[str], None],
 ) -> str:
     import anthropic
     import httpx
@@ -216,9 +247,8 @@ def _call_anthropic(
             messages=messages,  # type: ignore[arg-type]
         ) as s:
             for text in s.text_stream:
-                print(text, end="", flush=True)
+                on_token(text)
                 full_text += text
-        print()
         return full_text
     else:
         response = client.messages.create(
@@ -243,7 +273,8 @@ def _call_bedrock(
     region: str,
     profile: str | None,
     stream: bool,
-    timeout: float = 60.0,
+    timeout: float,
+    on_token: Callable[[str], None],
 ) -> str:
     import anthropic
     import httpx
@@ -263,9 +294,8 @@ def _call_bedrock(
             messages=messages,  # type: ignore[arg-type]
         ) as s:
             for text in s.text_stream:
-                print(text, end="", flush=True)
+                on_token(text)
                 full_text += text
-        print()
         return full_text
     else:
         response = client.messages.create(
@@ -289,11 +319,12 @@ def _call_openai(
     model_id: str,
     api_key: str,
     stream: bool,
-    timeout: float = 60.0,
+    timeout: float,
+    on_token: Callable[[str], None],
 ) -> str:
     from openai import OpenAI
 
-    client = OpenAI(api_key=api_key)
+    client = OpenAI(api_key=api_key, timeout=timeout)
     full_messages = [{"role": "system", "content": system_prompt}, *messages]
 
     if stream:
@@ -306,9 +337,8 @@ def _call_openai(
         for chunk in response:
             delta = chunk.choices[0].delta  # type: ignore[union-attr]
             if delta.content:
-                print(delta.content, end="", flush=True)
+                on_token(delta.content)
                 full_text += delta.content
-        print()
         return full_text
     else:
         response = client.chat.completions.create(

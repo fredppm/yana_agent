@@ -10,6 +10,8 @@ from __future__ import annotations
 from datetime import datetime
 from pathlib import Path
 
+import errors
+
 # ---------------------------------------------------------------------------
 # Paths
 # ---------------------------------------------------------------------------
@@ -25,7 +27,7 @@ def _skill_root() -> Path:
 
 
 def _sanctum_root() -> Path:
-    return _project_root() / "_bmad" / "memory" / "agent-yana"
+    return _project_root() / "data" / "agent-yana"
 
 
 def _sessions_dir() -> Path:
@@ -63,6 +65,10 @@ def build_connector_manifest(registry) -> str:
     return "\n".join(lines)
 
 
+def _read_file(path: Path, name: str) -> str:
+    return f"---\n## {name}\n\n{path.read_text(encoding='utf-8')}"
+
+
 def load_system_prompt(voice_mode: bool = False, registry=None) -> str:
     """
     Build the system prompt by concatenating SKILL.md + sanctum files.
@@ -73,34 +79,30 @@ def load_system_prompt(voice_mode: bool = False, registry=None) -> str:
     voice_mode=True appends a no-markdown instruction.
     registry: if provided, injects the lightweight connector manifest.
     """
-    parts: list[str] = []
-
-    # 1. SKILL.md — identity seed
     skill_md = _skill_root() / "SKILL.md"
-    if skill_md.exists():
-        parts.append(_read_file(skill_md, "SKILL.md"))
-    else:
+    if not skill_md.exists():
         raise FileNotFoundError(f"SKILL.md not found at {skill_md}")
 
-    # 2. Sanctum files — in order, skip missing
+    parts: list[str] = [_read_file(skill_md, "SKILL.md")]
+
+    # Sanctum files — in order, skip missing
     sanctum = _sanctum_root()
     if sanctum.exists():
         for fname in _SANCTUM_FILES:
             fpath = sanctum / fname
             if fpath.exists():
                 parts.append(_read_file(fpath, fname))
+        # pulse-config.yaml as raw text (YANA reads it for PULSE tasks)
+        pulse_cfg = sanctum / "pulse-config.yaml"
+        if pulse_cfg.exists():
+            parts.append(
+                f"---\n## pulse-config.yaml\n\n```yaml\n{pulse_cfg.read_text(encoding='utf-8')}\n```"
+            )
     else:
         # No sanctum yet — First Breath hasn't happened
-        parts.append("\n\n---\n[SANCTUM NOT FOUND — First Breath required before proceeding.]\n")
+        parts.append(f"---\n[{errors.e('SYS-001')}]")
 
-    # 3. pulse-config.yaml as raw text (YANA reads it for PULSE tasks)
-    pulse_cfg = sanctum / "pulse-config.yaml"
-    if pulse_cfg.exists():
-        parts.append(
-            f"\n\n---\n## pulse-config.yaml\n\n```yaml\n{pulse_cfg.read_text(encoding='utf-8')}\n```\n"
-        )
-
-    # 4. Connector manifest — lightweight, always injected when registry is present
+    # Connector manifest — lightweight, always injected when registry is present
     if registry is not None:
         manifest_section = build_connector_manifest(registry)
         if manifest_section:
@@ -112,11 +114,6 @@ def load_system_prompt(voice_mode: bool = False, registry=None) -> str:
         result += "\n\n---\n[VOICE MODE: Respond in plain spoken language only. No markdown, no bullet points, no headers.]"
 
     return result
-
-
-def _read_file(path: Path, label: str) -> str:
-    content = path.read_text(encoding="utf-8")
-    return f"---\n## {label}\n\n{content}"
 
 
 # ---------------------------------------------------------------------------
@@ -148,13 +145,8 @@ def save_session_log(messages: list[dict], session_id: str | None = None) -> Pat
 
     filename = f"session-{session_id}.md"
     path = _sessions_dir() / filename
-
     lines = [f"# Session {session_id}\n"]
-    for msg in messages:
-        role = msg.get("role", "unknown").upper()
-        content = msg.get("content", "")
-        lines.append(f"## {role}\n\n{content}\n")
-
+    lines += [f"## {m['role'].upper()}\n\n{m['content']}\n" for m in messages]
     path.write_text("\n".join(lines), encoding="utf-8")
     return path
 
@@ -179,17 +171,16 @@ def sanctum_path() -> Path:
 
 
 def load_pulse_config() -> dict:
-    """Load pulse-config.yaml from the sanctum. Returns empty dict if missing."""
-    try:
-        import yaml
-    except ImportError:
-        return {}
+    """Load pulse-config.yaml from the sanctum. Returns empty dict if missing or invalid."""
+    import yaml
 
     cfg_path = _sanctum_root() / "pulse-config.yaml"
     if not cfg_path.exists():
         return {}
-    with cfg_path.open(encoding="utf-8") as f:
-        return yaml.safe_load(f) or {}
+    try:
+        return yaml.safe_load(cfg_path.read_text(encoding="utf-8")) or {}
+    except Exception:
+        return {}
 
 
 def is_quiet_hours(pulse_config: dict | None = None) -> bool:
@@ -199,7 +190,7 @@ def is_quiet_hours(pulse_config: dict | None = None) -> bool:
 
     quiet = pulse_config.get("quiet_hours", "23:00-07:00")
     try:
-        start_str, end_str = quiet.split("-")
+        start_str, end_str = quiet.split("-", 1)
         now = datetime.now().time()
         start = datetime.strptime(start_str.strip(), "%H:%M").time()
         end = datetime.strptime(end_str.strip(), "%H:%M").time()

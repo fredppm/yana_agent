@@ -1,5 +1,5 @@
 # Sanctum — private YANA memory (never commit)
-_bmad/memory/agent-yana/
+data/
 
 # Local Claude Code skills installation (framework tooling, not project code)
 .claude/
