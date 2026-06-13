@@ -140,12 +140,17 @@ class YouTubeMusicConnector(Connector):
                 "mpv not found. Install with: winget install mpv.mpv (PowerShell)"
             ) from exc
 
-        # Wait for the pipe/socket to become available
+        # Wait for the pipe/socket to become available.
+        # On Windows, Path.exists() on a named pipe raises OSError(231) when the
+        # pipe exists but is busy — that still means mpv is ready.
         pipe_path = rf"\\.\pipe\{self._ipc_socket}" if _IS_WINDOWS else self._ipc_socket
-        for _ in range(30):
-            if Path(pipe_path).exists():
-                break
-            time.sleep(0.1)
+        try:
+            for _ in range(30):
+                if Path(pipe_path).exists():
+                    break
+                time.sleep(0.1)
+        except OSError:
+            pass  # pipe exists (WinError 231 = busy) — mpv started successfully
 
     def _mpv_cmd(self, *args: Any) -> Any:
         """Send a JSON IPC command to the running mpv process."""
