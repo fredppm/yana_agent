@@ -6,7 +6,4 @@ triggers:
   - "/methodology speckit"
   - "speckit run"
   - "fazer speckit"
-questions:
-  - "What is the project name?"
-  - "Describe what you want to specify."
-  - "Any constraints or non-goals to capture now?"
+prompt: "Run the SpecKit methodology in the worktree. Collect the necessary inputs from the user and execute the full workflow."

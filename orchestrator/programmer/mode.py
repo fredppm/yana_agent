@@ -274,11 +274,10 @@ def _session_loop(
             # Methodology routing (Story 2.2 — explicit trigger required)
             from programmer.methodology import detect_methodology
 
-            methodology = detect_methodology(user_input, method_defs)
-            if methodology:
+            method_def = detect_methodology(user_input, method_defs)
+            if method_def:
                 last_dispatch = _handle_methodology_request(
-                    methodology,
-                    method_defs,
+                    method_def,
                     sanctum,
                     speak_fn=speak_fn,
                     providers_config=providers_config,
@@ -453,8 +452,7 @@ def _handle_post_filter(
 
 
 def _handle_methodology_request(
-    methodology: str,
-    defs: list,
+    method_def: object,
     sanctum: SanctumContext,
     speak_fn: Callable[[str], None] | None = None,
     providers_config: dict | None = None,
@@ -462,12 +460,11 @@ def _handle_methodology_request(
     """
     Handle a methodology mode request (Story 2.2).
 
-    Collects inputs conversationally, assembles a prompt, and dispatches to the
-    engine — skipping the clarification gate (input collection IS the gate).
+    Dispatches the methodology prompt directly to the engine — no input
+    collection in YANA. The engine handles all methodology-specific Q&A
+    through the existing decision-point loop.
     Returns the DispatchResult (for worktree tracking) or None.
     """
-    from strings import t
-
     from programmer.dispatcher import (
         DispatchFailed,
         DispatchResult,
@@ -475,27 +472,15 @@ def _handle_methodology_request(
         new_session_id,
     )
     from programmer.filter import FilterStatus
-    from programmer.methodology import (
-        MethodologyCancelled,
-        assemble_methodology_prompt,
-        check_artifacts,
-        collect_methodology_inputs,
-    )
+    from programmer.methodology import MethodologyDef, check_artifacts
 
-    # --- Collect methodology inputs conversationally ---
-    result = collect_methodology_inputs(methodology, defs, speak_fn=speak_fn, listen_fn=None)
-    if isinstance(result, MethodologyCancelled):
-        msg = t("programmer_cancelled")
-        print(f"\n{msg}", flush=True)
-        if speak_fn:
-            speak_fn(msg)
+    if not isinstance(method_def, MethodologyDef):
         return None
 
-    # --- Assemble prompt and dispatch (no clarification gate) ---
-    prompt = assemble_methodology_prompt(result)
+    # --- Dispatch directly — engine owns input collection (Design Principle 1) ---
     session_id = new_session_id()
     outcome = dispatch_request(
-        enriched_prompt=prompt,
+        enriched_prompt=method_def.prompt,
         sanctum=sanctum,
         session_id=session_id,
         config=providers_config,
@@ -507,7 +492,9 @@ def _handle_methodology_request(
             speak_fn(f"Could not dispatch methodology. {outcome.reason}")
         return None
 
-    dispatch_msg = f"{result.display_name} run dispatched. I'll surface decisions that need you."
+    dispatch_msg = (
+        f"{method_def.display_name} run dispatched. I'll surface decisions that need you."
+    )
     print(f"\n{dispatch_msg}", flush=True)
     if speak_fn:
         speak_fn(dispatch_msg)
@@ -518,21 +505,18 @@ def _handle_methodology_request(
     # --- Standard post-filter lifecycle ---
     _handle_post_filter(outcome, status, speak_fn)
 
-    # --- AC-2.2.4: verify artifacts on COMPLETED ---
+    # --- Verify artifacts on COMPLETED ---
     if status is FilterStatus.COMPLETED and isinstance(outcome, DispatchResult):
         wm = outcome.worktree_manager
-        has_artifacts = check_artifacts(wm.path)
-        if has_artifacts:
-            artifact_msg = f"Methodology run complete. Artifacts are in the worktree at {wm.path}."
-            print(f"\n{artifact_msg}", flush=True)
+        if check_artifacts(wm.path):
+            msg = f"Methodology run complete. Artifacts are in the worktree at {wm.path}."
+            print(f"\n{msg}", flush=True)
             if speak_fn:
                 speak_fn("Methodology run complete. Artifacts are in the worktree.")
         else:
-            no_artifact_msg = (
-                f"Methodology run complete but no artifacts found in worktree at {wm.path}."
-            )
-            print(f"\n{no_artifact_msg}", flush=True)
+            msg = f"Methodology run complete but no artifacts found in worktree at {wm.path}."
+            print(f"\n{msg}", flush=True)
             if speak_fn:
-                speak_fn("Methodology run complete but no artifacts were detected in the worktree.")
+                speak_fn("Methodology run complete but no artifacts were detected.")
 
     return outcome

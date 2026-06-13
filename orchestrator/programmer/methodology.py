@@ -1,79 +1,57 @@
 """
-methodology.py — Methodology routing for YANA programmer mode (Story 2.2).
+methodology.py -- Methodology routing for YANA programmer mode (Story 2.2).
 
-Methodology definitions live in YAML files — YANA's code is agnostic about
-which methodologies exist. Adding a new methodology requires only a YAML file,
-not a code change.
+YANA detects a methodology trigger, builds a dispatch prompt, and hands off
+to the engine. The engine handles all input collection and execution via the
+existing decision-point loop -- YANA never collects methodology-specific inputs.
+
+Methodology definitions live in YAML files. Adding a new methodology requires
+only a YAML file -- no Python changes.
 
 Two sources of definitions (merged, project-specific wins on collision):
   1. Bundled:          programmer/methodologies/*.yaml  (shipped with YANA)
   2. Project-specific: {repo_root}/.yana/methodologies/*.yaml  (optional)
 
-YANA never executes methodology herself — that is the engine's responsibility.
 Design Principle 1: YANA is the interface; the engine is the executor.
 """
 
 from __future__ import annotations
 
-from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
+_BUNDLED_DIR = Path(__file__).parent / "methodologies"
+
+
 # ---------------------------------------------------------------------------
-# Methodology definition — loaded from YAML
+# Methodology definition -- loaded from YAML
 # ---------------------------------------------------------------------------
 
 
 @dataclass
 class MethodologyDef:
     """
-    Defines one methodology: its trigger phrases and input questions.
+    Defines one methodology: trigger phrases and the dispatch prompt.
     Loaded from a YAML file; never hardcoded in Python.
     """
 
-    name: str           # machine name: "bmad", "speckit"
-    display_name: str   # human label used in prompts and messages: "BMAD", "SpecKit"
-    triggers: list[str] # exact-match trigger phrases (stored lowercased)
-    questions: list[str]  # questions to ask Fred before dispatching
-
-
-# ---------------------------------------------------------------------------
-# Result types
-# ---------------------------------------------------------------------------
-
-
-@dataclass
-class MethodologyInputs:
-    """Successfully collected inputs for a methodology run."""
-
-    methodology: str          # methodology name ("bmad", "speckit", ...)
-    display_name: str         # human label for messages
-    answers: dict[str, str] = field(default_factory=dict)  # question → answer
-
-
-@dataclass
-class MethodologyCancelled:
-    """Fred cancelled or gave an empty answer during input collection."""
-
-    reason: str
+    name: str  # machine name: "bmad", "speckit"
+    display_name: str  # human label: "BMAD", "SpecKit"
+    triggers: list[str]  # exact-match trigger phrases (stored lowercased)
+    prompt: str  # prompt sent to the engine to kick off the methodology
 
 
 # ---------------------------------------------------------------------------
 # Loading
 # ---------------------------------------------------------------------------
 
-_BUNDLED_DIR = Path(__file__).parent / "methodologies"
-
-# Cancel phrases — mirror clarification gate and filter
-_CANCEL_PHRASES = {"", "/cancel", "cancela", "cancel"}
-
 
 def load_methodology_defs(repo_root: Path | None = None) -> list[MethodologyDef]:
     """
     Load methodology definitions from YAML files.
 
-    Bundled definitions (shipped with YANA) are loaded first; project-specific
-    definitions override them by name. repo_root=None loads bundled only.
+    Bundled definitions are loaded first; project-specific override by name.
+    repo_root=None loads bundled only.
     """
     defs: dict[str, MethodologyDef] = {}
 
@@ -106,7 +84,7 @@ def _load_yaml_def(yaml_file: Path) -> MethodologyDef | None:
             name=name,
             display_name=str(data.get("display_name", name.upper())),
             triggers=[str(t).strip().lower() for t in data.get("triggers", [])],
-            questions=[str(q) for q in data.get("questions", [])],
+            prompt=str(data.get("prompt", f"Run the {name.upper()} methodology in the worktree.")),
         )
     except Exception:
         return None
@@ -117,80 +95,16 @@ def _load_yaml_def(yaml_file: Path) -> MethodologyDef | None:
 # ---------------------------------------------------------------------------
 
 
-def detect_methodology(text: str, defs: list[MethodologyDef]) -> str | None:
+def detect_methodology(text: str, defs: list[MethodologyDef]) -> MethodologyDef | None:
     """
-    Return the methodology name if text matches a trigger phrase.
-
+    Return the MethodologyDef if text matches a trigger phrase, else None.
     Comparison is case-insensitive and strips surrounding whitespace.
-    Returns None if no match.
     """
     low = text.strip().lower()
     for defn in defs:
         if low in defn.triggers:
-            return defn.name
+            return defn
     return None
-
-
-def collect_methodology_inputs(
-    methodology: str,
-    defs: list[MethodologyDef],
-    speak_fn: Callable[[str], None] | None = None,
-    listen_fn: Callable[[], str] | None = None,
-) -> MethodologyInputs | MethodologyCancelled:
-    """
-    Ask Fred the questions defined for this methodology, one at a time.
-
-    An empty answer or /cancel cancels the run.
-    Returns MethodologyInputs on success, MethodologyCancelled on cancel.
-    """
-    defn = _find_def(methodology, defs)
-    questions = defn.questions if defn else []
-    display_name = defn.display_name if defn else methodology.upper()
-    answers: dict[str, str] = {}
-
-    for question in questions:
-        print(f"\n[methodology/{methodology}] {question}", flush=True)
-        if speak_fn:
-            speak_fn(question)
-
-        if listen_fn:
-            answer = listen_fn().strip()
-        else:
-            try:
-                answer = input("[your answer] ").strip()
-            except (EOFError, KeyboardInterrupt):
-                answer = ""
-
-        if answer.lower() in _CANCEL_PHRASES:
-            return MethodologyCancelled(
-                reason=f"Cancelled during input collection for {methodology}"
-            )
-
-        answers[question] = answer
-
-    return MethodologyInputs(
-        methodology=methodology,
-        display_name=display_name,
-        answers=answers,
-    )
-
-
-def assemble_methodology_prompt(inputs: MethodologyInputs) -> str:
-    """
-    Build the structured prompt for the engine.
-
-    The engine receives: which methodology to run + Fred's answers.
-    The engine resolves what to execute inside the worktree.
-    """
-    lines = [
-        f"Run the {inputs.display_name} methodology inside the worktree.",
-        "",
-        "## Inputs",
-    ]
-    for question, answer in inputs.answers.items():
-        lines.append(f"**{question}** {answer}")
-
-    return "\n".join(lines)
 
 
 def check_artifacts(worktree_path: Path) -> bool:
@@ -198,17 +112,8 @@ def check_artifacts(worktree_path: Path) -> bool:
     Return True if the worktree contains at least one file.
 
     Called after engine completion to verify the methodology produced output.
-    Does not validate artifact content — that is the engine's responsibility.
+    Content validation is the engine's responsibility.
     """
     if not worktree_path.exists():
         return False
     return any(f for f in worktree_path.rglob("*") if f.is_file())
-
-
-# ---------------------------------------------------------------------------
-# Internal helpers
-# ---------------------------------------------------------------------------
-
-
-def _find_def(methodology: str, defs: list[MethodologyDef]) -> MethodologyDef | None:
-    return next((d for d in defs if d.name == methodology), None)

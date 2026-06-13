@@ -7,7 +7,4 @@ triggers:
   - "/methodology bmad"
   - "bmad run"
   - "fazer bmad"
-questions:
-  - "What is the project name?"
-  - "What would you like to build?"
-  - "What are your goals for this session?"
+prompt: "Run the BMAD methodology in the worktree. Collect the necessary inputs from the user and execute the full workflow."
