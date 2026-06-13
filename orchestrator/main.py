@@ -18,6 +18,7 @@ from __future__ import annotations
 import argparse
 import io
 import json
+import logging
 import subprocess
 import sys
 from datetime import datetime
@@ -45,6 +46,7 @@ sys.path.insert(0, str(_HERE))
 
 import connectors_setup  # noqa: E402
 import core  # noqa: E402
+import log  # noqa: E402
 import providers as prov  # noqa: E402
 import sanctum_writer as sw  # noqa: E402
 import voice as v  # noqa: E402
@@ -82,6 +84,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--source", default="", help="Trigger source (with --headless:trigger)")
     parser.add_argument("--event", default="", help="Trigger event (with --headless:trigger)")
     parser.add_argument("--payload", default="{}", help="JSON payload for trigger events")
+    parser.add_argument("--verbose", "-v", action="store_true", help="Enable verbose debug logging")
 
     return parser.parse_args()
 
@@ -138,7 +141,7 @@ def run_pulse(task: str, source: str = "", event: str = "", payload: str = "{}")
         user_msg = task_map.get(task, f"Execute PULSE task: {task}")
 
     messages = [{"role": "user", "content": user_msg}]
-    print(f"[PULSE] task={task}")
+    log.pulse_start(task)
     reply = prov.call_llm(
         messages, system_prompt, task="pulse_scheduled", stream=True, config=providers_config
     )
@@ -187,6 +190,8 @@ def _call_with_tool_loop(
     registry,
     providers_config: dict,
     task: str,
+    text_mode: bool = True,
+    clear_line: bool = False,
 ) -> str:
     """
     Run one conversation turn handling any connector tool calls.
@@ -195,6 +200,7 @@ def _call_with_tool_loop(
     Returns the final text reply after all tool calls are resolved.
     """
     work = list(messages)
+    _text_mode = text_mode
 
     while True:
         text, tool_uses, raw_content = prov.call_llm_with_tools(
@@ -202,15 +208,18 @@ def _call_with_tool_loop(
         )
 
         if not tool_uses:
-            # Final text response — print and return
+            # Final text response — optionally clear a pending "pensando" line, then reply
+            if clear_line:
+                log.console.print(" " * 60, end="\r")
+                clear_line = False  # only clear once
+            log.yana_prefix(v.ts())
             if text:
-                print(text, end="", flush=True)
-                print()
-            return text
+                log.yana_response(text, markdown=_text_mode)
+            return text or ""
 
         # Print any thinking text that preceded the tool calls
         if text:
-            print(text, end="", flush=True)
+            log.console.print(text, end="")
 
         # Add assistant message (with tool_use blocks) to working history
         work.append({"role": "assistant", "content": raw_content})
@@ -227,9 +236,9 @@ def _call_with_tool_loop(
             except Exception:
                 _err = None
             if _err:
-                print(f"\n[{v.ts()}] [connector] {instance}/{op} ERRO: {_err}", flush=True)
+                log.connector_err(v.ts(), instance, op, _err)
             else:
-                print(f"\n[{v.ts()}] [connector] {instance}/{op}", flush=True)
+                log.connector_ok(v.ts(), instance, op)
             tool_results.append(
                 {
                     "type": "tool_result",
@@ -256,13 +265,9 @@ def run_conversation(text_mode: bool) -> None:
     tools = prov.CONNECTOR_TOOLS
 
     if not core.sanctum_exists():
-        print()
-        print("=" * 60)
-        print("  Sanctum não encontrado.")
-        print("  Execute `python main.py --init` para inicializar.")
-        print("  Depois, YANA conduzirá o First Breath por voz.")
-        print("=" * 60)
-        print()
+        log.warn("\nSanctum não encontrado.")
+        log.warn("Execute `python main.py --init` para inicializar.")
+        log.warn("Depois, YANA conduzirá o First Breath por voz.\n")
 
     system_prompt = core.load_system_prompt(voice_mode=not text_mode, registry=registry)
     session_id = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
@@ -274,21 +279,23 @@ def run_conversation(text_mode: bool) -> None:
     # Greeting
     greeting = "Oi, estou ouvindo." if not text_mode else ""
     if greeting and not text_mode:
-        print(f"\nYANA: {greeting}")
+        log.yana_prefix(v.ts())
+        log.console.print(greeting)
         v.speak(greeting, **_tts_kwargs(voice_cfg))
 
-    print("\n--- YANA (Ctrl+C para sair) ---\n")
+    log.separator()
 
     try:
         while True:
             # --- Input ---
             if text_mode:
                 try:
-                    user_input = input(f"[{v.ts()}] Você: ").strip()
+                    log.user_prompt(v.ts())
+                    user_input = input("").strip()
                 except (EOFError, KeyboardInterrupt):
                     break
             else:
-                print(f"[{v.ts()}] Você: ", end="", flush=True)
+                log.user_prompt(v.ts())
                 try:
                     user_input = v.listen(
                         provider=voice_cfg["stt_provider"],
@@ -297,7 +304,7 @@ def run_conversation(text_mode: bool) -> None:
                     )
                 except KeyboardInterrupt:
                     break
-                print(user_input)
+                log.console.print(user_input)
 
             if not user_input:
                 continue
@@ -305,12 +312,10 @@ def run_conversation(text_mode: bool) -> None:
             messages.append({"role": "user", "content": user_input})
 
             # --- LLM call (with connector tool loop) ---
-            print(f"[{v.ts()}] YANA: [pensando...]", end="\r", flush=True)
-            ts_reply = v.ts()
-            print(f"[{ts_reply}] YANA: " + " " * 14, end="\r", flush=True)  # clear
-            print(f"[{ts_reply}] YANA: ", end="", flush=True)
+            log.yana_thinking(v.ts())
             reply = _call_with_tool_loop(
-                messages, system_prompt, tools, registry, providers_config, task=task
+                messages, system_prompt, tools, registry, providers_config,
+                task=task, text_mode=text_mode, clear_line=True,
             )
             messages.append({"role": "assistant", "content": reply})
 
@@ -321,7 +326,7 @@ def run_conversation(text_mode: bool) -> None:
             if not text_mode:
                 v.speak(reply, **_tts_kwargs(voice_cfg))
 
-            print()
+            log.console.print()
 
     except KeyboardInterrupt:
         pass
@@ -348,7 +353,7 @@ def run_conversation(text_mode: bool) -> None:
         config=providers_config,
         session_date=session_date,
     )
-    print(f"[sessão: {session_id}]")
+    log.session_end(session_id)
 
 
 def run_single_shot(message: str) -> None:
@@ -359,11 +364,11 @@ def run_single_shot(message: str) -> None:
     system_prompt = core.load_system_prompt(voice_mode=False, registry=registry)
 
     messages = [{"role": "user", "content": message}]
-    print(f"[{v.ts()}] YANA: ", end="", flush=True)
     _call_with_tool_loop(
-        messages, system_prompt, tools, registry, providers_config, task="conversation"
+        messages, system_prompt, tools, registry, providers_config,
+        task="conversation", text_mode=True,
     )
-    print()
+    log.console.print()
 
 
 def _tts_kwargs(cfg: dict) -> dict:
@@ -381,6 +386,11 @@ def _tts_kwargs(cfg: dict) -> dict:
 
 def main() -> None:
     args = parse_args()
+
+    logging.basicConfig(
+        level=logging.DEBUG if args.verbose else logging.WARNING,
+        format="[%(levelname)s] %(name)s: %(message)s",
+    )
 
     if args.init:
         run_init()

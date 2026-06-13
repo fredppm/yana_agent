@@ -209,15 +209,6 @@ class GarminActivityConnector(Connector):
     def _build_client(self):
         from garminconnect import Garmin
 
-        if self._token_dir.exists():
-            try:
-                # garth handles token refresh automatically
-                client = Garmin()
-                client.garth.load(str(self._token_dir))
-                return client
-            except Exception:
-                pass  # corrupted or incompatible tokens — fall through to fresh login
-
         if not self._credentials_file.exists():
             self._credentials_file = self._prompt_and_save_credentials()
 
@@ -227,8 +218,22 @@ class GarminActivityConnector(Connector):
         import sys as _sys
 
         _sys.stdout.flush()
+        # tokenstore: garminconnect loads saved tokens from this dir (skipping login if valid),
+        # or saves fresh tokens there after a successful login.
+        # It also triggers the full strategy chain (mobile+cffi, widget+cffi, mobile+requests)
+        # which is necessary to work around Garmin's rate limiting on the mobile OAuth endpoint.
+        self._token_dir.mkdir(parents=True, exist_ok=True)
+        # Suppress garth's per-strategy retry noise (429s, etc.) — they're intermediate
+        # attempts, not errors. If all strategies fail, our except block surfaces a clean message.
+        # Pass --debug to YANA to restore verbose output.
+        import logging
+
+        _garth_log = logging.getLogger("garth")
+        _prev_level = _garth_log.level
+        if not logging.getLogger().isEnabledFor(logging.DEBUG):
+            _garth_log.setLevel(logging.ERROR)
         try:
-            client.login()
+            client.login(tokenstore=str(self._token_dir))
         except Exception as exc:
             exc_str = str(exc)
             try:
@@ -264,9 +269,9 @@ class GarminActivityConnector(Connector):
                     "Credenciais removidas — tente de novo para reinserir."
                 ) from exc
             raise
+        finally:
+            _garth_log.setLevel(_prev_level)
 
-        self._token_dir.mkdir(parents=True, exist_ok=True)
-        client.garth.dump(str(self._token_dir))
         return client
 
     def _prompt_and_save_credentials(self) -> Path:

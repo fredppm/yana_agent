@@ -26,6 +26,15 @@ connectors:
       credentials_file: "~/.yana/google_credentials.json"
       token_file: "~/.yana/tokens/calendar_fred.json"
 
+  - type: GoogleTasksConnector
+    id: tasks_fred
+    name: "Tasks do Fred"
+    description: "Tarefas pessoais do Fred — criar, completar e consultar tasks"
+    owner: fred
+    config:
+      credentials_file: "~/.yana/google_credentials.json"
+      token_file: "~/.yana/tokens/tasks_fred.json"
+
   - type: RGBLightConnector
     id: rgb_sala
     name: "Luz da Sala"
