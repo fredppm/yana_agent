@@ -18,6 +18,16 @@ strict_optional = true
 warn_unused_ignores = true
 warn_return_any = false   # too noisy for LLM-calling code
 
+[[tool.mypy.overrides]]
+# providers.py has type: ignore comments for SDK-specific errors (anthropic, openai).
+# These are valid when the SDK is installed but appear "unused" in envs without it.
+module = ["providers"]
+warn_unused_ignores = false
+
+[tool.pytest.ini_options]
+addopts = "--color=yes --tb=short"
+testpaths = ["orchestrator/tests"]
+
 [tool.vulture]
 min_confidence = 80
 paths = ["orchestrator/"]

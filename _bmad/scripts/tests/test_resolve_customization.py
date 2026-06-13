@@ -6,7 +6,6 @@ import tempfile
 import unittest
 from pathlib import Path
 
-
 SCRIPT = Path(__file__).resolve().parents[1] / "resolve_customization.py"
 
 
@@ -31,8 +30,7 @@ class ResolveCustomizationStdoutTests(unittest.TestCase):
                     "--key",
                     "agent",
                 ],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+                capture_output=True,
                 env=env,
                 check=False,
             )

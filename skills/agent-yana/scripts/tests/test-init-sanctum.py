@@ -61,7 +61,7 @@ class TestParseYamlConfig(unittest.TestCase):
 class TestParseTomlConfig(unittest.TestCase):
     def test_parses_core_section(self):
         with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
-            f.write("[core]\nuser_name = \"Fred\"\ncommunication_language = \"Portugues\"\n")
+            f.write('[core]\nuser_name = "Fred"\ncommunication_language = "Portugues"\n')
             f.flush()
             result = init_sanctum.parse_toml_config(Path(f.name))
         self.assertEqual(result["user_name"], "Fred")
@@ -69,7 +69,7 @@ class TestParseTomlConfig(unittest.TestCase):
 
     def test_ignores_non_core_sections(self):
         with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
-            f.write("[other]\nkey = \"val\"\n[core]\nname = \"Fred\"\n")
+            f.write('[other]\nkey = "val"\n[core]\nname = "Fred"\n')
             f.flush()
             result = init_sanctum.parse_toml_config(Path(f.name))
         self.assertEqual(result.get("name"), "Fred")
@@ -101,7 +101,9 @@ class TestParseFrontmatter(unittest.TestCase):
 class TestSubstituteVars(unittest.TestCase):
     def test_substitutes_known_variables(self):
         content = "Hello {user_name}, born on {birth_date}."
-        result = init_sanctum.substitute_vars(content, {"user_name": "Fred", "birth_date": "2026-06-10"})
+        result = init_sanctum.substitute_vars(
+            content, {"user_name": "Fred", "birth_date": "2026-06-10"}
+        )
         self.assertEqual(result, "Hello Fred, born on 2026-06-10.")
 
     def test_leaves_unknown_placeholders_intact(self):
@@ -120,7 +122,9 @@ class TestDiscoverCapabilities(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             refs_dir = Path(tmpdir)
             cap_file = refs_dir / "day-planning.md"
-            cap_file.write_text("---\nname: day-planning\ncode: DA\ndescription: Manage agenda\n---\n\n# Day Planning\n")
+            cap_file.write_text(
+                "---\nname: day-planning\ncode: DA\ndescription: Manage agenda\n---\n\n# Day Planning\n"
+            )
 
             result = init_sanctum.discover_capabilities(refs_dir, "./references")
 
@@ -131,7 +135,9 @@ class TestDiscoverCapabilities(unittest.TestCase):
     def test_skips_files_without_code(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             refs_dir = Path(tmpdir)
-            (refs_dir / "memory-guidance.md").write_text("---\nname: memory-guidance\n---\n\n# Guidance\n")
+            (refs_dir / "memory-guidance.md").write_text(
+                "---\nname: memory-guidance\n---\n\n# Guidance\n"
+            )
 
             result = init_sanctum.discover_capabilities(refs_dir, "./references")
 
@@ -140,7 +146,9 @@ class TestDiscoverCapabilities(unittest.TestCase):
     def test_skips_skill_only_files(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             refs_dir = Path(tmpdir)
-            (refs_dir / "first-breath.md").write_text("---\nname: first-breath\ncode: FB\n---\n\n# First Breath\n")
+            (refs_dir / "first-breath.md").write_text(
+                "---\nname: first-breath\ncode: FB\n---\n\n# First Breath\n"
+            )
 
             result = init_sanctum.discover_capabilities(refs_dir, "./references")
 
@@ -149,7 +157,14 @@ class TestDiscoverCapabilities(unittest.TestCase):
 
 class TestGenerateCapabilitiesMd(unittest.TestCase):
     def test_generates_table_with_capabilities(self):
-        caps = [{"code": "DA", "name": "day-planning", "description": "Test", "source": "./references/day-planning.md"}]
+        caps = [
+            {
+                "code": "DA",
+                "name": "day-planning",
+                "description": "Test",
+                "source": "./references/day-planning.md",
+            }
+        ]
         result = init_sanctum.generate_capabilities_md(caps, evolvable=False)
         self.assertIn("| [DA] | day-planning |", result)
         self.assertNotIn("## Learned", result)

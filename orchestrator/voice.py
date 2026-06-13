@@ -209,6 +209,19 @@ def _play_audio_file(path: str) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Utilities
+# ---------------------------------------------------------------------------
+
+
+def ts() -> str:
+    """Return current time as HH:MM:SS.mmm (12-char timestamp)."""
+    from datetime import datetime
+
+    now = datetime.now()
+    return now.strftime("%H:%M:%S.") + f"{now.microsecond // 1000:03d}"
+
+
+# ---------------------------------------------------------------------------
 # Voice config helpers
 # ---------------------------------------------------------------------------
 

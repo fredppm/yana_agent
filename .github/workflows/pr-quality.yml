@@ -5,6 +5,7 @@ on:
     branches: [main]
     # 'edited' catches title changes after the PR is open
     types: [opened, edited, synchronize, reopened]
+  workflow_dispatch:
 
 jobs:
   pr-title:
@@ -42,7 +43,7 @@ jobs:
           cache: pip
 
       - name: Install tools
-        run: pip install ruff mypy types-PyYAML vulture pip-audit pytest pytest-cov
+        run: pip install ruff mypy types-PyYAML vulture pip-audit pytest pytest-cov PyYAML rich
 
       # ── Lint ─────────────────────────────────────────────────────────────
       # --output-format github emits ::error file=…,line=…:: annotations

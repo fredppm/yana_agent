@@ -50,29 +50,70 @@ _SANCTUM_FILES = [
 ]
 
 
-def load_system_prompt() -> str:
-    """Build the system prompt: SKILL.md + sanctum files (skips missing)."""
+def build_connector_manifest(registry) -> str:
+    """Return lightweight connector manifest formatted as a system-prompt section."""
+    try:
+        entries = registry.lightweight_manifest()
+    except Exception:
+        return ""
+    if not entries:
+        return ""
+    lines = ["---", "## Available Connectors", ""]
+    for e in entries:
+        owner_tag = f" [{e['owner']}]" if e.get("owner") else ""
+        lines.append(f"- **{e['id']}**{owner_tag}: {e['description']}")
+    return "\n".join(lines)
+
+
+def _read_file(path: Path, name: str) -> str:
+    return f"---\n## {name}\n\n{path.read_text(encoding='utf-8')}"
+
+
+def load_system_prompt(voice_mode: bool = False, registry=None) -> str:
+    """
+    Build the system prompt by concatenating SKILL.md + sanctum files.
+
+    If sanctum doesn't exist yet, returns only SKILL.md so the orchestrator
+    can still start and trigger First Breath.
+
+    voice_mode=True appends a no-markdown instruction.
+    registry: if provided, injects the lightweight connector manifest.
+    """
     skill_md = _skill_root() / "SKILL.md"
     if not skill_md.exists():
         raise FileNotFoundError(f"SKILL.md not found at {skill_md}")
 
-    def _section(path: Path) -> str:
-        return f"---\n## {path.name}\n\n{path.read_text(encoding='utf-8')}"
+    parts: list[str] = [_read_file(skill_md, "SKILL.md")]
 
+    # Sanctum files — in order, skip missing
     sanctum = _sanctum_root()
-    parts = [_section(skill_md)]
-
     if sanctum.exists():
-        parts += [_section(sanctum / f) for f in _SANCTUM_FILES if (sanctum / f).exists()]
+        for fname in _SANCTUM_FILES:
+            fpath = sanctum / fname
+            if fpath.exists():
+                parts.append(_read_file(fpath, fname))
+        # pulse-config.yaml as raw text (YANA reads it for PULSE tasks)
         pulse_cfg = sanctum / "pulse-config.yaml"
         if pulse_cfg.exists():
             parts.append(
                 f"---\n## pulse-config.yaml\n\n```yaml\n{pulse_cfg.read_text(encoding='utf-8')}\n```"
             )
     else:
+        # No sanctum yet — First Breath hasn't happened
         parts.append(f"---\n[{errors.e('SYS-001')}]")
 
-    return "\n\n".join(parts)
+    # Connector manifest — lightweight, always injected when registry is present
+    if registry is not None:
+        manifest_section = build_connector_manifest(registry)
+        if manifest_section:
+            parts.append(manifest_section)
+
+    result = "\n\n".join(parts)
+
+    if voice_mode:
+        result += "\n\n---\n[VOICE MODE: Respond in plain spoken language only. No markdown, no bullet points, no headers.]"
+
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -80,12 +121,34 @@ def load_system_prompt() -> str:
 # ---------------------------------------------------------------------------
 
 
-def save_session_log(messages: list[dict], session_id: str) -> None:
-    """Persist the conversation to data/agent-yana/sessions/session-{id}.md."""
-    path = _sessions_dir() / f"session-{session_id}.md"
+def load_recent_sessions(n: int = 3) -> str:
+    """Return the last n session logs concatenated, or empty string."""
+    sessions_dir = _sessions_dir()
+    logs = sorted(sessions_dir.glob("session-*.md"), reverse=True)[:n]
+    if not logs:
+        return ""
+    parts = ["---\n## Recent Session Logs\n"]
+    for log in reversed(logs):  # oldest first
+        parts.append(f"### {log.name}\n\n{log.read_text(encoding='utf-8')}")
+    return "\n\n".join(parts)
+
+
+def save_session_log(messages: list[dict], session_id: str | None = None) -> Path:
+    """
+    Persist the conversation to a session log file.
+
+    messages: list of {role, content} dicts
+    Returns the path written.
+    """
+    if session_id is None:
+        session_id = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+
+    filename = f"session-{session_id}.md"
+    path = _sessions_dir() / filename
     lines = [f"# Session {session_id}\n"]
     lines += [f"## {m['role'].upper()}\n\n{m['content']}\n" for m in messages]
     path.write_text("\n".join(lines), encoding="utf-8")
+    return path
 
 
 # ---------------------------------------------------------------------------
@@ -120,9 +183,12 @@ def load_pulse_config() -> dict:
         return {}
 
 
-def is_quiet_hours() -> bool:
+def is_quiet_hours(pulse_config: dict | None = None) -> bool:
     """Return True if current local time falls in the configured quiet window."""
-    quiet = load_pulse_config().get("quiet_hours", "23:00-07:00")
+    if pulse_config is None:
+        pulse_config = load_pulse_config()
+
+    quiet = pulse_config.get("quiet_hours", "23:00-07:00")
     try:
         start_str, end_str = quiet.split("-", 1)
         now = datetime.now().time()
@@ -130,6 +196,7 @@ def is_quiet_hours() -> bool:
         end = datetime.strptime(end_str.strip(), "%H:%M").time()
         if start <= end:
             return start <= now <= end
-        return now >= start or now <= end  # overnight window e.g. 23:00-07:00
+        # Overnight window (e.g. 23:00-07:00)
+        return now >= start or now <= end
     except (ValueError, AttributeError):
         return False
