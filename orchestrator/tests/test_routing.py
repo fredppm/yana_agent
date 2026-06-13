@@ -8,7 +8,6 @@ All external dependencies are mocked.
 from __future__ import annotations
 
 import sys
-from collections.abc import Iterator
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -22,12 +21,7 @@ from programmer.dispatcher import (
     dispatch_request,
     new_session_id,
 )
-from programmer.engine import (
-    CodingEngine,
-    CompletionSignal,
-    EngineRequest,
-    EngineSession,
-)
+from programmer.engine import CodingEngine, EngineRequest
 from programmer.mode import SanctumContext
 from programmer.worktree import (
     WorktreeError,
@@ -37,29 +31,19 @@ from programmer.worktree import (
     detect_repo_root,
 )
 
+
 # ---------------------------------------------------------------------------
 # Helpers / fixtures
 # ---------------------------------------------------------------------------
 
 
-class _MockSession(EngineSession):
-    pass
-
-
 class _MockEngine(CodingEngine):
     def __init__(self) -> None:
         self.dispatched: list[EngineRequest] = []
-        self.sent: list[str] = []
 
-    def dispatch(self, request: EngineRequest) -> EngineSession:
+    def dispatch(self, request: EngineRequest) -> int:
         self.dispatched.append(request)
-        return _MockSession()
-
-    def send(self, session: EngineSession, message: str) -> None:
-        self.sent.append(message)
-
-    def events(self, session: EngineSession) -> Iterator:
-        yield CompletionSignal(summary="mock complete")
+        return 0
 
 
 @pytest.fixture
@@ -87,7 +71,6 @@ class TestNewSessionId:
 
     def test_is_unique(self) -> None:
         ids = {new_session_id() for _ in range(5)}
-        # Allow for occasional collision in same second, but usually unique
         assert len(ids) >= 1
 
     def test_no_spaces(self) -> None:
@@ -171,7 +154,6 @@ class TestCreateWorktree:
             mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
             create_worktree(tmp_path, "prog-001")
 
-        # Parent should exist after call
         parent = tmp_path / ".yana" / "worktrees"
         assert parent.exists()
 
@@ -220,15 +202,15 @@ class TestEngineRequestAssembly:
         req = mock_engine.dispatched[0]
         assert "Fred is a developer" in req.context or "yana_agent" in req.context
 
-    def test_enriched_prompt_passed_verbatim(
+    def test_prompt_passed_verbatim(
         self, sanctum: SanctumContext, mock_engine: _MockEngine, tmp_path: Path
     ) -> None:
-        enriched = "add hello()\n\n## Clarifications\nQ: Which file?\nA: utils.py"
+        prompt = "add hello() to utils.py"
         with patch("programmer.dispatcher.detect_repo_root", return_value=tmp_path):
             with patch("programmer.worktree.create_worktree") as mock_wt:
                 mock_wt.return_value = tmp_path / "wt"
                 dispatch_request(
-                    enriched_prompt=enriched,
+                    enriched_prompt=prompt,
                     sanctum=sanctum,
                     session_id="s1",
                     engine=mock_engine,
@@ -236,7 +218,7 @@ class TestEngineRequestAssembly:
                 )
 
         req = mock_engine.dispatched[0]
-        assert req.prompt == enriched
+        assert req.prompt == prompt
 
 
 # ---------------------------------------------------------------------------
@@ -314,32 +296,12 @@ class TestWorktreeCreatedBeforeDispatch:
 
 
 # ---------------------------------------------------------------------------
-# dispatch_request — no direct engine API calls
+# dispatch_request — result shape
 # ---------------------------------------------------------------------------
 
 
-class TestNoDirectEngineCalls:
-    def test_dispatch_uses_engine_abstraction(
-        self, sanctum: SanctumContext, mock_engine: _MockEngine, tmp_path: Path
-    ) -> None:
-        """dispatch_request() goes through engine.dispatch(), not any internal API."""
-        with patch("programmer.dispatcher.detect_repo_root", return_value=tmp_path):
-            with patch("programmer.worktree.create_worktree") as mock_wt:
-                mock_wt.return_value = tmp_path / "wt"
-                result = dispatch_request(
-                    enriched_prompt="add hello()",
-                    sanctum=sanctum,
-                    session_id="s1",
-                    engine=mock_engine,
-                    repo_root=tmp_path,
-                )
-
-        # The only engine call should be .dispatch()
-        assert isinstance(result, DispatchResult)
-        assert len(mock_engine.dispatched) == 1
-        assert len(mock_engine.sent) == 0  # send() not called at dispatch time
-
-    def test_result_contains_session_and_path(
+class TestDispatchResult:
+    def test_success_returns_dispatch_result(
         self, sanctum: SanctumContext, mock_engine: _MockEngine, tmp_path: Path
     ) -> None:
         worktree_path = tmp_path / ".yana" / "worktrees" / "programmer-s1"
@@ -354,9 +316,9 @@ class TestNoDirectEngineCalls:
                 )
 
         assert isinstance(result, DispatchResult)
-        assert isinstance(result.session, EngineSession)
         assert result.worktree_path == worktree_path
         assert result.session_id == "s1"
+        assert result.exit_code == 0
 
     def test_engine_dispatch_failure_returns_dispatch_failed(
         self, sanctum: SanctumContext, tmp_path: Path

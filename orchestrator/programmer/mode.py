@@ -227,14 +227,14 @@ def _session_loop(
     last_dispatch: object = None  # holds DispatchResult if a worktree needs cleanup
 
     def _end_session() -> None:
-        """AC-2.1.2: signal engine, cleanup worktree, output status."""
+        """Cleanup worktree and signal session end."""
         from programmer.dispatcher import DispatchResult
 
         nonlocal last_dispatch
         if isinstance(last_dispatch, DispatchResult):
             wm = last_dispatch.worktree_manager
             if wm.exists():
-                msg = wm.stop_and_cleanup(last_dispatch.session)
+                msg = wm.cleanup(force=True)
                 print(msg, flush=True)
                 if speak_fn:
                     speak_fn(msg)
@@ -293,10 +293,10 @@ def _handle_request(
     providers_config: dict | None = None,
 ) -> object:
     """
-    Handle a programmer request.
+    Create worktree, inject context, run engine interactively.
 
-    Dispatches directly to the engine — clarification happens through the
-    decision-point loop (engine asks, YANA surfaces, Fred answers).
+    Blocks until the engine session ends — Fred talks to the engine directly.
+    Returns DispatchResult (for worktree tracking) or None on failure.
     """
     from programmer.dispatcher import (
         DispatchFailed,
@@ -304,7 +304,6 @@ def _handle_request(
         new_session_id,
     )
 
-    # --- Dispatch to engine ---
     session_id = new_session_id()
     outcome = dispatch_request(
         enriched_prompt=request,
@@ -319,96 +318,6 @@ def _handle_request(
             speak_fn(f"Could not dispatch request. {outcome.reason}")
         return None
 
-    # AC-1.3.4: notify Fred of dispatch
-    dispatch_msg = "Request sent to engine. I'll surface decisions that need you."
-    print(f"\n{dispatch_msg}", flush=True)
-    if speak_fn:
-        speak_fn(dispatch_msg)
-
-    # --- Event loop + decision-point filter (Story 1.4) ---
-    status = _run_event_filter(outcome, speak_fn, listen_fn=None)
-
-    # --- Post-filter lifecycle management (Story 2.1) ---
-    _handle_post_filter(outcome, status, speak_fn)
-
     return outcome
-
-
-def _run_event_filter(
-    outcome: object,
-    speak_fn: Callable[[str], None] | None,
-    listen_fn: Callable[[], str] | None = None,
-) -> object:
-    """
-    Run the decision-point filter on the active engine session.
-    Returns FilterStatus.
-    """
-    from programmer.dispatcher import DispatchResult
-    from programmer.filter import EventFilter
-
-    if not isinstance(outcome, DispatchResult):
-        return None
-
-    event_filter = EventFilter(
-        engine=outcome.engine,
-        session=outcome.session,
-        speak_fn=speak_fn,
-        listen_fn=listen_fn,
-    )
-    return event_filter.run()
-
-
-def _handle_post_filter(
-    outcome: object,
-    status: object,
-    speak_fn: Callable[[str], None] | None,
-) -> None:
-    """
-    Post-filter lifecycle: decide what to do with the worktree based on filter result.
-
-    COMPLETED → offer cleanup or keep (worktree has the work; Fred may want to PR)
-    ENGINE_ERROR → "Engine stopped unexpectedly. Worktree intact at {path}." Don't auto-cleanup.
-    CANCELLED → "Cancel complete. Keep worktree or clean it up?"
-    """
-    from programmer.dispatcher import DispatchResult
-    from programmer.filter import FilterStatus
-
-    if not isinstance(outcome, DispatchResult) or status is None:
-        return
-
-    wm = outcome.worktree_manager
-
-    if status is FilterStatus.ENGINE_ERROR:
-        msg = (
-            f"Engine stopped unexpectedly. Your worktree is intact at {wm.path}. "
-            "Resume, inspect, or end session?"
-        )
-        print(f"\n[erro] {msg}", flush=True)
-        if speak_fn:
-            speak_fn(
-                "Engine stopped unexpectedly. Your worktree is intact. Resume, inspect, or end session?"
-            )
-        # Do NOT auto-cleanup — Fred must explicitly ask (AC-2.1.4)
-
-    elif status is FilterStatus.CANCELLED:
-        print("\nCancel complete.", flush=True)
-        choice = (
-            input(f"Keep worktree at {wm.path} for inspection, or clean it up? [keep/clean] ")
-            .strip()
-            .lower()
-        )
-        if choice in ("clean", "c", "cleanup"):
-            msg = wm.stop_and_cleanup(outcome.session)
-            print(msg, flush=True)
-            if speak_fn:
-                speak_fn(msg)
-        else:
-            print(f"Worktree kept at {wm.path}.", flush=True)
-
-    elif status is FilterStatus.COMPLETED:
-        # Task finished normally — worktree contains the work
-        # YANA does not auto-cleanup (Fred may want to inspect or PR from it)
-        # Cleanup happens when Fred issues /end-session in the session loop
-        pass
 
 

@@ -14,7 +14,6 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from programmer.filter import FilterStatus
 from programmer.worktree import (
     WorktreeError,
     WorktreeManager,
@@ -184,92 +183,3 @@ class TestBranchDeletionLogic:
                 remove_worktree(tmp_path, "s1")
 
 
-# ---------------------------------------------------------------------------
-# FilterStatus — crash detection and cancel flow
-# ---------------------------------------------------------------------------
-
-
-class TestFilterStatusLifecycle:
-    def test_engine_error_status_returned_on_crash(self) -> None:
-        from programmer.decision_points import DecisionPointKind
-        from programmer.engine import CodingEngine, EngineError, EngineSession
-        from programmer.filter import EventFilter
-
-        engine = MagicMock(spec=CodingEngine)
-        session = MagicMock(spec=EngineSession)
-        engine.events.return_value = iter(
-            [
-                EngineError(kind=DecisionPointKind.ENGINE_FAILURE, message="process died"),
-            ]
-        )
-        f = EventFilter(engine=engine, session=session)
-        status = f.run()
-        assert status is FilterStatus.ENGINE_ERROR
-
-    def test_stream_ends_without_completion_is_engine_error(self) -> None:
-        from programmer.engine import CodingEngine, EngineSession, ProgressUpdate
-        from programmer.filter import EventFilter
-
-        engine = MagicMock(spec=CodingEngine)
-        session = MagicMock(spec=EngineSession)
-        engine.events.return_value = iter(
-            [
-                ProgressUpdate(message="some output"),
-                # stream ends here — no CompletionSignal
-            ]
-        )
-        f = EventFilter(engine=engine, session=session)
-        status = f.run()
-        assert status is FilterStatus.ENGINE_ERROR
-
-    def test_cancel_command_returns_cancelled(self) -> None:
-        from programmer.decision_points import DecisionPointKind
-        from programmer.engine import CodingEngine, CompletionSignal, DecisionPoint, EngineSession
-        from programmer.filter import EventFilter
-
-        engine = MagicMock(spec=CodingEngine)
-        session = MagicMock(spec=EngineSession)
-        engine.events.return_value = iter(
-            [
-                DecisionPoint(kind=DecisionPointKind.AMBIGUITY, message="Which file?"),
-                CompletionSignal(summary="done"),  # never reached
-            ]
-        )
-        f = EventFilter(engine=engine, session=session)
-
-        with patch("builtins.input", return_value="/cancel"):
-            status = f.run()
-
-        assert status is FilterStatus.CANCELLED
-        # Engine.send() never called (Fred cancelled)
-        engine.send.assert_not_called()
-
-    def test_cancela_command_also_cancels(self) -> None:
-        from programmer.decision_points import DecisionPointKind
-        from programmer.engine import CodingEngine, DecisionPoint, EngineSession
-        from programmer.filter import EventFilter, FilterStatus
-
-        engine = MagicMock(spec=CodingEngine)
-        session = MagicMock(spec=EngineSession)
-        engine.events.return_value = iter(
-            [
-                DecisionPoint(kind=DecisionPointKind.PERMISSION_REQUEST, message="Push?"),
-            ]
-        )
-        f = EventFilter(engine=engine, session=session)
-
-        with patch("builtins.input", return_value="cancela"):
-            status = f.run()
-
-        assert status is FilterStatus.CANCELLED
-
-    def test_completed_status_returned(self) -> None:
-        from programmer.engine import CodingEngine, CompletionSignal, EngineSession
-        from programmer.filter import EventFilter
-
-        engine = MagicMock(spec=CodingEngine)
-        session = MagicMock(spec=EngineSession)
-        engine.events.return_value = iter([CompletionSignal(summary="done")])
-        f = EventFilter(engine=engine, session=session)
-        status = f.run()
-        assert status is FilterStatus.COMPLETED
