@@ -420,7 +420,9 @@ def main() -> None:
             _cfg = voice_cfg
 
             def _speak(text: str) -> None:
-                v.speak(text, voice=_cfg["tts_voice"], rate=_cfg["tts_rate"], volume=_cfg["tts_volume"])
+                v.speak(
+                    text, voice=_cfg["tts_voice"], rate=_cfg["tts_rate"], volume=_cfg["tts_volume"]
+                )
 
             speak_fn = _speak
 
