@@ -124,6 +124,10 @@ def main(host: str = "127.0.0.1", port: int = 7891, connectors_dir: Path | None 
     if connectors_path.exists():
         load_connectors(connectors_path, registry)
         output.status(f"[pulse] loaded connectors from {connectors_path}")
+    manifest = Path(__file__).parent.parent / "config" / "connectors.yaml"
+    if manifest.exists():
+        registry.load_manifest(manifest)
+        output.status(f"[pulse] loaded {len(registry._instances)} connector instance(s)")
 
     tasks_file = sanctum_path() / "pulse-tasks.yaml"
     scheduler = build_scheduler(tasks_file, registry)
