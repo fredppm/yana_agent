@@ -202,6 +202,48 @@ output.status("saving sanctum...")
 
 ---
 
+## Connector Authentication
+
+All connectors — MCP-backed or pure Python — must handle their own auth
+flow. The user configures `connectors.yaml` and runs YANA. No external
+setup commands should be required for auth to work.
+
+### Scenario 1 — Username/password credentials (e.g. Garmin)
+
+The connector reads a `credentials_file` (JSON with `email`/`password`)
+from a path configured in `connectors.yaml`. That file lives outside the
+repo (e.g. `~/.yana/credentials/garmin_fred.json`) and is never committed.
+
+On first run, if the credentials file is missing or incomplete, the
+connector prompts securely in the terminal (echo suppressed — see
+`_read_password()` in `connectors/garmin.py`). After a successful login,
+tokens are saved to `token_dir` and reused on subsequent runs — no
+password prompt again unless tokens expire.
+
+### Scenario 2 — Google OAuth app credentials (e.g. Calendar, Gmail)
+
+One-time infrastructure step (done once per Google Cloud project, not
+per session):
+1. Create a project in Google Cloud Console
+2. Enable the relevant API (Calendar API, Gmail API, etc.)
+3. Create OAuth 2.0 credentials (Desktop app) and download the JSON
+4. Save to the path set in `connectors.yaml` (e.g. `credentials_file:
+   "~/.yana/google_credentials.json"`)
+
+On first run, the connector opens a browser for OAuth consent and saves
+the token to `token_file`. Subsequent runs use the saved token
+(auto-refreshed when expired) — no browser needed again.
+
+### What NOT to do
+
+- Never instruct the user to run an external auth command
+  (e.g. `uvx some-server auth`) before starting YANA
+- Never hardcode credentials or tokens in `connectors.yaml` or source code
+- Never assume tokens exist — the connector must handle the first-run
+  auth case gracefully
+
+---
+
 ## What NOT to change without discussion
 
 1. Sanctum path: `data/agent-yana/` — changing breaks all existing sanctums
