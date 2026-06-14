@@ -24,3 +24,6 @@ numpy>=1.24.0
 # Gmail / Google Calendar connectors — OAuth2 auth in parent process
 google-auth>=2.0.0
 google-auth-oauthlib>=1.0.0
+
+# Pulse — task scheduling
+apscheduler>=3.10.0,<4

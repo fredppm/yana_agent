@@ -66,3 +66,11 @@ connectors:
     id: rgb_banheiro
     name: "Luz do Banheiro"
     description: "Luz RGB do banheiro"
+
+  # Pulse task manager — requires `python -m pulse` to be running
+  - type: PulseManagerConnector
+    id: pulse
+    name: "Pulse"
+    description: "Agenda tarefas autônomas do Pulse — criar, listar e remover"
+    config:
+      port: 7891
