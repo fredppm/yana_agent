@@ -14,6 +14,7 @@ Visual language:
 
 from __future__ import annotations
 
+import re
 import textwrap
 import threading
 from collections.abc import Callable
@@ -358,6 +359,15 @@ class YANAApp(App[TuiResult]):
 
         chat.write("")
 
+    @staticmethod
+    def _md_inline(text: str) -> str:
+        """Escape Rich delimiters then convert inline markdown to Rich markup."""
+        s = escape(text)  # escapes [ ] \ so they won't be misread as Rich markup
+        s = re.sub(r"\*\*(.+?)\*\*", r"[bold]\1[/bold]", s)
+        s = re.sub(r"(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)", r"[italic]\1[/italic]", s)
+        s = re.sub(r"`(.+?)`", r"[dim]\1[/dim]", s)
+        return s
+
     def _write_yana(self, chat: RichLog, content: str, ts: str = "") -> None:
         """YANA: ● + first paragraph inline (no blank line), rest as RichMarkdown."""
         w = self._chat_width()
@@ -370,14 +380,21 @@ class YANAApp(App[TuiResult]):
         ts_len = cell_len(ts_str)
         text_w = max(1, w - self._GUTTER - ts_len)
 
-        lines = textwrap.wrap(first_para, width=text_w, break_long_words=True) or [""]
-        first = lines[0]
-        gap = max(0, w - self._GUTTER - cell_len(first) - ts_len)
+        # Strip markdown for width measurement (cell_len needs plain text)
+        plain = re.sub(r"\*+|`", "", first_para)
+        lines = textwrap.wrap(plain, width=text_w, break_long_words=True) or [""]
+        first_plain = lines[0]
+
+        # Re-wrap original text at same width to get correct first chunk
+        orig_lines = textwrap.wrap(first_para, width=text_w, break_long_words=True) or [""]
+        first_orig = orig_lines[0]
+
+        gap = max(0, w - self._GUTTER - cell_len(first_plain) - ts_len)
         ts_mk = f"[dim]{escape(ts_str)}[/dim]" if ts_str else ""
 
-        chat.write(f"●  {escape(first)}{' ' * gap}{ts_mk}")
-        for line in lines[1:]:
-            chat.write(f"   {escape(line)}")
+        chat.write(f"●  {self._md_inline(first_orig)}{' ' * gap}{ts_mk}")
+        for line in orig_lines[1:]:
+            chat.write(f"   {self._md_inline(line)}")
 
         if rest:
             chat.write(Padding(RichMarkdown(rest), (0, 0, 0, self._GUTTER)))
