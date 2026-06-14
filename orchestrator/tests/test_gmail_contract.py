@@ -87,8 +87,8 @@ _EXPECTED_EMAIL_KEYS = {"id", "thread_id", "from", "subject", "date", "snippet",
 def _make_connector() -> Any:
     """Return a GmailConnector with no real credentials, service not yet built."""
     connector = GmailConnector.__new__(GmailConnector)
-    connector._credentials_file = Path("/fake/credentials.json")
-    connector._token_file = Path("/fake/token.json")
+    connector._app_credential = Path("/fake/credentials.json")
+    connector._persona_token = Path("/fake/token.json")
     connector._service = None
     return connector
 

@@ -11,7 +11,7 @@ First-time setup:
            config:
              client_id: "<your-client-id>"
              client_secret: "<your-client-secret>"
-             token_file: "~/.yana/tokens/spotify_fred.json"
+             persona_token: "~/.yana/tokens/spotify_fred.json"
 
     3. Authenticate once (opens browser):
            pip install spotify-mcp

@@ -1,4 +1,12 @@
 connectors:
+  # -------------------------------------------------------------------------
+  # Credential naming convention:
+  #   app_credential      — OAuth Client ID/Secret or API key. YANA owns. Immutable.
+  #   persona_token       — Per-user OAuth token. Persona owns. Expires and refreshes.
+  #   persona_credentials — Username/password file (Garmin only). Persona owns.
+  #   persona_token_dir   — Token directory for garth-based auth (Garmin only).
+  # -------------------------------------------------------------------------
+
   # Python connectors — garmin-connect-mcp blocked (fastmcp 3.x API break + no interactive auth)
   - type: GarminActivityConnector
     id: garmin_fred
@@ -6,8 +14,8 @@ connectors:
     description: "Dados de saúde e atividade física do Fred — passos, sono, stress, corridas"
     owner: fred
     config:
-      credentials_file: "~/.yana/credentials/garmin_fred.json"
-      token_dir: "~/.yana/tokens/garmin_fred"
+      persona_credentials: "~/.yana/credentials/garmin_fred.json"
+      persona_token_dir: "~/.yana/tokens/garmin_fred"
 
   - type: GarminActivityConnector
     id: garmin_ana
@@ -15,8 +23,8 @@ connectors:
     description: "Dados de saúde e atividade física da Ana — passos, sono, stress, corridas"
     owner: ana
     config:
-      credentials_file: "~/.yana/credentials/garmin_ana.json"
-      token_dir: "~/.yana/tokens/garmin_ana"
+      persona_credentials: "~/.yana/credentials/garmin_ana.json"
+      persona_token_dir: "~/.yana/tokens/garmin_ana"
 
   - type: GoogleCalendarConnector
     id: calendar_fred
@@ -24,8 +32,8 @@ connectors:
     description: "Eventos e compromissos do calendário pessoal do Fred"
     owner: fred
     config:
-      credentials_file: "~/.yana/google_credentials.json"
-      token_file: "~/.yana/tokens/calendar_fred.json"
+      app_credential: "~/.yana/google_credentials.json"
+      persona_token: "~/.yana/tokens/calendar_fred.json"
 
   - type: GoogleTasksConnector
     id: tasks_fred
@@ -33,29 +41,38 @@ connectors:
     description: "Tarefas pessoais do Fred — criar, completar e consultar tasks"
     owner: fred
     config:
-      credentials_file: "~/.yana/google_credentials.json"
-      token_file: "~/.yana/tokens/tasks_fred.json"
+      app_credential: "~/.yana/google_credentials.json"
+      persona_token: "~/.yana/tokens/tasks_fred.json"
 
   # Gmail — direct Gmail API (google-api-python-client, no MCP subprocess)
   # On first YANA startup, a browser window opens for OAuth consent.
-  # Token is saved to token_file and reused on subsequent runs.
+  # Token is saved to persona_token and reused on subsequent runs.
   - type: GmailConnector
     id: gmail_fred_personal
     name: "Gmail pessoal do Fred"
     description: "Email pessoal do Fred — inbox importante, busca, envio"
     owner: fred
     config:
-      credentials_file: "~/.yana/google_credentials.json"
-      token_file: "~/.yana/tokens/gmail_fred_personal.json"
+      app_credential: "~/.yana/google_credentials.json"
+      persona_token: "~/.yana/tokens/gmail_fred_personal.json"
 
   - type: GmailConnector
     id: gmail_fred_work
-    name: "Gmail VTEX do Fred (frederico.mourao@vtex.com)"
+    name: "Gmail VTEX do Fred"
     description: "Email de trabalho do Fred — inbox importante, busca, envio"
     owner: fred
     config:
-      credentials_file: "~/.yana/google_credentials.json"
-      token_file: "~/.yana/tokens/gmail_fred_work.json"
+      app_credential: "~/.yana/google_credentials.json"
+      persona_token: "~/.yana/tokens/gmail_fred_work.json"
+
+  # Contacts — persona and contact resolution for the LLM
+  - type: ContactsConnector
+    id: contacts
+    name: "Contacts"
+    description: "Resolve personas and contacts — find who someone is and how to reach them"
+    config:
+      personas_file: "orchestrator/config/personas.yaml"
+      contacts_file: "orchestrator/config/contacts.yaml"
 
   - type: RGBLightConnector
     id: rgb_sala

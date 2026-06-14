@@ -11,7 +11,7 @@ context (BOND.md, MEMORY.md).
 Setup:
   1. Go to https://console.cloud.google.com/, enable Gmail API, create OAuth 2.0
      credentials (Desktop app), download JSON.
-  2. Save to the path configured as credentials_file (default: ~/.yana/google_credentials.json).
+  2. Save to the path configured as app_credential (default: ~/.yana/google_credentials.json).
   3. Register in orchestrator/config/connectors.yaml:
 
        - type: GmailConnector
@@ -19,16 +19,16 @@ Setup:
          name: "Gmail pessoal do Fred"
          owner: fred
          config:
-           credentials_file: "~/.yana/google_credentials.json"
-           token_file: "~/.yana/tokens/gmail_fred_personal.json"
+           app_credential: "~/.yana/google_credentials.json"
+           persona_token: "~/.yana/tokens/gmail_fred_personal.json"
 
   On first YANA startup, a browser window opens for OAuth consent.
-  The token is saved to token_file — no browser needed on subsequent runs.
+  The token is saved to persona_token — no browser needed on subsequent runs.
 
-  Multiple accounts: register one instance per account with separate token_files.
+  Multiple accounts: register one instance per account with separate persona_tokens.
 
-send_message uses a generic name intentionally — first implementation of a future
-CommunicationsConnector abstraction (see issue #20).
+GmailConnector implements CommunicationChannel — it can be used as a comms channel
+for send_message / get_messages via the ContactRegistry (issue #20).
 """
 
 from __future__ import annotations
@@ -38,24 +38,24 @@ from email.mime.text import MIMEText
 from pathlib import Path
 from typing import Any
 
-from connectors import Connector, command, event, query
+from connectors import CommunicationChannel, Connector, command, event, query
 
 _SCOPES = ["https://www.googleapis.com/auth/gmail.modify"]
 
 
-class GmailConnector(Connector):
+class GmailConnector(Connector, CommunicationChannel):
     connector_description = "Gmail email access — unread important, search, send, label"
 
     def __init__(
         self,
-        credentials_file: str | None = None,
-        token_file: str | None = None,
+        app_credential: str | None = None,
+        persona_token: str | None = None,
     ) -> None:
-        self._credentials_file = Path(
-            credentials_file or "~/.yana/google_credentials.json"
+        self._app_credential = Path(
+            app_credential or "~/.yana/google_credentials.json"
         ).expanduser()
-        self._token_file = Path(
-            token_file or "~/.yana/tokens/gmail.json"
+        self._persona_token = Path(
+            persona_token or "~/.yana/tokens/gmail.json"
         ).expanduser()
         self._service = None  # lazy — built on first call
 
@@ -177,10 +177,10 @@ class GmailConnector(Connector):
         from googleapiclient.discovery import build
 
         creds = None
-        if self._token_file.exists():
+        if self._persona_token.exists():
             try:
                 creds = Credentials.from_authorized_user_file(
-                    str(self._token_file), _SCOPES
+                    str(self._persona_token), _SCOPES
                 )
             except Exception:
                 pass
@@ -192,20 +192,20 @@ class GmailConnector(Connector):
                 except Exception:
                     creds = None
             if not creds or not creds.valid:
-                if not self._credentials_file.exists():
+                if not self._app_credential.exists():
                     raise PermissionError(
-                        f"Gmail credentials not found: {self._credentials_file}\n"
+                        f"Gmail credentials not found: {self._app_credential}\n"
                         "  1. Go to https://console.cloud.google.com/\n"
                         "  2. Enable Gmail API\n"
                         "  3. Create OAuth 2.0 credentials (Desktop app)\n"
-                        f"  4. Download JSON and save to: {self._credentials_file}"
+                        f"  4. Download JSON and save to: {self._app_credential}"
                     )
                 flow = InstalledAppFlow.from_client_secrets_file(
-                    str(self._credentials_file), _SCOPES
+                    str(self._app_credential), _SCOPES
                 )
                 creds = flow.run_local_server(port=0)
-            self._token_file.parent.mkdir(parents=True, exist_ok=True)
-            self._token_file.write_text(creds.to_json())
+            self._persona_token.parent.mkdir(parents=True, exist_ok=True)
+            self._persona_token.write_text(creds.to_json())
 
         return build("gmail", "v1", credentials=creds)
 

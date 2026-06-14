@@ -1,0 +1,30 @@
+# orchestrator/config/personas.yaml
+#
+# Personas — all real-world entities (people, companies, orgs) known to YANA.
+# Fred himself is a Persona. YANA can add/edit entries here through conversation.
+#
+# Schema:
+#   id: unique identifier (snake_case)
+#   name: display name
+#   type: person | company | org
+#   owner: which YANA user this persona belongs to
+#   aliases: names YANA can use to resolve this persona (case-insensitive)
+#   context: who they are in this owner's life — free text
+#   tags: grouping labels (family, work, health, finance, ...)
+
+personas:
+  - id: fred
+    name: "Fred"
+    type: person
+    owner: fred
+    aliases: ["eu", "mim", "Fred", "Frederico"]
+    context: "O próprio Fred — dono do sistema YANA"
+    tags: [owner]
+
+  - id: ana
+    name: "Ana"
+    type: person
+    owner: fred
+    aliases: ["Ana", "esposa", "minha esposa"]
+    context: "Esposa do Fred"
+    tags: [family]
