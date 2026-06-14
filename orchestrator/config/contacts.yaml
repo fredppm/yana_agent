@@ -1,0 +1,57 @@
+# orchestrator/config/contacts.yaml
+#
+# Contacts — how to reach Personas and Named Channels.
+# YANA can add/edit entries here through conversation.
+#
+# Two entry types:
+#
+#   Persona Contact — links a Persona to a channel + connector:
+#     persona_id: ID from personas.yaml
+#     channel: email | whatsapp | slack | sms | telegram
+#     address: actual address (email address, phone number, Slack user ID, ...)
+#     connector_id: which connector instance to use (from connectors.yaml)
+#     preferred: true if this is the default channel when none is specified
+#
+#   Named Channel — a destination without a Persona (large groups, mailing lists):
+#     id: unique identifier
+#     name: display name / alias for YANA to resolve
+#     channel: email | whatsapp | slack | sms | telegram
+#     address: actual address (Slack channel ID, group ID, mailing list address, ...)
+#     connector_id: which connector instance to use
+#
+# Addresses below are placeholders — fill in real values locally (never commit real addresses).
+
+contacts:
+  # --- Fred's own contacts (for YANA to reach Fred) ---
+  - id: fred_email_personal
+    persona_id: fred
+    channel: email
+    address: "<<fred_personal_email>>"
+    connector_id: gmail_fred_personal
+    preferred: true
+
+  - id: fred_email_work
+    persona_id: fred
+    channel: email
+    address: "<<fred_work_email>>"
+    connector_id: gmail_fred_work
+    preferred: false
+
+  # --- Ana ---
+  - id: ana_whatsapp
+    persona_id: ana
+    channel: whatsapp
+    address: "<<ana_phone>>"
+    connector_id: whatsapp_personal
+    preferred: true
+
+# named_channels:
+#   Named channels YANA has learned — destinations without a specific Persona.
+#   YANA adds entries here through conversation; Fred doesn't configure manually.
+#
+#   - id: vtex_slack_general
+#     name: "canal geral da VTEX"
+#     aliases: ["#geral-vtex", "canal geral"]
+#     channel: slack
+#     address: "<<slack_channel_id>>"
+#     connector_id: slack_vtex

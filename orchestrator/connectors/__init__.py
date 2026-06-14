@@ -1,5 +1,6 @@
 from .base import (
     Connector,
+    CommunicationChannel,
     ConnectorResult,
     OperationMeta,
     ParamSchema,
@@ -13,6 +14,7 @@ from .registry import ConnectorInstance, ConnectorRegistry
 
 __all__ = [
     "Connector",
+    "CommunicationChannel",
     "ConnectorInstance",
     "ConnectorRegistry",
     "ConnectorResult",

@@ -10,10 +10,10 @@ Setup:
 
   2. Reference it in orchestrator/config/connectors.yaml:
        config:
-         credentials_file: "~/.yana/credentials/garmin_fred.json"
-         token_dir: "~/.yana/tokens/garmin_fred"
+         persona_credentials: "~/.yana/credentials/garmin_fred.json"
+         persona_token_dir: "~/.yana/tokens/garmin_fred"
 
-  On first call the connector logs in and saves garth tokens to token_dir.
+  On first call the connector logs in and saves garth tokens to persona_token_dir.
   Subsequent calls load the saved tokens (auto-refreshed by garth when expired)
   — no password needed after that.
 """
@@ -77,13 +77,13 @@ class GarminActivityConnector(Connector):
 
     def __init__(
         self,
-        credentials_file: str | None = None,
-        token_dir: str | None = None,
+        persona_credentials: str | None = None,
+        persona_token_dir: str | None = None,
     ) -> None:
-        self._credentials_file = Path(
-            credentials_file or "~/.yana/credentials/garmin.json"
+        self._persona_credentials = Path(
+            persona_credentials or "~/.yana/credentials/garmin.json"
         ).expanduser()
-        self._token_dir = Path(token_dir or "~/.yana/tokens/garmin").expanduser()
+        self._persona_token_dir = Path(persona_token_dir or "~/.yana/tokens/garmin").expanduser()
         self._client = None  # lazy
 
     # ------------------------------------------------------------------
@@ -209,10 +209,10 @@ class GarminActivityConnector(Connector):
     def _build_client(self):
         from garminconnect import Garmin
 
-        if not self._credentials_file.exists():
-            self._credentials_file = self._prompt_and_save_credentials()
+        if not self._persona_credentials.exists():
+            self._persona_credentials = self._prompt_and_save_credentials()
 
-        creds = json.loads(self._credentials_file.read_text())
+        creds = json.loads(self._persona_credentials.read_text())
         client = Garmin(email=creds["email"], password=creds["password"])
         # flush stdout so our messages appear before garminconnect's stderr output
         import sys as _sys
@@ -222,7 +222,7 @@ class GarminActivityConnector(Connector):
         # or saves fresh tokens there after a successful login.
         # It also triggers the full strategy chain (mobile+cffi, widget+cffi, mobile+requests)
         # which is necessary to work around Garmin's rate limiting on the mobile OAuth endpoint.
-        self._token_dir.mkdir(parents=True, exist_ok=True)
+        self._persona_token_dir.mkdir(parents=True, exist_ok=True)
         # Suppress garth's per-strategy retry noise (429s, etc.) — they're intermediate
         # attempts, not errors. If all strategies fail, our except block surfaces a clean message.
         # Pass --debug to YANA to restore verbose output.
@@ -233,7 +233,7 @@ class GarminActivityConnector(Connector):
         if not logging.getLogger().isEnabledFor(logging.DEBUG):
             _garth_log.setLevel(logging.ERROR)
         try:
-            client.login(tokenstore=str(self._token_dir))
+            client.login(tokenstore=str(self._persona_token_dir))
         except Exception as exc:
             exc_str = str(exc)
             try:
@@ -263,7 +263,7 @@ class GarminActivityConnector(Connector):
                     "Aguarde alguns minutos e tente de novo."
                 ) from exc
             if is_auth_err:
-                self._credentials_file.unlink(missing_ok=True)
+                self._persona_credentials.unlink(missing_ok=True)
                 raise RuntimeError(
                     "Email ou senha incorretos. "
                     "Credenciais removidas — tente de novo para reinserir."
@@ -276,19 +276,19 @@ class GarminActivityConnector(Connector):
 
     def _prompt_and_save_credentials(self) -> Path:
         """Interactively ask for Garmin credentials and save them to disk."""
-        print(f"\n[Garmin] Credenciais não encontradas: {self._credentials_file}")
+        print(f"\n[Garmin] Credenciais não encontradas: {self._persona_credentials}")
         print(
             "[Garmin] Informe suas credenciais Garmin Connect (salvas localmente, usadas uma vez):"
         )
         email = input("  Email: ").strip()
         password = _read_password("  Senha: ")
 
-        self._credentials_file.parent.mkdir(parents=True, exist_ok=True)
-        self._credentials_file.write_text(
+        self._persona_credentials.parent.mkdir(parents=True, exist_ok=True)
+        self._persona_credentials.write_text(
             json.dumps({"email": email, "password": password}, indent=2)
         )
-        print(f"[Garmin] Credenciais salvas em {self._credentials_file}")
-        return self._credentials_file
+        print(f"[Garmin] Credenciais salvas em {self._persona_credentials}")
+        return self._persona_credentials
 
     def _stats_today(self) -> dict:
         return self._svc().get_stats(date.today().isoformat()) or {}

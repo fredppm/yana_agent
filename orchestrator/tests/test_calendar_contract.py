@@ -48,8 +48,8 @@ _EXPECTED_EVENT_KEYS = {"id", "title", "start", "end", "location", "notes", "lin
 def _make_connector() -> tuple[Any, MagicMock]:
     """Return a connector instance with the Google service layer mocked out."""
     connector = GoogleCalendarConnector(
-        credentials_file="/dev/null",
-        token_file="/dev/null",
+        app_credential="/dev/null",
+        persona_token="/dev/null",
     )
     mock_svc = MagicMock()
     connector._service = mock_svc

@@ -16,8 +16,8 @@ Setup:
          name: "Spotify do Fred"
          owner: fred
          config:
-           credentials_file: "~/.yana/credentials/spotify_fred.json"
-           token_file: "~/.yana/tokens/spotify_fred.json"
+           app_credential: "~/.yana/credentials/spotify_fred.json"
+           persona_token: "~/.yana/tokens/spotify_fred.json"
 
   On first use, a browser opens for OAuth and saves the token automatically.
   Subsequent runs load the saved token — no interaction needed.
@@ -83,10 +83,10 @@ class SpotifyConnector(Connector):
 
     def __init__(
         self,
-        credentials_file: str | None = None,
-        token_file: str | None = None,
+        app_credential: str | None = None,
+        persona_token: str | None = None,
     ) -> None:
-        creds_path = Path(credentials_file or "~/.yana/credentials/spotify_fred.json").expanduser()
+        creds_path = Path(app_credential or "~/.yana/credentials/spotify_fred.json").expanduser()
 
         if not creds_path.exists():
             creds_path = self._prompt_and_save_credentials(creds_path)
@@ -99,7 +99,7 @@ class SpotifyConnector(Connector):
                 f"Spotify credentials at {creds_path} are missing client_id or client_secret."
             )
         self._redirect_uri: str = creds.get("redirect_uri", _DEFAULT_REDIRECT)
-        self._token_file = Path(token_file or "~/.yana/tokens/spotify_fred.json").expanduser()
+        self._persona_token = Path(persona_token or "~/.yana/tokens/spotify_fred.json").expanduser()
         self._sp: Any = None  # lazy — created on first use
 
         # Suppress spotipy's internal HTTP error logging — retries are handled
@@ -133,14 +133,14 @@ class SpotifyConnector(Connector):
         import spotipy  # type: ignore[import-untyped]
         from spotipy.oauth2 import SpotifyOAuth  # type: ignore[import-untyped]
 
-        self._token_file.parent.mkdir(parents=True, exist_ok=True)
+        self._persona_token.parent.mkdir(parents=True, exist_ok=True)
         self._sp = spotipy.Spotify(
             auth_manager=SpotifyOAuth(
                 client_id=self._client_id,
                 client_secret=self._client_secret,
                 redirect_uri=self._redirect_uri,
                 scope=_SCOPE,
-                cache_path=str(self._token_file),
+                cache_path=str(self._persona_token),
                 open_browser=True,
             )
         )
