@@ -240,5 +240,8 @@ connectors:
     finally:
         os.unlink(tmp)
 
-    with pytest.raises(KeyError, match="UnknownType"):
-        registry.call("ghost", "anything")
+    result = registry.call("ghost", "anything")
+    assert result.ok is False
+    # KeyError from missing type registration — not an auth error
+    assert result.error != "auth"
+    assert "UnknownType" in result.error

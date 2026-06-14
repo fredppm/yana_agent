@@ -124,14 +124,17 @@ class GoogleCalendarMCPConnector(Connector):
         now = datetime.now(UTC)
         start = start_iso or now.isoformat()
         end = end_iso or (now + timedelta(days=7)).isoformat()
-        data = self._call_tool("get-events", {
-            "calendarId": "primary",
-            "timeMin": start,
-            "timeMax": end,
-            "maxResults": max_results,
-            "singleEvents": True,
-            "orderBy": "startTime",
-        })
+        data = self._call_tool(
+            "get-events",
+            {
+                "calendarId": "primary",
+                "timeMin": start,
+                "timeMax": end,
+                "maxResults": max_results,
+                "singleEvents": True,
+                "orderBy": "startTime",
+            },
+        )
         items = (data or {}).get("items") or []
         return [self._format_event(e) for e in items]
 
@@ -144,11 +147,14 @@ class GoogleCalendarMCPConnector(Connector):
         returns={"type": "boolean"},
     )
     def is_available(self, start_iso: str, end_iso: str) -> bool:
-        data = self._call_tool("check-availability", {
-            "items": [{"id": "primary"}],
-            "timeMin": start_iso,
-            "timeMax": end_iso,
-        })
+        data = self._call_tool(
+            "check-availability",
+            {
+                "items": [{"id": "primary"}],
+                "timeMin": start_iso,
+                "timeMax": end_iso,
+            },
+        )
         busy = (data or {}).get("calendars", {}).get("primary", {}).get("busy", [])
         return len(busy) == 0
 
@@ -187,10 +193,13 @@ class GoogleCalendarMCPConnector(Connector):
         returns={"type": "boolean"},
     )
     def cancel_event(self, event_id: str) -> bool:
-        self._call_tool("delete-event", {
-            "calendarId": "primary",
-            "eventId": event_id,
-        })
+        self._call_tool(
+            "delete-event",
+            {
+                "calendarId": "primary",
+                "eventId": event_id,
+            },
+        )
         return True
 
     # ------------------------------------------------------------------

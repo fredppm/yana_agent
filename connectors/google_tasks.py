@@ -133,9 +133,7 @@ class GoogleTasksConnector(Connector):
         tasklist_id: str = _DEFAULT_TASKLIST,
     ) -> dict:
         body = {"status": "completed"}
-        result = (
-            self._svc().tasks().patch(tasklist=tasklist_id, task=task_id, body=body).execute()
-        )
+        result = self._svc().tasks().patch(tasklist=tasklist_id, task=task_id, body=body).execute()
         return self._format_task(result)
 
     @command(
@@ -164,9 +162,7 @@ class GoogleTasksConnector(Connector):
             body["notes"] = notes
         if due_iso:
             body["due"] = due_iso if "T" in due_iso else f"{due_iso}T00:00:00Z"
-        result = (
-            self._svc().tasks().patch(tasklist=tasklist_id, task=task_id, body=body).execute()
-        )
+        result = self._svc().tasks().patch(tasklist=tasklist_id, task=task_id, body=body).execute()
         return self._format_task(result)
 
     @command(

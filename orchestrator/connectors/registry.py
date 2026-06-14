@@ -170,7 +170,12 @@ class ConnectorRegistry:
     ) -> ConnectorResult:
         if instance_id not in self._instances:
             return ConnectorResult(ok=False, error="unavailable")
-        connector = self._get_connector(instance_id)
+        try:
+            connector = self._get_connector(instance_id)
+        except PermissionError:
+            return ConnectorResult(ok=False, error="auth")
+        except Exception as exc:
+            return ConnectorResult(ok=False, error=str(exc))
         return connector.call(operation, params)
 
     def get_instance(self, instance_id: str) -> ConnectorInstance:
@@ -226,7 +231,10 @@ class ConnectorRegistry:
         """
         candidates: list[dict[str, str]] = []
         for instance_id in self._instances:
-            connector = self._get_connector(instance_id)
+            try:
+                connector = self._get_connector(instance_id)
+            except Exception:
+                continue
             has_events = any(m.kind == "event" for m in connector._operations.values())
             if not has_events:
                 for name, meta in connector._operations.items():
@@ -240,6 +248,13 @@ class ConnectorRegistry:
                 handler(payload)
 
         return dispatch
+
+    def evict(self, instance_id: str) -> None:
+        """Remove a cached connector so it is re-initialized on the next call.
+
+        Call this after credentials are saved so the connector picks up the new file.
+        """
+        self._cache.pop(instance_id, None)
 
     # ------------------------------------------------------------------
 

@@ -20,18 +20,22 @@ from pathlib import Path
 # Patch credential paths before any server code is imported
 import mcp_server_google_calendar.auth.auth as _auth
 
-_creds = Path(os.environ.get("GOOGLE_CREDENTIALS_PATH", "~/.yana/google_credentials.json")).expanduser()
-_token = Path(os.environ.get("GOOGLE_TOKEN_PATH", "~/.yana/tokens/google_calendar.json")).expanduser()
+_creds = Path(
+    os.environ.get("GOOGLE_CREDENTIALS_PATH", "~/.yana/google_credentials.json")
+).expanduser()
+_token = Path(
+    os.environ.get("GOOGLE_TOKEN_PATH", "~/.yana/tokens/google_calendar.json")
+).expanduser()
 
 _auth.get_credentials_path = lambda: _creds
 _auth.get_token_path = lambda: _token
 
 # Import server internals after patching
 from mcp_server_google_calendar.server import server  # noqa: E402
-from mcp_server_google_calendar.auth import authorize   # noqa: E402
-import mcp.server.stdio                                # noqa: E402
-from mcp.server import NotificationOptions             # noqa: E402
-from mcp.server.models import InitializationOptions    # noqa: E402
+from mcp_server_google_calendar.auth import authorize  # noqa: E402
+import mcp.server.stdio  # noqa: E402
+from mcp.server import NotificationOptions  # noqa: E402
+from mcp.server.models import InitializationOptions  # noqa: E402
 
 
 async def _run() -> None:
