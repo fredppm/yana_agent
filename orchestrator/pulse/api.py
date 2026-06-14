@@ -106,7 +106,14 @@ class _Handler(BaseHTTPRequestHandler):
             return
         upsert_task(self.tasks_file, task)
         _reschedule(self.scheduler, self.tasks_file, self.registry)
-        output.status(f"[pulse-api] upserted task '{task.name}'")
+        if task.schedule.mode == "once":
+            schedule_desc = f"once at {task.schedule.at}"
+        else:
+            schedule_desc = f"{task.schedule.time} ({task.schedule.days})"
+        output.status(
+            f"[pulse-api] task '{task.name}' scheduled — "
+            f"{schedule_desc} | {task.observe.source}.{task.observe.operation} → {task.deliver.action}"
+        )
         self._json({"ok": True, "name": task.name}, status=201)
 
     def do_DELETE(self) -> None:
