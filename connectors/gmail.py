@@ -1,7 +1,7 @@
 """
 connectors/gmail.py — GmailMCPConnector.
 
-Routes YANA connector calls to a Gmail MCP server via the Python MCP SDK.
+Routes YANA connector calls to the mcp-google-gmail MCP server.
 The connector is intentionally dumb: it passes raw email data to YANA, which
 applies intelligence (triaging, drafting replies) using sanctum context.
 
@@ -10,32 +10,29 @@ inside the connector. YANA decides what matters based on sanctum relationship
 context (BOND.md, MEMORY.md).
 
 Setup:
-  1. Install a Gmail MCP server, e.g.:
-       uvx mcp-gmail   (no local install required)
-     or:
-       pip install mcp-gmail-server
-  2. Run auth once per account (follow the server's instructions to authorize
-     via browser OAuth — subsequent runs use the saved token).
+  1. Go to https://console.cloud.google.com/, enable Gmail API, create OAuth 2.0
+     credentials (Desktop app), download JSON.
+  2. Save to the path configured as credentials_file (default: ~/.yana/google_credentials.json).
   3. Register in orchestrator/config/connectors.yaml:
+
        - type: GmailMCPConnector
          id: gmail_fred_personal
          name: "Gmail pessoal do Fred"
          owner: fred
          config:
-           mcp_command: ["uvx", "mcp-gmail"]
-           env:
-             GOOGLE_CREDENTIALS_PATH: "~/.yana/google_credentials.json"
-             GOOGLE_TOKEN_PATH: "~/.yana/tokens/gmail_fred_personal.json"
+           credentials_file: "~/.yana/google_credentials.json"
+           token_file: "~/.yana/tokens/gmail_fred_personal.json"
 
-  Multiple accounts: register one instance per account with different ids/owners.
-  The connector is stateless about identity — isolation is done by config, not code.
+  On first YANA startup, a browser window opens for OAuth consent.
+  The token is saved to token_file — no browser needed on subsequent runs.
 
-Note on MCP tool names: different Gmail MCP servers use different tool names.
-The defaults target the common convention. Override _TOOLS at class level to
-adapt to any backend without changing business logic.
+  Multiple accounts: register one instance per account with separate token_files.
 
-send_message uses a generic name intentionally — this is the first implementation
-of a future CommunicationsConnector abstraction (see issue #20).
+Note on MCP tool names: different builds of mcp-google-gmail may use different
+tool names. Override _TOOLS at class level to adapt without changing business logic.
+
+send_message uses a generic name intentionally — first implementation of a future
+CommunicationsConnector abstraction (see issue #20).
 """
 
 from __future__ import annotations
@@ -45,9 +42,12 @@ import json
 import os
 import threading
 from contextlib import AsyncExitStack
+from pathlib import Path
 from typing import Any
 
 from connectors import Connector, command, event, query
+
+_LAUNCHER = Path(__file__).parent / "gmail_mcp_launcher.py"
 
 
 class GmailMCPConnector(Connector):
@@ -63,20 +63,18 @@ class GmailMCPConnector(Connector):
 
     def __init__(
         self,
-        mcp_command: list[str] | None = None,
-        env: dict[str, str] | None = None,
+        credentials_file: str | None = None,
+        token_file: str | None = None,
     ) -> None:
-        # mcp_command: command + args to launch the Gmail MCP server via stdio.
-        # Defaults to uvx mcp-gmail (no local install needed).
-        self._mcp_command = mcp_command or ["uvx", "mcp-gmail"]
+        creds = Path(credentials_file or "~/.yana/google_credentials.json").expanduser()
+        token = Path(token_file or "~/.yana/tokens/gmail.json").expanduser()
 
-        # Merge caller-supplied env into the current process env.
-        # Expand ~ in path-like values.
+        # Pass credential/token paths to the launcher via env vars.
+        # The launcher handles OAuth on first run (browser) and token refresh.
         merged: dict[str, str] = dict(os.environ)
-        for k, v in (env or {}).items():
-            merged[k] = os.path.expanduser(v) if isinstance(v, str) else v
+        merged["GMAIL_CREDENTIALS_PATH"] = str(creds)
+        merged["GMAIL_TOKEN_PATH"] = str(token)
         self._env = merged
-
         # Dedicated event loop in a background thread — keeps the MCP session
         # and the Gmail MCP subprocess alive across calls.
         self._loop = asyncio.new_event_loop()
@@ -107,8 +105,8 @@ class GmailMCPConnector(Connector):
         from mcp.client.stdio import stdio_client
 
         params = StdioServerParameters(
-            command=self._mcp_command[0],
-            args=self._mcp_command[1:],
+            command="python",
+            args=[str(_LAUNCHER)],
             env=self._env,
         )
         self._exit_stack = AsyncExitStack()

@@ -76,7 +76,6 @@ def _make_connector() -> Any:
         connector._thread = MagicMock()
         connector._session = MagicMock()
         connector._exit_stack = MagicMock()
-        connector._mcp_command = ["uvx", "mcp-gmail"]
         connector._env = {}
         connector._TOOLS = GmailMCPConnector._TOOLS
     return connector
