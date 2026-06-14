@@ -230,9 +230,16 @@ def _call_with_tool_loop(
         # Execute each tool and collect results
         tool_results = []
         for tc in tool_uses:
+            inp = tc["input"]
+            if isinstance(inp, str):
+                try:
+                    inp = json.loads(inp)
+                except (json.JSONDecodeError, ValueError):
+                    inp = {}
+                tc = {**tc, "input": inp}
             result_str = _execute_tool(tc, registry)
-            instance = tc["input"].get("instance_id", "")
-            op = tc["input"].get("operation", tc["name"])
+            instance = inp.get("instance_id", "")
+            op = inp.get("operation", tc["name"])
             try:
                 _r = json.loads(result_str)
                 _err = _r.get("error") if not _r.get("ok", True) else None

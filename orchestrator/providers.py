@@ -11,6 +11,7 @@ Routing resolution order:
 
 from __future__ import annotations
 
+import json
 import os
 from collections.abc import Callable
 from pathlib import Path
@@ -414,6 +415,12 @@ def call_llm_with_tools(
         if block.type == "text":
             text_parts.append(block.text)
         elif block.type == "tool_use":
-            tool_uses.append({"id": block.id, "name": block.name, "input": block.input})
+            block_input = block.input
+            if isinstance(block_input, str):
+                try:
+                    block_input = json.loads(block_input)
+                except (json.JSONDecodeError, ValueError):
+                    block_input = {}
+            tool_uses.append({"id": block.id, "name": block.name, "input": block_input})
 
     return "".join(text_parts), tool_uses, raw_content
