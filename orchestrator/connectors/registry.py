@@ -149,9 +149,6 @@ class ConnectorRegistry:
                         ops.append(name)
                 if ops:
                     entry["operations"] = ops
-                hint = getattr(cls, "connector_credential_hint", "")
-                if hint:
-                    entry["credential_hint"] = hint
             result.append(entry)
         return result
 
@@ -176,8 +173,7 @@ class ConnectorRegistry:
         try:
             connector = self._get_connector(instance_id)
         except PermissionError:
-            hint = self._credential_hint(instance_id)
-            return ConnectorResult(ok=False, error="auth", detail=hint or None)
+            return ConnectorResult(ok=False, error="auth")
         except Exception as exc:
             return ConnectorResult(ok=False, error=str(exc))
         return connector.call(operation, params)
@@ -259,16 +255,6 @@ class ConnectorRegistry:
         Call this after credentials are saved so the connector picks up the new file.
         """
         self._cache.pop(instance_id, None)
-
-    def _credential_hint(self, instance_id: str) -> str:
-        """Return the connector_credential_hint for *instance_id*, or empty string."""
-        instance = self._instances.get(instance_id)
-        if instance is None:
-            return ""
-        cls = self._types.get(instance.type)
-        if cls is None:
-            return ""
-        return getattr(cls, "connector_credential_hint", "")
 
     # ------------------------------------------------------------------
 
