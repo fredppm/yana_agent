@@ -55,8 +55,18 @@ from strings import t  # noqa: E402
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="YANA — You Are Not Alone")
-    mode = parser.add_mutually_exclusive_group()
-    mode.add_argument(
+
+    # Operation mode — mutually exclusive
+    op = parser.add_mutually_exclusive_group()
+    op.add_argument("--init", action="store_true", help="Initialise sanctum and exit")
+    op.add_argument(
+        "--programmer",
+        action="store_true",
+        help="Programmer mode — YANA as coding co-pilot.",
+    )
+
+    # I/O mode — combinable with any operation
+    parser.add_argument(
         "--text",
         nargs="?",
         const=True,
@@ -64,16 +74,10 @@ def parse_args() -> argparse.Namespace:
         metavar="MESSAGE",
         help="Text mode. Without MESSAGE: interactive loop. With MESSAGE: single-shot query and exit.",
     )
-    mode.add_argument("--init", action="store_true", help="Initialise sanctum and exit")
-    mode.add_argument(
-        "--programmer",
-        action="store_true",
-        help="Programmer mode — YANA as coding co-pilot. Use with --text or --voice.",
-    )
     parser.add_argument(
         "--voice",
         action="store_true",
-        help="Voice interaction for programmer mode (spoken input/output).",
+        help="Voice interaction (spoken input/output).",
     )
 
     # Headless / PULSE modes
@@ -431,6 +435,7 @@ def main() -> None:
             voice_flag=args.voice,
             sanctum_path=core.sanctum_path(),
             speak_fn=speak_fn,
+            providers_config=providers_config,
         )
         return
 
