@@ -80,6 +80,7 @@ def dispatch_request(
     try:
         exit_code = engine.dispatch(request)
     except Exception as exc:
+        wm.cleanup(force=True)
         return DispatchFailed(reason=f"Engine dispatch failed: {exc}")
 
     return DispatchResult(

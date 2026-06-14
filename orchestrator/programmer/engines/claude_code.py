@@ -12,7 +12,7 @@ import subprocess
 
 from programmer.engine import CodingEngine, EngineRequest
 
-_CONTEXT_FILENAME = "YANA_CONTEXT.md"
+_CONTEXT_FILENAME = "CLAUDE.md"
 
 
 class ClaudeCodeEngine(CodingEngine):
@@ -30,24 +30,20 @@ class ClaudeCodeEngine(CodingEngine):
 
     def dispatch(self, request: EngineRequest) -> int:
         """
-        Write context to the worktree, then run Claude Code interactively.
+        Write context as CLAUDE.md, then run Claude Code with the request.
 
-        Context lands in YANA_CONTEXT.md so Claude Code reads it as project
-        context on startup. Fred's request is the initial prompt passed via -p;
-        after that Fred interacts with Claude Code directly.
+        CLAUDE.md is auto-read by Claude Code as project instructions — context
+        stays separate from the -p prompt, avoiding prompt injection from
+        sanctum content. Only the user's request is passed via -p.
 
         Returns the process exit code.
         """
-        # Write context as CLAUDE.md so Claude Code picks it up as project instructions
-        context_file = request.worktree_path / _CONTEXT_FILENAME
-        context_file.write_text(request.context, encoding="utf-8")
+        # Write context as CLAUDE.md — Claude Code reads it as project instructions
+        if request.context:
+            context_file = request.worktree_path / _CONTEXT_FILENAME
+            context_file.write_text(request.context, encoding="utf-8")
 
-        # Prepend context to prompt — Claude Code -p doesn't auto-read files
-        full_prompt = (
-            f"{request.context}\n\n---\n\n{request.prompt}" if request.context else request.prompt
-        )
-
-        cmd = ["claude", "-p", full_prompt]
+        cmd = ["claude", "-p", request.prompt]
         if self._model:
             cmd += ["--model", self._model]
         cmd += self._extra_flags
