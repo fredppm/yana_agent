@@ -58,7 +58,18 @@ def build_connector_manifest(registry) -> str:
         return ""
     if not entries:
         return ""
-    lines = ["---", "## Available Connectors", ""]
+    lines = [
+        "---",
+        "## Available Connectors",
+        "",
+        "> **CONNECTOR RULES — follow without exception:**",
+        "> 1. To read data or take action in the real world, call the connector. Never simulate or assume the result.",
+        "> 2. Never confirm that an operation succeeded without receiving `ok=True` from the connector call.",
+        "> 3. For any scheduling, reminder, or autonomous task → call `pulse.create_task`. No exceptions.",
+        "> 4. For one-time reminders use `mode=once` with `at=<ISO datetime>` (compute as now + delay). For recurring use `mode=fixed`.",
+        "> 5. If a connector call fails, report the failure honestly. Do not pretend it worked.",
+        "",
+    ]
     for e in entries:
         owner_tag = f" [{e['owner']}]" if e.get("owner") else ""
         lines.append(f"- **{e['id']}**{owner_tag}: {e['description']}")
