@@ -48,6 +48,53 @@ from typing import Any
 from connectors import Connector, command, event, query
 
 _LAUNCHER = Path(__file__).parent / "gmail_mcp_launcher.py"
+_SCOPES = ["https://www.googleapis.com/auth/gmail.modify"]
+
+
+def _ensure_gmail_auth(creds_path: Path, token_path: Path) -> None:
+    """Ensure a valid OAuth token exists. Opens browser if needed.
+
+    Must be called in the parent process — never inside an MCP subprocess
+    whose stdout is wired to the JSONRPC pipe.
+    """
+    try:
+        from google.auth.transport.requests import Request
+        from google.oauth2.credentials import Credentials
+        from google_auth_oauthlib.flow import InstalledAppFlow
+    except ImportError as exc:
+        raise RuntimeError(
+            f"Gmail auth: missing Google auth libraries ({exc}). "
+            "Run: pip install google-auth google-auth-oauthlib"
+        ) from exc
+
+    creds = None
+    if token_path.exists():
+        try:
+            creds = Credentials.from_authorized_user_file(str(token_path), _SCOPES)
+        except Exception:
+            pass  # corrupt token — re-auth below
+
+    if not creds or not creds.valid:
+        if creds and creds.expired and creds.refresh_token:
+            try:
+                creds.refresh(Request())
+            except Exception:
+                creds = None  # refresh failed — full re-auth
+
+        if not creds or not creds.valid:
+            if not creds_path.exists():
+                raise PermissionError(
+                    f"Gmail credentials not found: {creds_path}\n"
+                    "  1. Go to https://console.cloud.google.com/\n"
+                    "  2. Enable Gmail API\n"
+                    "  3. Create OAuth 2.0 credentials (Desktop app)\n"
+                    f"  4. Download JSON and save to: {creds_path}"
+                )
+            flow = InstalledAppFlow.from_client_secrets_file(str(creds_path), _SCOPES)
+            creds = flow.run_local_server(port=0)
+
+        token_path.parent.mkdir(parents=True, exist_ok=True)
+        token_path.write_text(creds.to_json())
 
 
 class GmailMCPConnector(Connector):
@@ -69,8 +116,13 @@ class GmailMCPConnector(Connector):
         creds = Path(credentials_file or "~/.yana/google_credentials.json").expanduser()
         token = Path(token_file or "~/.yana/tokens/gmail.json").expanduser()
 
-        # Pass credential/token paths to the launcher via env vars.
-        # The launcher handles OAuth on first run (browser) and token refresh.
+        # Auth MUST happen here, in YANA's process, before the MCP subprocess starts.
+        # The MCP subprocess has its stdout wired to the JSONRPC pipe — any print there
+        # (e.g. "Please visit this URL...") breaks the protocol.
+        # Running auth in the parent process keeps all OAuth output on the terminal.
+        _ensure_gmail_auth(creds, token)
+
+        # Pass paths to launcher so it can configure the server to use our token.
         merged: dict[str, str] = dict(os.environ)
         merged["GMAIL_CREDENTIALS_PATH"] = str(creds)
         merged["GMAIL_TOKEN_PATH"] = str(token)

@@ -20,3 +20,7 @@ numpy>=1.24.0
 # MP3 playback fallback (only needed if edge-tts output can't be decoded by soundfile)
 # pydub>=0.25.1
 # Install ffmpeg separately if using pydub: https://ffmpeg.org/download.html
+
+# Gmail / Google Calendar connectors — OAuth2 auth in parent process
+google-auth>=2.0.0
+google-auth-oauthlib>=1.0.0
