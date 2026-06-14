@@ -273,6 +273,7 @@ class YANAApp(App[TuiResult]):
         self._force_exited = False
         self._spinner_idx: int = 0
         self._spinner_timer: Timer | None = None
+        self._inbox_timer: Timer | None = None
         self._voice_mode = voice_mode
         self._listen_fn = listen_fn
         self._speak_fn = speak_fn
@@ -455,6 +456,41 @@ class YANAApp(App[TuiResult]):
             self._voice_start(self._voice_gen)
         else:
             self.query_one(Input).focus()
+        self._inbox_timer = self.set_interval(2.0, self._check_pulse_inbox)
+
+    def _check_pulse_inbox(self) -> None:
+        """Poll pulse-inbox.json and display any pending Pulse notifications."""
+        import json
+        import os
+        import core
+
+        inbox_path = core.sanctum_path() / "pulse-inbox.json"
+        if not inbox_path.exists():
+            return
+        tmp = inbox_path.with_suffix(".reading")
+        try:
+            os.replace(inbox_path, tmp)
+        except FileNotFoundError:
+            return
+        try:
+            entries = json.loads(tmp.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            entries = []
+        finally:
+            try:
+                tmp.unlink()
+            except OSError:
+                pass
+        if not entries or not isinstance(entries, list):
+            return
+        chat = self.query_one("#chat", RichLog)
+        for entry in entries:
+            raw_ts = entry.get("ts", "")
+            try:
+                ts_str = datetime.fromisoformat(raw_ts).strftime("%H:%M:%S")
+            except (ValueError, TypeError):
+                ts_str = datetime.now().strftime("%H:%M:%S")
+            self._write_yana(chat, entry["content"], ts_str)
 
     @work(thread=True)
     def _voice_start(self, gen: int) -> None:
