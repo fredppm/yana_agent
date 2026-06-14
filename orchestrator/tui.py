@@ -32,7 +32,7 @@ from textual.containers import Horizontal
 from textual.events import Key
 from textual.screen import Screen
 from textual.timer import Timer
-from textual.widgets import Footer, Input, Label, RichLog
+from textual.widgets import Input, Label, RichLog
 
 _NEW = "__new__"
 
@@ -283,8 +283,8 @@ class YANAApp(App[TuiResult]):
         yield Label(f"  ⟳ {t('thinking')}", id="thinking")
         with Horizontal(id="input-bar"):
             yield Label("❯", id="prompt-label")  # noqa: RUF001
-            yield Input(id="input")
-        yield Footer()
+            placeholder = "ctrl+v para voz" if self._listen_fn else ""
+            yield Input(id="input", placeholder=placeholder)
 
     def on_mount(self) -> None:
         if self._sessions:
