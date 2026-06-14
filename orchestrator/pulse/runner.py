@@ -137,7 +137,8 @@ def main(host: str = "127.0.0.1", port: int = 7891, connectors_dir: Path | None 
     output.status("[pulse] running — POST /shutdown or Ctrl+C to stop")
 
     try:
-        api.stop_event.wait()  # blocks until /shutdown or KeyboardInterrupt
+        while not api.stop_event.is_set():
+            api.stop_event.wait(timeout=1)  # short timeout keeps Ctrl+C responsive on Windows
     except (KeyboardInterrupt, SystemExit):
         pass
     finally:
