@@ -73,4 +73,5 @@ connectors:
     name: "Pulse"
     description: "Agenda tarefas autônomas do Pulse — criar, listar e remover"
     config:
+      host: "127.0.0.1"  # change to remote IP for distributed deploy
       port: 7891

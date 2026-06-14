@@ -23,6 +23,7 @@ from urllib.request import Request, urlopen
 
 from connectors import Connector, command, query
 
+_DEFAULT_HOST = "127.0.0.1"
 _DEFAULT_PORT = 7891
 _TIMEOUT = 5  # seconds
 
@@ -30,8 +31,8 @@ _TIMEOUT = 5  # seconds
 class PulseManagerConnector(Connector):
     connector_description = "Pulse task manager — create, list, and remove autonomous Pulse tasks"
 
-    def __init__(self, port: int = _DEFAULT_PORT) -> None:
-        self._base = f"http://127.0.0.1:{port}"
+    def __init__(self, host: str = _DEFAULT_HOST, port: int = _DEFAULT_PORT) -> None:
+        self._base = f"http://{host}:{port}"
 
     # ------------------------------------------------------------------
     # Queries

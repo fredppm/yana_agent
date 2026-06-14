@@ -33,7 +33,7 @@ from .config_loader import (
     upsert_task,
 )
 
-_HOST = "127.0.0.1"
+_DEFAULT_HOST = "127.0.0.1"
 
 
 # ---------------------------------------------------------------------------
@@ -172,6 +172,7 @@ class PulseAPI:
         tasks_file: Path,
         scheduler: Any,
         registry: Any,
+        host: str = _DEFAULT_HOST,
         port: int = 7891,
     ) -> None:
         # Inject dependencies into handler via class attributes
@@ -180,7 +181,7 @@ class PulseAPI:
             (_Handler,),
             {"tasks_file": tasks_file, "scheduler": scheduler, "registry": registry},
         )
-        self._server = HTTPServer((_HOST, port), handler)
+        self._server = HTTPServer((host, port), handler)
 
     def serve_forever(self) -> None:
         self._server.serve_forever()
