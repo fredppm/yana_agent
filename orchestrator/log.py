@@ -18,10 +18,28 @@ from __future__ import annotations
 from rich.console import Console
 from rich.markdown import Markdown
 from rich.markup import escape
+from strings import t
 
 console = Console(highlight=False)
 
 _CONNECTOR = escape("[connector]")
+
+# ---------------------------------------------------------------------------
+# Text UI mode state
+# ---------------------------------------------------------------------------
+
+_text_ui: bool = False
+
+
+def configure_text_ui(enabled: bool) -> None:
+    """Enable the rich text interface (date separators, BG speaker identity)."""
+    global _text_ui
+    _text_ui = enabled
+
+
+def _ts(ts: str) -> str:
+    """Return HH:MM:SS in text UI (strip milliseconds), or full ts in voice mode."""
+    return ts[:8] if _text_ui else ts
 
 
 # ---------------------------------------------------------------------------
@@ -29,27 +47,49 @@ _CONNECTOR = escape("[connector]")
 # ---------------------------------------------------------------------------
 
 
+def text_date_separator(date_str: str, session_name: str = "") -> None:
+    """Print a date separator line — text UI only."""
+    label = date_str + (f" · {session_name}" if session_name else "")
+    console.rule(f"[dim]{label}[/dim]", style="dim")
+
+
 def user_prompt(ts: str) -> None:
-    """Print the 'Você:' prompt prefix, no newline — caller reads input next."""
-    console.print(f"[dim]{ts}[/dim] [bold blue]Você:[/bold blue] ", end="")
+    """Print the user input prefix — no newline, caller reads input next."""
+    if _text_ui:
+        console.print(f"[dim]{_ts(ts)}[/dim]  ", end="")
+    else:
+        console.print(f"[dim]{ts}[/dim] [bold blue]{t('user_label')}:[/bold blue] ", end="")
 
 
 def yana_prefix(ts: str) -> None:
-    """Print the 'YANA:' prefix, no newline — caller streams or prints reply next."""
-    console.print(f"[dim]{ts}[/dim] [bold cyan]YANA:[/bold cyan] ", end="")
+    """Print the YANA reply prefix — no newline, caller prints reply next."""
+    if _text_ui:
+        console.print(f"[dim]{_ts(ts)}[/dim]  ", end="")
+    else:
+        console.print(f"[dim]{ts}[/dim] [bold cyan]YANA:[/bold cyan] ", end="")
 
 
 def yana_thinking(ts: str) -> None:
-    """Overwrite-able 'pensando...' indicator."""
-    console.print(f"[dim]{ts}[/dim] [bold cyan]YANA:[/bold cyan] [dim]pensando...[/dim]", end="\r")
+    """Overwrite-able thinking indicator."""
+    if _text_ui:
+        console.print(f"[dim]{_ts(ts)}[/dim]  [dim]⟳ {t('thinking')}[/dim]", end="\r")
+    else:
+        console.print(f"[dim]{ts}[/dim] [bold cyan]YANA:[/bold cyan] [dim]{t('thinking')}[/dim]", end="\r")
+
+
+def user_input_echo(ts: str, text: str) -> None:
+    """Reprint user's input line with BG highlight (text UI only)."""
+    console.print(f"[dim]{ts}[/dim]  [on color(238)] {escape(text)} [/on color(238)]")
 
 
 def yana_response(text: str, markdown: bool = True) -> None:
-    """Print YANA's reply. In text mode renders Markdown (bold, italic, etc.)."""
+    """Print YANA's reply. Renders Markdown in text UI; plain text in voice mode."""
     if markdown and text:
-        console.print(Markdown(text), end="")
+        console.print(Markdown(text.rstrip()), end="")
     elif text:
-        console.print(text, end="")
+        console.print(text.rstrip(), end="")
+    if _text_ui:
+        console.print()  # ensure clean newline after response
 
 
 # ---------------------------------------------------------------------------
@@ -73,7 +113,7 @@ def connector_err(ts: str, instance: str, op: str, error: str) -> None:
 
 
 def session_end(session_id: str) -> None:
-    console.print(f"[dim][sessão: {session_id}][/dim]")
+    console.print(f"[dim][{t('session_label')}: {session_id}][/dim]")
 
 
 def pulse_start(task: str) -> None:

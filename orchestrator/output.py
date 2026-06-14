@@ -39,11 +39,18 @@ _voice_mode: bool = False
 _speak_fn: Callable[[str], None] | None = None
 _level: str = "info"  # "debug" | "info" | "quiet"
 _color: bool = True
+_suppress_stream: bool = False  # suppress raw token streaming in text UI mode
 
 
 # ---------------------------------------------------------------------------
 # Setup
 # ---------------------------------------------------------------------------
+
+
+def suppress_streaming(enabled: bool) -> None:
+    """Suppress raw token streaming (text UI mode — sanctum write happens silently)."""
+    global _suppress_stream
+    _suppress_stream = enabled
 
 
 def configure(
@@ -102,7 +109,8 @@ def _c(code: str, text: str) -> str:
 
 def stream_token(char: str) -> None:
     """Print a single streamed LLM token — never spoken mid-stream."""
-    print(char, end="", flush=True)
+    if not _suppress_stream:
+        print(char, end="", flush=True)
 
 
 def say(text: str) -> int:

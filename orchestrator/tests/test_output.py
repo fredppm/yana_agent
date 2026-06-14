@@ -172,9 +172,10 @@ class TestLabels:
         output.configure(voice_mode=False, color=False)
         assert "YANA" in output.yana_label()
 
-    def test_user_label_contains_voce(self):
+    def test_user_label_contains_user_string(self):
+        import strings
         output.configure(voice_mode=False, color=False)
-        assert "Você" in output.user_label()
+        assert strings.t("user_label") in output.user_label()
 
     def test_labels_contain_timestamp(self):
         output.configure(voice_mode=False, color=False)
