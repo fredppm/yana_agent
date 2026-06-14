@@ -323,7 +323,7 @@ def _run_tui_conversation(
     )
 
 
-def run_conversation(text_mode: bool = False) -> None:
+def run_conversation() -> None:
     providers_config = prov.load_providers()
     voice_cfg = v.load_voice_config(providers_config)
 
@@ -338,35 +338,26 @@ def run_conversation(text_mode: bool = False) -> None:
             hint="Execute: python main.py --init",
         )
 
-    voice_active = not text_mode
-    system_prompt = core.load_system_prompt(voice_mode=voice_active, registry=registry)
+    system_prompt = core.load_system_prompt(registry=registry)
     task = "first_breath" if not core.sanctum_exists() else "conversation"
 
-    listen_fn = None
-    speak_fn = None
-    greeting = None
+    # Voice closures — passed to TUI so ctrl+v can activate them at any time
+    _cfg = voice_cfg
 
-    if voice_active:
-        _cfg = voice_cfg
+    def _listen() -> str:
+        return v.listen(
+            provider=_cfg["stt_provider"],
+            model_name=_cfg["stt_model"],
+            language=_cfg["stt_language"],
+        )
 
-        def _listen() -> str:
-            return v.listen(
-                provider=_cfg["stt_provider"],
-                model_name=_cfg["stt_model"],
-                language=_cfg["stt_language"],
-            )
-
-        def _speak(text: str) -> None:
-            v.speak(
-                text,
-                voice=_cfg["tts_voice"],
-                rate=_cfg["tts_rate"],
-                volume=_cfg["tts_volume"],
-            )
-
-        listen_fn = _listen
-        speak_fn = _speak
-        greeting = t("greeting")
+    def _speak(text: str) -> None:
+        v.speak(
+            text,
+            voice=_cfg["tts_voice"],
+            rate=_cfg["tts_rate"],
+            volume=_cfg["tts_volume"],
+        )
 
     _run_tui_conversation(
         system_prompt,
@@ -374,10 +365,9 @@ def run_conversation(text_mode: bool = False) -> None:
         registry,
         tools,
         task,
-        voice_mode=voice_active,
-        listen_fn=listen_fn,
-        speak_fn=speak_fn,
-        greeting=greeting,
+        voice_mode=False,   # TUI starts in text mode; user toggles with ctrl+v
+        listen_fn=_listen,
+        speak_fn=_speak,
     )
 
 
@@ -454,7 +444,7 @@ def main() -> None:
         run_single_shot(args.text)
         return
 
-    run_conversation(text_mode=bool(args.text))
+    run_conversation()
 
 
 if __name__ == "__main__":

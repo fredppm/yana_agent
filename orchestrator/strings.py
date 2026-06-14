@@ -26,7 +26,6 @@ _STRINGS: dict[str, dict[str, str]] = {
         "error_prefix": "error",
         # -- Communication --
         "user_label": "You",
-        "greeting": "Hey, listening.",
         # -- Session browser --
         "sessions_new": "new session",
         "sessions_hint": "↑↓ navigate   Enter select   q quit",
@@ -53,7 +52,6 @@ _STRINGS: dict[str, dict[str, str]] = {
         "error_prefix": "erro",
         # -- Communication --
         "user_label": "Você",
-        "greeting": "Oi, estou ouvindo.",
         # -- Session browser --
         "sessions_new": "nova sessão",
         "sessions_hint": "↑↓ navegar   Enter selecionar   q sair",

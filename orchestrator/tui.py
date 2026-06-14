@@ -235,6 +235,7 @@ class YANAApp(App[TuiResult]):
         Binding("ctrl+c", "quit_app", "Quit"),
         Binding("ctrl+d", "quit_app", "End session", show=True),
         Binding("ctrl+o", "toggle_history", "History", show=False),
+        Binding("ctrl+v", "toggle_voice", "Voice", show=True),
     ]
 
     _SPINNER = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
@@ -484,6 +485,21 @@ class YANAApp(App[TuiResult]):
 
         if not self._force_exited:
             self._voice_loop()
+
+    def action_toggle_voice(self) -> None:
+        if self._listen_fn is None:
+            return  # no voice hardware configured
+        self._voice_mode = not self._voice_mode
+        if self._voice_mode:
+            self.query_one("#input-bar").display = False
+            self._voice_loop()
+        else:
+            if self._spinner_timer is not None:
+                self._spinner_timer.stop()
+                self._spinner_timer = None
+            self.query_one("#thinking", Label).display = False
+            self.query_one("#input-bar").display = True
+            self.query_one(Input).focus()
 
     def action_toggle_history(self) -> None:
         if not self._session_history:
