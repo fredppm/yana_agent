@@ -43,6 +43,16 @@ engines:
     model: claude-sonnet-4-6  # passed to claude --model; remove to use Claude Code's default
     flags: []                 # extra CLI flags (e.g. ["--dangerously-skip-permissions"])
 
+graphiti:
+  enabled: false             # set true after running orchestrator/spikes/docker-compose.yml
+  uri: "bolt://localhost:7687"
+  user: ""
+  password: ""
+  litellm_url: "http://localhost:4000"
+  model: "bedrock-claude-haiku"
+  embed_model: "bedrock-embed"
+  group_id: "yana-fred"      # one per YANA instance; yana-esposa gets its own group
+
 stt:
   provider: faster-whisper   # openai-whisper | faster-whisper
   model: tiny                # tiny | base | small | medium | large

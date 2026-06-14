@@ -42,6 +42,7 @@ sys.path.insert(0, str(_HERE))
 import connectors_setup  # noqa: E402
 import core  # noqa: E402
 import log  # noqa: E402
+import memory as mem  # noqa: E402
 import output  # noqa: E402
 import providers as prov  # noqa: E402
 import sanctum_writer as sw  # noqa: E402
@@ -294,22 +295,31 @@ def _run_tui_conversation(
     def on_exit(final_messages: list[dict], chosen_session: str | None) -> None:
         session_id = chosen_session or datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         session_date = session_id[:10]
+
+        # Always write raw session log immediately (fast file I/O, never blocks)
         core.save_session_log(final_messages, session_id)
+
         bond = core.sanctum_path() / "BOND.md"
         is_first_breath = not core.sanctum_exists() or (
             bond.exists() and "{" in bond.read_text(encoding="utf-8")
         )
-        try:
-            sw.write_sanctum(
-                final_messages,
-                system_prompt,
-                is_first_breath=is_first_breath,
-                config=providers_config,
-                session_date=session_date,
-                silent=True,
-            )
-        except KeyboardInterrupt:
-            pass
+
+        if is_first_breath:
+            # First Breath: must write sanctum files synchronously (creates PERSONA, CREED, etc.)
+            try:
+                sw.write_sanctum(
+                    final_messages,
+                    system_prompt,
+                    is_first_breath=True,
+                    config=providers_config,
+                    session_date=session_date,
+                    silent=True,
+                )
+            except KeyboardInterrupt:
+                pass
+        else:
+            # Regular session: store in Graphiti in background — TUI closes immediately
+            mem.store_session_background(final_messages, session_id)
 
     run_tui(
         sessions,

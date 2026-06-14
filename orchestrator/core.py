@@ -104,6 +104,16 @@ def load_system_prompt(voice_mode: bool = False, registry=None) -> str:
         # No sanctum yet — First Breath hasn't happened
         parts.append(f"---\n[{errors.e('SYS-001')}]")
 
+    # Episodic memory from Graphiti — injected when enabled and available
+    try:
+        import memory as mem
+
+        graphiti_ctx = mem.load_context_sync()
+        if graphiti_ctx:
+            parts.append(graphiti_ctx)
+    except Exception:
+        pass  # graceful fallback — never block session start
+
     # Connector manifest — lightweight, always injected when registry is present
     if registry is not None:
         manifest_section = build_connector_manifest(registry)

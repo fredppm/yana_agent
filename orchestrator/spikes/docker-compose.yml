@@ -1,0 +1,27 @@
+services:
+  neo4j:
+    image: neo4j:5-community
+    ports:
+      - "7687:7687"   # Bolt protocol — usado pelo graphiti-core
+      - "7474:7474"   # Neo4j browser (opcional, útil para debug)
+    environment:
+      - NEO4J_AUTH=none   # sem auth para dev local
+    volumes:
+      - neo4j_data:/data
+
+  litellm:
+    image: ghcr.io/berriai/litellm:main-latest
+    ports:
+      - "4000:4000"   # OpenAI-compatible API endpoint
+    volumes:
+      - ./litellm-config.yaml:/app/config.yaml
+      - ${USERPROFILE}/.aws:/root/.aws:ro   # monta credenciais do host (suporta profile)
+    environment:
+      - AWS_PROFILE=${AWS_PROFILE:-default}
+      - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-us-east-1}
+    command: ["--config", "/app/config.yaml", "--port", "4000"]
+    depends_on:
+      - neo4j
+
+volumes:
+  neo4j_data:
