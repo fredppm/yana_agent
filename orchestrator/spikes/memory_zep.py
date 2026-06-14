@@ -53,7 +53,7 @@ LITELLM_EMBED_MODEL = os.environ.get("LITELLM_EMBED_MODEL", "bedrock-embed")
 
 # group_id scopes data per YANA instance — YANA-Fred and YANA-Wife have different group_ids.
 # In production this comes from providers.yaml -> graphiti.group_id (see memory.py).
-GROUP_ID = os.environ.get("YANA_GROUP_ID", "yana-fred")
+GROUP_ID = "yana-fred"
 
 
 def _client() -> Graphiti:
