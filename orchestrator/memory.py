@@ -45,12 +45,24 @@ _DEFAULT_CONFIG: dict = {
 
 
 def _load_config() -> dict:
-    """Read graphiti section from providers.yaml. Returns defaults if missing."""
+    """Read graphiti section from providers.yaml. Returns defaults if missing.
+
+    litellm_url precedence:
+      1. graphiti.litellm_url  — explicit override in the graphiti block
+      2. llm.litellm_url       — shared top-level config (new format)
+      3. _DEFAULT_CONFIG       — "http://localhost:4000"
+    """
     try:
         import yaml
 
         raw = yaml.safe_load(_CONFIG_PATH.read_text(encoding="utf-8")) or {}
-        return {**_DEFAULT_CONFIG, **raw.get("graphiti", {})}
+        graphiti_cfg = raw.get("graphiti", {})
+        # Inherit top-level litellm_url when the graphiti block does not override it
+        if "litellm_url" not in graphiti_cfg:
+            top_level_url = raw.get("llm", {}).get("litellm_url")
+            if top_level_url:
+                graphiti_cfg = {"litellm_url": top_level_url, **graphiti_cfg}
+        return {**_DEFAULT_CONFIG, **graphiti_cfg}
     except Exception:
         return dict(_DEFAULT_CONFIG)
 

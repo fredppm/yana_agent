@@ -1,16 +1,23 @@
 # LiteLLM proxy config — routes OpenAI-compatible calls to AWS Bedrock.
-# graphiti-core connects here instead of OpenAI directly.
+# Used by both YANA conversation calls (via providers.py) and Graphiti memory.
 #
-# AWS credentials are read from the environment (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY,
-# AWS_DEFAULT_REGION) — never hardcode here.
+# AWS credentials are read from the environment (AWS_ACCESS_KEY_ID,
+# AWS_SECRET_ACCESS_KEY, AWS_DEFAULT_REGION) — do not hardcode here.
+#
+# Start the proxy: litellm --config orchestrator/config/litellm.yaml --port 4000
 
 model_list:
-  - model_name: bedrock-claude          # sonnet — used for complex operations
+  - model_name: bedrock-claude-sonnet   # sonnet — conversation, first_breath
     litellm_params:
       model: bedrock/us.anthropic.claude-sonnet-4-5-20250929-v1:0
       aws_region_name: us-east-1
 
-  - model_name: bedrock-claude-haiku    # haiku — entity extraction (cheap)
+  - model_name: bedrock-claude          # alias kept for Graphiti compatibility
+    litellm_params:
+      model: bedrock/us.anthropic.claude-sonnet-4-5-20250929-v1:0
+      aws_region_name: us-east-1
+
+  - model_name: bedrock-claude-haiku    # haiku — fast tasks, entity extraction
     litellm_params:
       model: bedrock/us.anthropic.claude-haiku-4-5-20251001-v1:0
       aws_region_name: us-east-1

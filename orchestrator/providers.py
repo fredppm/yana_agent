@@ -1,12 +1,20 @@
 """
-providers.py — multi-model LLM routing.
+providers.py — LLM routing via LiteLLM proxy.
 
 Reads providers.yaml, selects the right model for each task type,
-and calls the appropriate API (Anthropic direct | Bedrock | OpenAI).
+and calls the LiteLLM endpoint (OpenAI-compatible) at litellm_url.
 
-Routing resolution order:
-  1. routing.<task> may be "provider:tier" (e.g. "bedrock:fast") — explicit provider
-  2. Otherwise tier name is looked up across providers in yaml order (first match wins)
+New config format (LiteLLM):
+  llm:
+    litellm_url: "http://localhost:4000"
+    routing:
+      conversation: bedrock-claude-sonnet
+      conversation_fast: bedrock-claude-haiku
+      ...
+
+Legacy config format (providers dict) is also supported — resolve_model
+returns the original (provider, model_id) in that case so existing tests
+and tooling continue to work unchanged.
 """
 
 from __future__ import annotations
@@ -35,15 +43,52 @@ def load_providers() -> dict:
         return yaml.safe_load(f) or {}
 
 
+def _is_litellm_config(config: dict) -> bool:
+    """Return True when the config uses the new LiteLLM-proxy format."""
+    llm = config.get("llm", {})
+    return "litellm_url" in llm and "providers" not in llm
+
+
+# ---------------------------------------------------------------------------
+# resolve_model
+# ---------------------------------------------------------------------------
+
+
 def resolve_model(task: str = "conversation", config: dict | None = None) -> tuple[str, str]:
     """
     Return (provider_name, model_id) for the given task type.
 
-    Supports explicit routing like "bedrock:fast" in providers.yaml routing section.
+    New LiteLLM config  → returns ("litellm", "<model-name-from-routing>").
+    Legacy providers cfg → returns (provider_name, model_id) as before,
+                           supporting explicit "provider:tier" routing.
+    Raises ValueError if the task cannot be resolved.
     """
     if config is None:
         config = load_providers()
 
+    if _is_litellm_config(config):
+        return _resolve_litellm(task, config)
+    return _resolve_legacy(task, config)
+
+
+def _resolve_litellm(task: str, config: dict) -> tuple[str, str]:
+    """Resolve using the new LiteLLM routing table — model names are literal."""
+    llm = config.get("llm", {})
+    routing = llm.get("routing", {})
+    model_name = routing.get(task) or routing.get("conversation")
+    if not model_name:
+        raise ValueError(errors.e("LLM-001", task=task, tier=task))
+    return "litellm", model_name
+
+
+def _resolve_legacy(task: str, config: dict) -> tuple[str, str]:
+    """
+    Resolve using the legacy providers dict.
+
+    Routing resolution order:
+      1. routing.<task> may be "provider:tier" (e.g. "bedrock:fast") — explicit provider
+      2. Otherwise tier name is looked up across providers in yaml order (first match wins)
+    """
     llm = config.get("llm", {})
     routing = llm.get("routing", {})
     tier_spec = routing.get(task, routing.get("conversation", "default"))
@@ -75,9 +120,9 @@ def resolve_model(task: str = "conversation", config: dict | None = None) -> tup
 
 
 def get_api_key(provider: str, config: dict | None = None) -> str | None:
-    """Return API key for provider, or None if provider uses ambient credentials (Bedrock)."""
-    if provider == "bedrock":
-        return None  # uses AWS env vars / profile
+    """Return API key for provider, or None if provider uses ambient credentials."""
+    if provider in ("bedrock", "litellm"):
+        return None  # bedrock: AWS env vars; litellm: no key needed
 
     if config is None:
         config = load_providers()
@@ -91,6 +136,11 @@ def get_api_key(provider: str, config: dict | None = None) -> str | None:
     if not key:
         raise OSError(errors.e("LLM-002", env_var=env_var))
     return key
+
+
+def _litellm_url(config: dict) -> str:
+    """Return the LiteLLM base URL from config."""
+    return config.get("llm", {}).get("litellm_url", "http://localhost:4000")
 
 
 # ---------------------------------------------------------------------------
@@ -192,7 +242,12 @@ def call_llm(
     task = _auto_task(messages, task)
     provider, model_id = resolve_model(task, config)
 
-    if provider == "anthropic":
+    if provider == "litellm":
+        base_url = _litellm_url(config)
+        return _call_openai_compat(
+            messages, system_prompt, model_id, base_url, "litellm", stream, timeout, _on_token
+        )
+    elif provider == "anthropic":
         api_key = get_api_key("anthropic", config)
         assert api_key is not None  # get_api_key raises OSError if key is missing
         return _call_anthropic(
@@ -206,7 +261,9 @@ def call_llm(
     elif provider == "openai":
         api_key = get_api_key("openai", config)
         assert api_key is not None  # get_api_key raises OSError if key is missing
-        return _call_openai(messages, system_prompt, model_id, api_key, stream, timeout, _on_token)
+        return _call_openai_compat(
+            messages, system_prompt, model_id, None, api_key, stream, timeout, _on_token
+        )
     else:
         raise ValueError(f"Unknown provider: {provider}")
 
@@ -310,22 +367,24 @@ def _call_bedrock(
 
 
 # ---------------------------------------------------------------------------
-# OpenAI
+# LiteLLM / OpenAI-compatible (primary path)
 # ---------------------------------------------------------------------------
 
 
-def _call_openai(
+def _call_openai_compat(
     messages: list[dict],
     system_prompt: str,
     model_id: str,
+    base_url: str | None,
     api_key: str,
     stream: bool,
     timeout: float,
     on_token: Callable[[str], None],
 ) -> str:
+    """Call any OpenAI-compatible endpoint (LiteLLM proxy or OpenAI itself)."""
     from openai import OpenAI
 
-    client = OpenAI(api_key=api_key, timeout=timeout)
+    client = OpenAI(api_key=api_key, base_url=base_url, timeout=timeout)
     full_messages = [{"role": "system", "content": system_prompt}, *messages]
 
     if stream:
@@ -350,7 +409,7 @@ def _call_openai(
 
 
 # ---------------------------------------------------------------------------
-# Tool-aware LLM call (Anthropic only; other providers fall back to plain call)
+# Tool-aware LLM call
 # ---------------------------------------------------------------------------
 
 
@@ -363,39 +422,120 @@ def call_llm_with_tools(
     timeout: float = 60.0,
 ) -> tuple[str, list[dict], list]:
     """
-    Single LLM call with tool support.
+    Single LLM call with tool support via OpenAI-compatible tools API.
 
     Returns (text, tool_use_blocks, raw_content_blocks):
       - text: concatenated text from response (may be empty if only tool_use)
       - tool_use_blocks: list of {id, name, input} dicts; empty if no tool calls
       - raw_content_blocks: full content list for the assistant message in history
 
-    Non-Anthropic providers fall back to plain call_llm (no tool support).
+    LiteLLM and OpenAI use the OpenAI tools format.
+    Legacy Anthropic/Bedrock providers use the Anthropic SDK.
     """
     if config is None:
         config = load_providers()
 
     provider, model_id = resolve_model(task, config)
 
+    if provider == "litellm":
+        base_url = _litellm_url(config)
+        return _call_openai_compat_with_tools(
+            messages, system_prompt, model_id, base_url, "litellm", tools, timeout
+        )
+    elif provider in ("anthropic", "bedrock"):
+        return _call_anthropic_with_tools(
+            messages, system_prompt, model_id, tools, timeout, config, provider
+        )
+    else:
+        # Generic OpenAI-compatible provider
+        api_key = get_api_key(provider, config)
+        assert api_key is not None
+        return _call_openai_compat_with_tools(
+            messages, system_prompt, model_id, None, api_key, tools, timeout
+        )
+
+
+def _anthropic_tool_to_openai(tool: dict) -> dict:
+    """Convert an Anthropic tool definition to OpenAI function-calling format."""
+    return {
+        "type": "function",
+        "function": {
+            "name": tool["name"],
+            "description": tool.get("description", ""),
+            "parameters": tool.get("input_schema", {}),
+        },
+    }
+
+
+def _call_openai_compat_with_tools(
+    messages: list[dict],
+    system_prompt: str,
+    model_id: str,
+    base_url: str | None,
+    api_key: str,
+    tools: list[dict],
+    timeout: float,
+) -> tuple[str, list[dict], list]:
+    """Tool-calling via OpenAI-compatible API (LiteLLM proxy or OpenAI)."""
+    import json
+
+    from openai import OpenAI
+
+    client = OpenAI(api_key=api_key, base_url=base_url, timeout=timeout)
+    full_messages = [{"role": "system", "content": system_prompt}, *messages]
+
+    # Convert Anthropic-style tool defs to OpenAI-style
+    openai_tools = [_anthropic_tool_to_openai(t) for t in tools]
+
+    response = client.chat.completions.create(
+        model=model_id,
+        messages=full_messages,  # type: ignore[arg-type]
+        tools=openai_tools,  # type: ignore[arg-type]
+    )
+
+    msg = response.choices[0].message
+    text = msg.content or ""
+    tool_uses: list[dict] = []
+    raw_content: list = []
+
+    if msg.content:
+        raw_content.append({"type": "text", "text": msg.content})
+
+    for tc in msg.tool_calls or []:
+        parsed_input = json.loads(tc.function.arguments)
+        tool_uses.append({"id": tc.id, "name": tc.function.name, "input": parsed_input})
+        raw_content.append(
+            {"type": "tool_use", "id": tc.id, "name": tc.function.name, "input": parsed_input}
+        )
+
+    return text, tool_uses, raw_content
+
+
+def _call_anthropic_with_tools(
+    messages: list[dict],
+    system_prompt: str,
+    model_id: str,
+    tools: list[dict],
+    timeout: float,
+    config: dict,
+    provider: str,
+) -> tuple[str, list[dict], list]:
+    """Tool-calling via Anthropic SDK (legacy path for anthropic/bedrock providers)."""
     import anthropic
     import httpx
 
     if provider == "anthropic":
         api_key = get_api_key("anthropic", config)
-        client = anthropic.Anthropic(api_key=api_key, timeout=httpx.Timeout(timeout, connect=10.0))
-    elif provider == "bedrock":
+        client: anthropic.Anthropic | anthropic.AnthropicBedrock = anthropic.Anthropic(
+            api_key=api_key, timeout=httpx.Timeout(timeout, connect=10.0)
+        )
+    else:
         region, profile = _bedrock_config(config)
         client = anthropic.AnthropicBedrock(  # type: ignore[assignment]
             aws_region=region,
             aws_profile=profile,
             timeout=httpx.Timeout(timeout, connect=10.0),
         )
-    else:
-        # Provider doesn't support tools — fall back to plain call (no tool use)
-        text = call_llm(
-            messages, system_prompt, task=task, stream=False, config=config, timeout=timeout
-        )
-        return text, [], [{"type": "text", "text": text}]
 
     response = client.messages.create(
         model=model_id,
