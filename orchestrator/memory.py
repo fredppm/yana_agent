@@ -21,7 +21,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import threading
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 
 log = logging.getLogger(__name__)
@@ -125,7 +125,7 @@ async def store_session(messages: list[dict], session_id: str) -> None:
                 episode_body=f"{role}: {msg['content']}",
                 source=EpisodeType.text,
                 source_description=f"YANA session {session_id}",
-                reference_time=datetime.now(timezone.utc),
+                reference_time=datetime.now(datetime.UTC),
                 group_id=group_id,
             )
         log.debug("memory: stored %d messages -> %s", len(messages), session_id)
