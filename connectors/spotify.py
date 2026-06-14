@@ -26,10 +26,46 @@ Setup:
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 from typing import Any
 
 from connectors import Connector, command, query
+
+
+def _read_secret(prompt: str) -> str:
+    """Read a secret from the terminal with echo suppressed."""
+    print(prompt, end="", flush=True)
+
+    if sys.platform == "win32":
+        import msvcrt
+
+        chars: list[str] = []
+        while True:
+            ch = msvcrt.getwch()
+            if ch in ("\r", "\n"):
+                break
+            if ch == "\x03":
+                sys.stdout.write("\r\n")
+                sys.stdout.flush()
+                raise KeyboardInterrupt
+            if ch == "\x08":
+                if chars:
+                    chars.pop()
+                    sys.stdout.write("\b \b")
+                    sys.stdout.flush()
+            else:
+                chars.append(ch)
+                sys.stdout.write("*")
+                sys.stdout.flush()
+        sys.stdout.write("\r\n")
+        sys.stdout.flush()
+        return "".join(chars)
+
+    import getpass
+
+    return getpass.getpass("")
+
 
 _SCOPE = (
     "user-read-playback-state "
@@ -44,6 +80,7 @@ class SpotifyConnector(Connector):
     connector_description = (
         "Spotify playback control and music search — play, pause, skip, volume, search"
     )
+
     def __init__(
         self,
         credentials_file: str | None = None,
@@ -52,11 +89,7 @@ class SpotifyConnector(Connector):
         creds_path = Path(credentials_file or "~/.yana/credentials/spotify_fred.json").expanduser()
 
         if not creds_path.exists():
-            raise PermissionError(
-                f"Spotify credentials not found at {creds_path}. "
-                "Create the file with client_id and client_secret from "
-                "developer.spotify.com/dashboard"
-            )
+            creds_path = self._prompt_and_save_credentials(creds_path)
 
         creds = json.loads(creds_path.read_text(encoding="utf-8"))
         self._client_id: str = creds.get("client_id", "")
@@ -74,6 +107,21 @@ class SpotifyConnector(Connector):
         import logging
 
         logging.getLogger("spotipy").setLevel(logging.CRITICAL)
+
+    @staticmethod
+    def _prompt_and_save_credentials(creds_path: Path) -> Path:
+        """Interactively ask for Spotify app credentials and save them to disk."""
+        print(f"\n[Spotify] Credenciais não encontradas: {creds_path}")
+        print("[Spotify] Informe as credenciais do app em developer.spotify.com/dashboard:")
+        client_id = input("  Client ID: ").strip()
+        client_secret = _read_secret("  Client Secret: ")
+        creds_path.parent.mkdir(parents=True, exist_ok=True)
+        creds_path.write_text(
+            json.dumps({"client_id": client_id, "client_secret": client_secret}, indent=2),
+            encoding="utf-8",
+        )
+        print(f"[Spotify] Credenciais salvas em {creds_path}")
+        return creds_path
 
     # ------------------------------------------------------------------
     # Lazy Spotify client
