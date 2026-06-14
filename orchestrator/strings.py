@@ -28,7 +28,6 @@ _STRINGS: dict[str, dict[str, str]] = {
         "user_label": "You",
         "greeting": "Hey, listening.",
         # -- Session browser --
-        "sessions_title": "sessions",
         "sessions_new": "new session",
         "sessions_hint": "↑↓ navigate   Enter select   q quit",
         "sessions_continuing": "continuing",
@@ -37,13 +36,13 @@ _STRINGS: dict[str, dict[str, str]] = {
         "session_days_ago": "{n}d ago",
         # -- Conversation UI --
         "thinking": "thinking...",
+        "listening": "listening...",
         "saving_memory": "saving memory...",
         "session_label": "session",
         # -- Programmer mode --
         "programmer_ready": "Programmer mode active — {mode}. Ready for your request.",
         "programmer_sanctum_missing": "Programmer mode requires a sanctum. Run: python main.py --init",
         "programmer_choose_mode": "Choose interaction mode — [v]oice or [t]ext: ",
-        "programmer_cancelled": "Request cancelled — clarification was needed to proceed. Start a new request when ready.",
         "programmer_session_end": "Programmer session ended.",
     },
     "pt_BR": {
@@ -56,7 +55,6 @@ _STRINGS: dict[str, dict[str, str]] = {
         "user_label": "Você",
         "greeting": "Oi, estou ouvindo.",
         # -- Session browser --
-        "sessions_title": "sessões",
         "sessions_new": "nova sessão",
         "sessions_hint": "↑↓ navegar   Enter selecionar   q sair",
         "sessions_continuing": "continuando",
@@ -65,13 +63,13 @@ _STRINGS: dict[str, dict[str, str]] = {
         "session_days_ago": "há {n} dias",
         # -- Conversation UI --
         "thinking": "pensando...",
+        "listening": "ouvindo...",
         "saving_memory": "salvando memória...",
         "session_label": "sessão",
         # -- Programmer mode --
         "programmer_ready": "Programmer mode active — {mode}. Ready for your request.",
         "programmer_sanctum_missing": "Programmer mode requires a sanctum. Run: python main.py --init",
         "programmer_choose_mode": "Choose interaction mode — [v]oice or [t]ext: ",
-        "programmer_cancelled": "Request cancelled — clarification was needed to proceed. Start a new request when ready.",
         "programmer_session_end": "Programmer session ended.",
     },
 }

@@ -41,6 +41,8 @@ _NEW = "__new__"
 TurnCallback = Callable[[list[dict]], str]
 ExitCallback = Callable[[list[dict], str | None], None]
 TuiResult = tuple[list[dict], str | None]
+VoiceListenFn = Callable[[], str]
+VoiceSpeakFn = Callable[[str], None]
 
 _SHARED_CSS = """
 Screen {
@@ -243,6 +245,10 @@ class YANAApp(App[TuiResult]):
         sessions: list[tuple[str, datetime, str]],
         on_turn: TurnCallback,
         on_exit: ExitCallback | None = None,
+        voice_mode: bool = False,
+        listen_fn: VoiceListenFn | None = None,
+        speak_fn: VoiceSpeakFn | None = None,
+        greeting: str | None = None,
     ) -> None:
         super().__init__()
         self._sessions = sessions
@@ -258,6 +264,11 @@ class YANAApp(App[TuiResult]):
         self._force_exited = False
         self._spinner_idx: int = 0
         self._spinner_timer: Timer | None = None
+        self._voice_mode = voice_mode
+        self._listen_fn = listen_fn
+        self._speak_fn = speak_fn
+        self._greeting = greeting
+        self._listening: bool = False
 
     # ------------------------------------------------------------------
     # Layout
@@ -408,7 +419,71 @@ class YANAApp(App[TuiResult]):
         chat = self.query_one("#chat", RichLog)
         if self._session_history:
             self._write_history(chat)
-        self.query_one(Input).focus()
+        if self._voice_mode:
+            self.query_one("#input-bar").display = False
+            if self._greeting:
+                ts = datetime.now().strftime("%H:%M:%S")
+                self._write_yana(chat, self._greeting, ts)
+            self._voice_start()
+        else:
+            self.query_one(Input).focus()
+
+    @work(thread=True)
+    def _voice_start(self) -> None:
+        """Speaks greeting (blocking) then enters the listen loop."""
+        if self._greeting and self._speak_fn:
+            self._speak_fn(self._greeting)
+        self._voice_loop()
+
+    @work(thread=True)
+    def _voice_loop(self) -> None:
+        """Shows listening state, blocks on listen_fn(), then triggers a turn."""
+        if self._listen_fn is None or self._force_exited:
+            return
+        self._listening = True
+        self.call_from_thread(self._show_thinking, True)
+        try:
+            text = self._listen_fn()
+        except Exception:  # noqa: BLE001
+            text = ""
+        finally:
+            self._listening = False
+        if text and not self._force_exited:
+            self._busy = True
+            self._do_turn_voice(text)
+        elif not self._force_exited:
+            # Nothing heard — listen again
+            self._voice_loop()
+
+    @work(thread=True)
+    def _do_turn_voice(self, text: str) -> None:
+        """Voice-mode turn: write user msg, call LLM, speak reply, loop."""
+        chat = self.query_one("#chat", RichLog)
+        ts = datetime.now().strftime("%H:%M:%S")
+
+        self.call_from_thread(self._write_user_bg, chat, text, ts)
+
+        self._messages.append({"role": "user", "content": text})
+        self._new_messages.append((ts, {"role": "user", "content": text}))
+        try:
+            reply = self._on_turn(list(self._messages))
+        except Exception as exc:  # noqa: BLE001
+            reply = f"[error: {exc}]"
+        reply_ts = datetime.now().strftime("%H:%M:%S")
+        self._messages.append({"role": "assistant", "content": reply})
+        self._new_messages.append((reply_ts, {"role": "assistant", "content": reply}))
+
+        self.call_from_thread(self._show_thinking, False)
+        if reply:
+            self.call_from_thread(self._write_yana, chat, reply, reply_ts)
+
+        self._busy = False
+
+        if self._speak_fn and reply:
+            self._speak_fn(reply)  # blocking — don't listen while speaking
+
+        if not self._force_exited:
+            self._voice_loop()
 
     def action_toggle_history(self) -> None:
         if not self._session_history:
@@ -427,6 +502,8 @@ class YANAApp(App[TuiResult]):
     # Input
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
+        if self._voice_mode:
+            return
         text = event.value.strip()
         if not text or self._busy:
             return
@@ -466,8 +543,11 @@ class YANAApp(App[TuiResult]):
         if visible:
             thinking.display = True
             self._spinner_idx = 0
-            self._spinner_timer = self.set_interval(0.1, self._tick_spinner)
+            if self._spinner_timer is None:
+                self._spinner_timer = self.set_interval(0.1, self._tick_spinner)
         else:
+            if self._voice_mode:
+                return  # voice mode: spinner always visible
             if self._spinner_timer is not None:
                 self._spinner_timer.stop()
                 self._spinner_timer = None
@@ -478,6 +558,8 @@ class YANAApp(App[TuiResult]):
         frame = self._SPINNER[self._spinner_idx]
         if self._saving_mode:
             msg = f"{t('saving_memory')}  ·  ctrl+c skip"
+        elif self._listening:
+            msg = t("listening")
         else:
             msg = t("thinking")
         self.query_one("#thinking", Label).update(f"  {frame} {msg}")
@@ -517,12 +599,24 @@ def run_tui(
     sessions: list[tuple[str, datetime, str]],
     on_turn: TurnCallback,
     on_exit: ExitCallback | None = None,
+    voice_mode: bool = False,
+    listen_fn: VoiceListenFn | None = None,
+    speak_fn: VoiceSpeakFn | None = None,
+    greeting: str | None = None,
 ) -> TuiResult:
     """
     Launch the YANA TUI. Blocks until the user exits (and on_exit completes).
     Returns (final_messages, chosen_session_id).
     chosen_session_id is None for new sessions.
     """
-    app = YANAApp(sessions=sessions, on_turn=on_turn, on_exit=on_exit)
+    app = YANAApp(
+        sessions=sessions,
+        on_turn=on_turn,
+        on_exit=on_exit,
+        voice_mode=voice_mode,
+        listen_fn=listen_fn,
+        speak_fn=speak_fn,
+        greeting=greeting,
+    )
     result = app.run(mouse=False)
     return result if result is not None else ([], None)

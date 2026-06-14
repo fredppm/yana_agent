@@ -15,7 +15,6 @@ import json
 import logging
 import subprocess
 import sys
-import time
 from datetime import datetime
 from pathlib import Path
 
@@ -48,21 +47,6 @@ import sanctum_writer as sw  # noqa: E402
 import voice as v  # noqa: E402
 from strings import t  # noqa: E402
 
-try:
-    from prompt_toolkit import PromptSession
-    from prompt_toolkit.formatted_text import ANSI
-    from prompt_toolkit.history import FileHistory, InMemoryHistory
-
-    _PROMPT_TOOLKIT = True
-except ImportError:
-    _PROMPT_TOOLKIT = False
-
-try:
-    import textual as _textual_pkg  # noqa: F401
-
-    _TEXTUAL = True
-except ImportError:
-    _TEXTUAL = False
 
 # ---------------------------------------------------------------------------
 # CLI
@@ -276,88 +260,6 @@ def _call_with_tool_loop(
 # ---------------------------------------------------------------------------
 
 
-def _show_resume_context(messages: list[dict]) -> None:
-    """Print the last exchange from a resumed session as dimmed context."""
-    if not messages:
-        return
-    # Grab the last user+assistant pair
-    recent: list[dict] = []
-    for m in reversed(messages):
-        recent.insert(0, m)
-        if len(recent) >= 2 and recent[0]["role"] == "user":
-            break
-    ts_now = datetime.now().strftime("%H:%M:%S")
-    for m in recent:
-        if m["role"] == "user":
-            snippet = m["content"][:200].replace("\n", " ")
-            log.console.print(f"[dim]{ts_now}  {snippet}[/dim]")
-        else:
-            log.console.print(f"[dim]{ts_now}  [/dim]", end="")
-            snippet = m["content"][:300]
-            log.yana_response(snippet, markdown=False)
-            log.console.print()
-
-
-def _clear_screen() -> None:
-    """Clear the terminal screen."""
-    print("\033[2J\033[H", end="", flush=True)
-
-
-def _text_mode_open(default_session_id: str) -> tuple[list[dict], str]:
-    """
-    Show session browser and return (messages, session_id).
-    messages is empty for a new session, or loaded for a resume.
-    """
-    messages: list[dict] = []
-    session_id = default_session_id
-
-    if not (_PROMPT_TOOLKIT and core.sanctum_exists()):
-        _clear_screen()
-        log.text_date_separator(datetime.now().strftime("%d/%m"))
-        return messages, session_id
-
-    from ui import session_browser
-
-    past = core.list_sessions()
-    if not past:
-        _clear_screen()
-        log.text_date_separator(datetime.now().strftime("%d/%m"))
-        return messages, session_id
-
-    _clear_screen()
-    log.text_date_separator(t("sessions_title"))
-    choice = session_browser(past)
-
-    # erase_when_done clears the browser — now start fresh
-    _clear_screen()
-
-    if choice is None:
-        return [], "__quit__"
-
-    if choice != "__new__":
-        messages = core.load_session_messages(choice)
-        session_id = choice
-        if messages:
-            _show_resume_context(messages)
-        log.text_date_separator(datetime.now().strftime("%d/%m"), t("sessions_continuing"))
-    else:
-        log.text_date_separator(datetime.now().strftime("%d/%m"))
-
-    return messages, session_id
-
-
-def _make_prompt_session(text_mode: bool) -> "PromptSession | None":
-    """Create a prompt_toolkit session for text mode, or None if unavailable."""
-    if not text_mode or not _PROMPT_TOOLKIT:
-        return None
-    if core.sanctum_exists():
-        history: FileHistory | InMemoryHistory = FileHistory(
-            str(core.sanctum_path() / "input-history")
-        )
-    else:
-        history = InMemoryHistory()
-    return PromptSession(history=history)
-
 
 def _run_tui_conversation(
     system_prompt: str,
@@ -365,8 +267,12 @@ def _run_tui_conversation(
     registry,
     tools: list[dict],
     initial_task: str,
+    voice_mode: bool = False,
+    listen_fn: "Callable[[], str] | None" = None,
+    speak_fn: "Callable[[str], None] | None" = None,
+    greeting: str | None = None,
 ) -> None:
-    """Run the textual TUI conversation loop."""
+    """Run the Textual TUI conversation loop (text or voice mode)."""
     from tui import run_tui
 
     sessions = core.list_sessions() if core.sanctum_exists() else []
@@ -406,30 +312,25 @@ def _run_tui_conversation(
         except KeyboardInterrupt:
             pass
 
-    # Launch textual — session browser + chat + sanctum save all inside textual
-    run_tui(sessions, on_turn=on_turn, on_exit=on_exit)
+    run_tui(
+        sessions,
+        on_turn=on_turn,
+        on_exit=on_exit,
+        voice_mode=voice_mode,
+        listen_fn=listen_fn,
+        speak_fn=speak_fn,
+        greeting=greeting,
+    )
 
 
-def run_conversation(text_mode: bool) -> None:
+def run_conversation(text_mode: bool = False) -> None:
     providers_config = prov.load_providers()
     voice_cfg = v.load_voice_config(providers_config)
 
-    # Build connector registry and inject manifest into system prompt
     registry = connectors_setup.build_registry()
     tools = prov.CONNECTOR_TOOLS
 
-    # Configure the output channel for this session
-    speak_fn = None
-    if not text_mode:
-        _cfg = voice_cfg
-
-        def _speak(text: str) -> None:
-            v.speak(text, voice=_cfg["tts_voice"], rate=_cfg["tts_rate"], volume=_cfg["tts_volume"])
-
-        speak_fn = _speak
-    output.configure(voice_mode=not text_mode, speak_fn=speak_fn)
-    output.suppress_streaming(text_mode)  # hide raw sanctum write tokens in text UI
-    log.configure_text_ui(text_mode)
+    output.configure(voice_mode=False)
 
     if not core.sanctum_exists():
         output.setup_warning(
@@ -437,122 +338,47 @@ def run_conversation(text_mode: bool) -> None:
             hint="Execute: python main.py --init",
         )
 
-    system_prompt = core.load_system_prompt(voice_mode=not text_mode, registry=registry)
-    session_id = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    messages: list[dict] = []
+    voice_active = not text_mode
+    system_prompt = core.load_system_prompt(voice_mode=voice_active, registry=registry)
     task = "first_breath" if not core.sanctum_exists() else "conversation"
 
-    # --- TUI mode (textual) ---
-    if text_mode and _TEXTUAL:
-        _run_tui_conversation(system_prompt, providers_config, registry, tools, task)
-        return
+    listen_fn = None
+    speak_fn = None
+    greeting = None
 
-    pt_session = _make_prompt_session(text_mode)
+    if voice_active:
+        _cfg = voice_cfg
 
-    if not text_mode:
-        # Voice: greeting + banner
-        greeting = t("greeting")
-        log.yana_prefix(v.ts())
-        log.console.print(greeting)
-        v.speak(
-            greeting,
-            voice=voice_cfg["tts_voice"],
-            rate=voice_cfg["tts_rate"],
-            volume=voice_cfg["tts_volume"],
-        )
-        output.announce(t("banner"))
-    else:
-        # Text: session browser → pick or start new
-        messages, session_id = _text_mode_open(session_id)
-        if session_id == "__quit__":
-            return
-
-    try:
-        while True:
-            if text_mode:
-                try:
-                    if pt_session is not None:
-                        ts_now = datetime.now().strftime("%H:%M:%S")
-                        prompt_str = ANSI(f"\033[2m{ts_now}\033[0m  ")
-                        user_input = pt_session.prompt(prompt_str).strip()
-                        if user_input:
-                            # Erase the raw prompt line and reprint with BG
-                            import sys as _sys
-                            _sys.stdout.write("\033[1A\033[2K")
-                            _sys.stdout.flush()
-                            log.user_input_echo(ts_now, user_input)
-                    else:
-                        log.user_prompt(v.ts())
-                        user_input = input("").strip()
-                except (EOFError, KeyboardInterrupt):
-                    break
-            else:
-                log.user_prompt(v.ts())
-                try:
-                    _t0 = time.monotonic()
-                    user_input = v.listen(
-                        provider=voice_cfg["stt_provider"],
-                        model_name=voice_cfg["stt_model"],
-                        language=voice_cfg["stt_language"],
-                    )
-                    _stt_ms = int((time.monotonic() - _t0) * 1000)
-                    print(f"{user_input}  [{_stt_ms}ms STT]")
-                except KeyboardInterrupt:
-                    break
-
-            if not user_input:
-                continue
-
-            messages.append({"role": "user", "content": user_input})
-
-            # --- LLM call (with connector tool loop) ---
-            log.yana_thinking(v.ts())
-            _t0 = time.monotonic()
-            reply = _call_with_tool_loop(
-                messages,
-                system_prompt,
-                tools,
-                registry,
-                providers_config,
-                task=task,
-                text_mode=text_mode,
-                clear_line=True,
+        def _listen() -> str:
+            return v.listen(
+                provider=_cfg["stt_provider"],
+                model_name=_cfg["stt_model"],
+                language=_cfg["stt_language"],
             )
-            _llm_ms = int((time.monotonic() - _t0) * 1000)
-            messages.append({"role": "assistant", "content": reply})
-            task = "conversation"
 
-            _tts_ms = output.after_stream(reply) if not text_mode else 0
-            if not text_mode:
-                output.timing(f"LLM {_llm_ms}ms | TTS {_tts_ms}ms" + " " * 10)
+        def _speak(text: str) -> None:
+            v.speak(
+                text,
+                voice=_cfg["tts_voice"],
+                rate=_cfg["tts_rate"],
+                volume=_cfg["tts_volume"],
+            )
 
-    except KeyboardInterrupt:
-        pass
+        listen_fn = _listen
+        speak_fn = _speak
+        greeting = t("greeting")
 
-    if not messages:
-        return
-
-    session_date = session_id[:10]
-    core.save_session_log(messages, session_id)
-
-    bond = core.sanctum_path() / "BOND.md"
-    is_first_breath = not core.sanctum_exists() or (
-        bond.exists() and "{" in bond.read_text(encoding="utf-8")
+    _run_tui_conversation(
+        system_prompt,
+        providers_config,
+        registry,
+        tools,
+        task,
+        voice_mode=voice_active,
+        listen_fn=listen_fn,
+        speak_fn=speak_fn,
+        greeting=greeting,
     )
-    log.session_end(session_id)
-
-    try:
-        sw.write_sanctum(
-            messages,
-            system_prompt,
-            is_first_breath=is_first_breath,
-            config=providers_config,
-            session_date=session_date,
-        )
-    except KeyboardInterrupt:
-        output.warn("sanctum not updated — raw log saved.")
-
-    output.status(f"session: {session_id}")
 
 
 def run_single_shot(message: str) -> None:
