@@ -465,7 +465,12 @@ class YANAApp(App[TuiResult]):
     @work(thread=True)
     def _voice_loop(self, gen: int) -> None:
         """Shows listening state, blocks on listen_fn(), then triggers a turn."""
-        if self._listen_fn is None or self._force_exited or not self._voice_mode or gen != self._voice_gen:
+        if (
+            self._listen_fn is None
+            or self._force_exited
+            or not self._voice_mode
+            or gen != self._voice_gen
+        ):
             return
         self._listening = True
         self.call_from_thread(self._show_thinking, True)
