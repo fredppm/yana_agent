@@ -32,7 +32,7 @@ from textual.containers import Horizontal
 from textual.events import Key
 from textual.screen import Screen
 from textual.timer import Timer
-from textual.widgets import Input, Label, RichLog
+from textual.widgets import Footer, Input, Label, RichLog
 
 _NEW = "__new__"
 
@@ -284,6 +284,7 @@ class YANAApp(App[TuiResult]):
         with Horizontal(id="input-bar"):
             yield Label("❯", id="prompt-label")  # noqa: RUF001
             yield Input(id="input")
+        yield Footer()
 
     def on_mount(self) -> None:
         if self._sessions:
@@ -489,9 +490,12 @@ class YANAApp(App[TuiResult]):
         if not self._force_exited:
             self._voice_loop()
 
+    def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
+        if action == "toggle_voice":
+            return self._listen_fn is not None
+        return True
+
     def action_toggle_voice(self) -> None:
-        if self._listen_fn is None:
-            return  # no voice hardware configured
         self._voice_mode = not self._voice_mode
         if self._voice_mode:
             self.query_one("#input-bar").display = False
