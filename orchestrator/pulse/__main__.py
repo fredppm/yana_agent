@@ -22,10 +22,15 @@ from pulse.runner import main  # noqa: E402
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="YANA Pulse daemon")
     parser.add_argument(
+        "--host",
+        default="127.0.0.1",
+        help="IP address to bind the Pulse HTTP API (default: 127.0.0.1)",
+    )
+    parser.add_argument(
         "--port",
         type=int,
         default=7891,
-        help="localhost port for the Pulse HTTP API (default: 7891)",
+        help="port for the Pulse HTTP API (default: 7891)",
     )
     args = parser.parse_args()
-    main(port=args.port)
+    main(host=args.host, port=args.port)

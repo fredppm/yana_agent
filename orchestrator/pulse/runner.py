@@ -89,12 +89,12 @@ def _guarded_execute(task: PulseTask, registry: ConnectorRegistry) -> None:
 # ---------------------------------------------------------------------------
 
 
-def main(port: int = 7891, connectors_dir: Path | None = None) -> None:
+def main(host: str = "127.0.0.1", port: int = 7891, connectors_dir: Path | None = None) -> None:
     """
     Start the Pulse daemon:
       1. Load connectors from connectors/ directory
       2. Build APScheduler with tasks from pulse-tasks.yaml
-      3. Start the localhost HTTP API for YANA to call
+      3. Start the HTTP API for YANA to call
       4. Run until interrupted
     """
     output.status("[pulse] starting")
@@ -110,10 +110,10 @@ def main(port: int = 7891, connectors_dir: Path | None = None) -> None:
     scheduler.start()
     output.status(f"[pulse] scheduler started — {len(scheduler.get_jobs())} job(s)")
 
-    api = PulseAPI(tasks_file=tasks_file, scheduler=scheduler, registry=registry, port=port)
+    api = PulseAPI(tasks_file=tasks_file, scheduler=scheduler, registry=registry, host=host, port=port)
     api_thread = threading.Thread(target=api.serve_forever, daemon=True)
     api_thread.start()
-    output.status(f"[pulse] API listening on localhost:{port}")
+    output.status(f"[pulse] API listening on {host}:{port}")
 
     try:
         threading.Event().wait()  # block forever until KeyboardInterrupt
