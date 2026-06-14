@@ -123,6 +123,55 @@ def load_system_prompt(voice_mode: bool = False, registry=None) -> str:
 # ---------------------------------------------------------------------------
 
 
+def _session_preview(path: Path, max_chars: int = 48) -> str:
+    """Return first user message snippet from a session file."""
+    import re
+
+    try:
+        text = path.read_text(encoding="utf-8")
+        m = re.search(r"\n## USER\n\n(.+)", text)
+        if m:
+            snippet = m.group(1).strip()[:max_chars].replace("\n", " ")
+            return snippet
+    except OSError:
+        pass
+    return ""
+
+
+def list_sessions(limit: int = 20) -> list[tuple[str, datetime, str]]:
+    """List recent sessions as (session_id, datetime, preview), newest first."""
+    sessions_dir = _sessions_dir()
+    result = []
+    for f in sorted(sessions_dir.glob("session-*.md"), reverse=True)[:limit]:
+        sid = f.stem[8:]  # strip "session-"
+        try:
+            dt = datetime.strptime(sid, "%Y-%m-%d_%H-%M-%S")
+        except ValueError:
+            dt = datetime.fromtimestamp(f.stat().st_mtime)
+        result.append((sid, dt, _session_preview(f)))
+    return result
+
+
+def load_session_messages(session_id: str) -> list[dict]:
+    """Load messages from a saved session file into a list of role/content dicts."""
+    import re
+
+    path = _sessions_dir() / f"session-{session_id}.md"
+    if not path.exists():
+        return []
+    text = path.read_text(encoding="utf-8")
+    messages = []
+    parts = re.split(r"\n## (USER|ASSISTANT)\n\n", text)
+    i = 1
+    while i + 1 < len(parts):
+        role = "user" if parts[i] == "USER" else "assistant"
+        content = parts[i + 1].strip()
+        if content:
+            messages.append({"role": role, "content": content})
+        i += 2
+    return messages
+
+
 def load_recent_sessions(n: int = 3) -> str:
     """Return the last n session logs concatenated, or empty string."""
     sessions_dir = _sessions_dir()

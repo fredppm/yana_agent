@@ -30,6 +30,7 @@ llm:
     conversation_fast: fast         # haiku — small talk, respostas curtas
     pulse_scheduled: fast
     pulse_triggered: fast
+    sanctum_write: fast
     first_breath: powerful
 
 engines:

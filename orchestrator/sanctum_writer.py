@@ -39,6 +39,8 @@ REGULAR_SESSION_FILES = [
     "MEMORY.md",
 ]
 
+SANCTUM_CONTEXT_LIMIT = 20  # max messages sent to LLM for sanctum write
+
 
 # ---------------------------------------------------------------------------
 # Prompt
@@ -86,12 +88,14 @@ def write_sanctum(
     is_first_breath: bool,
     config: dict | None = None,
     session_date: str | None = None,
+    silent: bool = False,
 ) -> dict[str, str]:
     """
-    Call YANA with the full conversation history + sanctum write prompt.
+    Call YANA with conversation history + sanctum write prompt.
     Parse the response and write files to the sanctum.
 
     Returns dict of {filename: content} for files written.
+    silent=True suppresses all terminal output (for TUI mode).
     """
     if config is None:
         config = prov.load_providers()
@@ -102,30 +106,34 @@ def write_sanctum(
     files = FIRST_BREATH_FILES if is_first_breath else REGULAR_SESSION_FILES
     sanctum_prompt = _build_sanctum_prompt(files, session_date)
 
-    # Add the write request as a final user message
-    write_messages = [*messages, {"role": "user", "content": sanctum_prompt}]
+    # Truncate context — recent messages carry all the relevant signal
+    context = messages[-SANCTUM_CONTEXT_LIMIT:]
+    write_messages = [*context, {"role": "user", "content": sanctum_prompt}]
 
-    output.status("saving sanctum...")
+    if not silent:
+        output.status("saving sanctum...")
     response = prov.call_llm(
         write_messages,
         system_prompt,
-        task="conversation",
-        stream=True,  # stream to avoid timeout on large responses
+        task="sanctum_write",
+        stream=True,
         config=config,
-        timeout=300.0,  # 5 min — writing 8 files takes time
-        on_token=output.stream_token,
+        timeout=300.0,
+        on_token=None if silent else output.stream_token,
     )
-    print()  # newline after stream — no TTS for sanctum write
+    if not silent:
+        print()  # newline after stream
 
     written = _parse_and_write(response)
 
-    if written:
-        output.status(f"sanctum updated: {len(written)} file(s)")
-        for fname in written:
-            output.status(f"  ✓ {fname}")
-    else:
-        output.warn(errors.e("MEM-003"))
-        _save_raw_response(response, session_date)
+    if not silent:
+        if written:
+            output.status(f"sanctum updated: {len(written)} file(s)")
+            for fname in written:
+                output.status(f"  ✓ {fname}")
+        else:
+            output.warn(errors.e("MEM-003"))
+            _save_raw_response(response, session_date)
 
     return written
 

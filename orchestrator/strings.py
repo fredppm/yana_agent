@@ -15,9 +15,38 @@ Categories:
 
 from __future__ import annotations
 
-_LOCALE = "pt_BR"
+_LOCALE = "en"
 
 _STRINGS: dict[str, dict[str, str]] = {
+    "en": {
+        # -- UI --
+        "banner": "--- YANA (Ctrl+C to quit) ---",
+        "sanctum_missing": "Sanctum not found.",
+        "warn_prefix": "warn",
+        "error_prefix": "error",
+        # -- Communication --
+        "user_label": "You",
+        # -- Session browser --
+        "sessions_new": "new session",
+        "sessions_hint_nav": "↑↓ navigate",
+        "sessions_hint_select": "Enter select",
+        "sessions_hint_quit": "q quit",
+        "sessions_continuing": "continuing",
+        "session_today": "today",
+        "session_yesterday": "yesterday",
+        "session_days_ago": "{n}d ago",
+        # -- Conversation UI --
+        "thinking": "thinking...",
+        "listening": "listening...",
+        "voice_hint": "ctrl+t for voice",
+        "saving_memory": "saving memory...",
+        "session_label": "session",
+        # -- Programmer mode --
+        "programmer_ready": "Programmer mode active — {mode}. Ready for your request.",
+        "programmer_sanctum_missing": "Programmer mode requires a sanctum. Run: python main.py --init",
+        "programmer_choose_mode": "Choose interaction mode — [v]oice or [t]ext: ",
+        "programmer_session_end": "Programmer session ended.",
+    },
     "pt_BR": {
         # -- UI --
         "banner": "--- YANA (Ctrl+C para sair) ---",
@@ -26,12 +55,25 @@ _STRINGS: dict[str, dict[str, str]] = {
         "error_prefix": "erro",
         # -- Communication --
         "user_label": "Você",
-        "greeting": "Oi, estou ouvindo.",
+        # -- Session browser --
+        "sessions_new": "nova sessão",
+        "sessions_hint_nav": "↑↓ navegar",
+        "sessions_hint_select": "Enter selecionar",
+        "sessions_hint_quit": "q sair",
+        "sessions_continuing": "continuando",
+        "session_today": "hoje",
+        "session_yesterday": "ontem",
+        "session_days_ago": "há {n} dias",
+        # -- Conversation UI --
+        "thinking": "pensando...",
+        "listening": "ouvindo...",
+        "voice_hint": "ctrl+t para voz",
+        "saving_memory": "salvando memória...",
+        "session_label": "sessão",
         # -- Programmer mode --
         "programmer_ready": "Programmer mode active — {mode}. Ready for your request.",
         "programmer_sanctum_missing": "Programmer mode requires a sanctum. Run: python main.py --init",
         "programmer_choose_mode": "Choose interaction mode — [v]oice or [t]ext: ",
-        "programmer_cancelled": "Request cancelled — clarification was needed to proceed. Start a new request when ready.",
         "programmer_session_end": "Programmer session ended.",
     },
 }
