@@ -197,15 +197,6 @@ class YANAApp(App[TuiResult]):
         scrollbar-size: 1 1;
     }
 
-    /* ── Thinking indicator ────────────────────────────── */
-
-    #thinking {
-        height: 1;
-        padding: 0 5;
-        color: #909090;
-        display: none;
-    }
-
     /* ── Input row ─────────────────────────────────────── */
 
     #input-bar {
@@ -231,6 +222,17 @@ class YANAApp(App[TuiResult]):
 
     Input:focus {
         border: none;
+    }
+
+    /* ── Thinking / listening indicator (inside input-bar) ─ */
+
+    #thinking {
+        width: 1fr;
+        height: 100%;
+        padding: 0 1;
+        color: #909090;
+        content-align: left middle;
+        display: none;
     }
     """
     )
@@ -274,17 +276,18 @@ class YANAApp(App[TuiResult]):
         self._speak_fn = speak_fn
         self._greeting = greeting
         self._listening: bool = False
+        self._voice_gen: int = 0  # incremented each activation; invalidates old loops
 
     # ------------------------------------------------------------------
     # Layout
 
     def compose(self) -> ComposeResult:
         yield RichLog(id="chat", highlight=False, markup=True, wrap=True)
-        yield Label(f"  ⟳ {t('thinking')}", id="thinking")
         with Horizontal(id="input-bar"):
             yield Label("❯", id="prompt-label")  # noqa: RUF001
             placeholder = t("voice_hint") if self._listen_fn else ""
             yield Input(id="input", placeholder=placeholder)
+            yield Label("", id="thinking")
 
     def on_mount(self) -> None:
         if self._sessions:
@@ -425,25 +428,27 @@ class YANAApp(App[TuiResult]):
         if self._session_history:
             self._write_history(chat)
         if self._voice_mode:
-            self.query_one("#input-bar").display = False
+            self._voice_gen += 1
+            self.query_one("#prompt-label", Label).display = False
+            self.query_one(Input).display = False
             if self._greeting:
                 ts = datetime.now().strftime("%H:%M:%S")
                 self._write_yana(chat, self._greeting, ts)
-            self._voice_start()
+            self._voice_start(self._voice_gen)
         else:
             self.query_one(Input).focus()
 
     @work(thread=True)
-    def _voice_start(self) -> None:
+    def _voice_start(self, gen: int) -> None:
         """Speaks greeting (blocking) then enters the listen loop."""
         if self._greeting and self._speak_fn:
             self._speak_fn(self._greeting)
-        self._voice_loop()
+        self._voice_loop(gen)
 
     @work(thread=True)
-    def _voice_loop(self) -> None:
+    def _voice_loop(self, gen: int) -> None:
         """Shows listening state, blocks on listen_fn(), then triggers a turn."""
-        if self._listen_fn is None or self._force_exited:
+        if self._listen_fn is None or self._force_exited or not self._voice_mode or gen != self._voice_gen:
             return
         self._listening = True
         self.call_from_thread(self._show_thinking, True)
@@ -453,15 +458,17 @@ class YANAApp(App[TuiResult]):
             text = ""
         finally:
             self._listening = False
-        if text and not self._force_exited:
+        if not self._voice_mode or self._force_exited or gen != self._voice_gen:
+            return
+        if text:
             self._busy = True
-            self._do_turn_voice(text)
-        elif not self._force_exited:
+            self._do_turn_voice(text, gen)
+        else:
             # Nothing heard — listen again
-            self._voice_loop()
+            self._voice_loop(gen)
 
     @work(thread=True)
-    def _do_turn_voice(self, text: str) -> None:
+    def _do_turn_voice(self, text: str, gen: int) -> None:
         """Voice-mode turn: write user msg, call LLM, speak reply, loop."""
         chat = self.query_one("#chat", RichLog)
         ts = datetime.now().strftime("%H:%M:%S")
@@ -487,8 +494,8 @@ class YANAApp(App[TuiResult]):
         if self._speak_fn and reply:
             self._speak_fn(reply)  # blocking — don't listen while speaking
 
-        if not self._force_exited:
-            self._voice_loop()
+        if not self._force_exited and self._voice_mode and gen == self._voice_gen:
+            self._voice_loop(gen)
 
     def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
         if action == "toggle_voice":
@@ -498,14 +505,17 @@ class YANAApp(App[TuiResult]):
     def action_toggle_voice(self) -> None:
         self._voice_mode = not self._voice_mode
         if self._voice_mode:
-            self.query_one("#input-bar").display = False
-            self._voice_loop()
+            self._voice_gen += 1
+            self.query_one("#prompt-label", Label).display = False
+            self.query_one(Input).display = False
+            self._voice_loop(self._voice_gen)
         else:
             if self._spinner_timer is not None:
                 self._spinner_timer.stop()
                 self._spinner_timer = None
             self.query_one("#thinking", Label).display = False
-            self.query_one("#input-bar").display = True
+            self.query_one("#prompt-label", Label).display = True
+            self.query_one(Input).display = True
             self.query_one(Input).focus()
 
     def action_toggle_history(self) -> None:
