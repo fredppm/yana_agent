@@ -73,6 +73,11 @@ class SpotifyMCPConnector(Connector):
         self._token_file = Path(token_file or "~/.yana/tokens/spotify_fred.json").expanduser()
         self._sp: Any = None  # lazy — created on first use
 
+        # Suppress spotipy's internal HTTP error logging — retries are handled
+        # internally and the raw 404/503 noise should not reach the user's console.
+        import logging
+        logging.getLogger("spotipy").setLevel(logging.CRITICAL)
+
     # ------------------------------------------------------------------
     # Lazy Spotify client
     # ------------------------------------------------------------------
@@ -134,19 +139,28 @@ class SpotifyMCPConnector(Connector):
                     else:
                         sp.start_playback(device_id=device_id)
                 except Exception as exc:
-                    # NO_ACTIVE_DEVICE: auto-retry on first available device
+                    # NO_ACTIVE_DEVICE: auto-retry on best available device
                     if "NO_ACTIVE_DEVICE" in str(exc) and not device_id:
-                        devices = (sp.devices() or {}).get("devices") or []
-                        if devices:
-                            first = devices[0]["id"]
-                            if "uris" in args:
-                                sp.start_playback(device_id=first, uris=args["uris"])
-                            elif "context_uri" in args:
-                                sp.start_playback(device_id=first, context_uri=args["context_uri"])
-                            else:
-                                sp.start_playback(device_id=first)
+                        all_devices = (sp.devices() or {}).get("devices") or []
+                        if not all_devices:
+                            raise RuntimeError(
+                                "Nenhum dispositivo Spotify encontrado. "
+                                "Abra o Spotify no celular, computador ou outro dispositivo."
+                            ) from exc
+
+                        def _priority(d: dict) -> int:
+                            if d.get("is_active"):
+                                return 0
+                            t = (d.get("type") or "").lower()
+                            return 1 if t == "smartphone" else (2 if t == "computer" else 3)
+
+                        target_id = sorted(all_devices, key=_priority)[0]["id"]
+                        if "uris" in args:
+                            sp.start_playback(device_id=target_id, uris=args["uris"])
+                        elif "context_uri" in args:
+                            sp.start_playback(device_id=target_id, context_uri=args["context_uri"])
                         else:
-                            raise
+                            sp.start_playback(device_id=target_id)
                     else:
                         raise
                 return {}
