@@ -1,5 +1,5 @@
 """
-tui.py — Textual-based chat UI for YANA text mode.
+tui.py -- Textual-based chat UI for YANA text mode.
 
 Entry point: run_tui(sessions, on_turn) -> (final_messages, chosen_session_id)
 
@@ -7,24 +7,24 @@ Both session selection and chat loop run inside the same textual App so they
 share the same visual style.
 
 Visual language:
-  User  :  [dim HH:MM:SS  ❯[/dim]  text
+  User  :  [dim HH:MM:SS  >[/dim]  text
   YANA  :  RichMarkdown, spaced by blank lines
-  Input :  darker bg + visible separator + ❯ prompt label
+  Input :  darker bg + visible separator + > prompt label
 """
-from __future__ import annotations
 
-from datetime import datetime
-from typing import Callable
+from __future__ import annotations
 
 import textwrap
 import threading
+from collections.abc import Callable
+from datetime import datetime
+from typing import ClassVar
 
 from rich.cells import cell_len
 from rich.markdown import Markdown as RichMarkdown
 from rich.markup import escape
 from rich.padding import Padding
-from rich.rule import Rule
-
+from strings import t
 from textual import work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
@@ -33,8 +33,6 @@ from textual.events import Key
 from textual.screen import Screen
 from textual.timer import Timer
 from textual.widgets import Input, Label, RichLog
-
-from strings import t
 
 _NEW = "__new__"
 
@@ -63,7 +61,7 @@ class SessionScreen(Screen[str | None]):
     def render(self) -> str:
         return ""
 
-    BINDINGS = [
+    BINDINGS: ClassVar[list[Binding | tuple[str, str] | tuple[str, str, str]]] = [
         Binding("up", "cursor_up", show=False),
         Binding("down", "cursor_down", show=False),
         Binding("enter", "confirm", "Select"),
@@ -73,7 +71,9 @@ class SessionScreen(Screen[str | None]):
 
     _SPINNER = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
 
-    CSS = _SHARED_CSS + """
+    CSS = (
+        _SHARED_CSS
+        + """
     #session-list {
         height: 1fr;
         padding: 1 3;
@@ -88,6 +88,7 @@ class SessionScreen(Screen[str | None]):
         color: #909090;
     }
     """
+    )
 
     def __init__(self, sessions: list[tuple[str, datetime, str]]) -> None:
         super().__init__()
@@ -148,7 +149,7 @@ class SessionScreen(Screen[str | None]):
             if i == 1:
                 lst.write("")
             if i == self._cursor:
-                lst.write(f"  [bold]❯  {escape(label)}[/bold]")
+                lst.write(f"  [bold]❯  {escape(label)}[/bold]")  # noqa: RUF001
             elif i == 0:
                 # "new session" — always plain, never dim
                 lst.write(f"     {escape(label)}")
@@ -182,7 +183,9 @@ class YANAApp(App[TuiResult]):
     Returns (final_messages, chosen_session_id) on exit.
     """
 
-    CSS = _SHARED_CSS + """
+    CSS = (
+        _SHARED_CSS
+        + """
     /* ── Chat log ──────────────────────────────────────── */
 
     #chat {
@@ -230,8 +233,9 @@ class YANAApp(App[TuiResult]):
         border: none;
     }
     """
+    )
 
-    BINDINGS = [
+    BINDINGS: ClassVar[list[Binding | tuple[str, str] | tuple[str, str, str]]] = [
         Binding("ctrl+c", "quit_app", "Quit"),
         Binding("ctrl+d", "quit_app", "End session", show=True),
         Binding("ctrl+o", "toggle_history", "History", show=False),
@@ -256,7 +260,7 @@ class YANAApp(App[TuiResult]):
         self._on_turn = on_turn
         self._on_exit = on_exit
         self._messages: list[dict] = []
-        self._session_history: list[dict] = []      # loaded from old session
+        self._session_history: list[dict] = []  # loaded from old session
         self._new_messages: list[tuple[str, dict]] = []  # (ts, msg) this session
         self._history_expanded: bool = False
         self._chosen_session: str | None = None
@@ -278,7 +282,7 @@ class YANAApp(App[TuiResult]):
         yield RichLog(id="chat", highlight=False, markup=True, wrap=True)
         yield Label(f"  ⟳ {t('thinking')}", id="thinking")
         with Horizontal(id="input-bar"):
-            yield Label("❯", id="prompt-label")
+            yield Label("❯", id="prompt-label")  # noqa: RUF001
             yield Input(id="input")
 
     def on_mount(self) -> None:
@@ -296,6 +300,7 @@ class YANAApp(App[TuiResult]):
             return
         if choice != _NEW:
             import core
+
             self._messages = core.load_session_messages(choice)
             self._session_history = list(self._messages)
             self._chosen_session = choice
@@ -311,7 +316,7 @@ class YANAApp(App[TuiResult]):
         chat.write(RichMarkdown("---"))
 
     _YANA_ICON = "●"
-    _GUTTER = 3  # width of icon column: "❯  " or "·  " or "   "
+    _GUTTER = 3  # width of icon column: ">  " or "·  " or "   "
 
     def _chat_width(self) -> int:
         """Usable line width inside the chat widget.
@@ -321,16 +326,16 @@ class YANAApp(App[TuiResult]):
         try:
             w = self.query_one("#chat", RichLog).size.width - 7
             return w if w > 20 else 80
-        except Exception:  # noqa: BLE001
+        except Exception:
             return 80
 
     def _write_user_bg(self, chat: RichLog, text: str, ts: str = "") -> None:
-        """User message: dim rule above, ❯ + text + ts, dim rule below."""
+        """User message: dim rule above, > + text + ts, dim rule below."""
         w = self._chat_width()
         ts_str = f"  {ts}" if ts else ""
         ts_len = cell_len(ts_str)
         text_w = max(1, w - self._GUTTER - ts_len)  # space for text on first line
-        wrap_w = max(1, w - self._GUTTER)            # space for wrapped lines
+        wrap_w = max(1, w - self._GUTTER)  # space for wrapped lines
 
         raw = text.replace("\n", " ")
         lines = textwrap.wrap(raw, width=text_w, break_long_words=True) or [""]
@@ -340,14 +345,12 @@ class YANAApp(App[TuiResult]):
         gap = max(0, w - self._GUTTER - cell_len(first) - ts_len)
         ts_mk = f"[dim]{escape(ts_str)}[/dim]" if ts_str else ""
         chat.write(
-            f"[on {self._USER_BG}][dim]❯  [/dim]{escape(first)}{' ' * gap}{ts_mk}[/on {self._USER_BG}]"
+            f"[on {self._USER_BG}][dim]❯  [/dim]{escape(first)}{' ' * gap}{ts_mk}[/on {self._USER_BG}]"  # noqa: RUF001
         )
         # Wrapped lines: indent only, no icon, no ts
         for line in lines[1:]:
             pad = max(0, wrap_w - cell_len(line))
-            chat.write(
-                f"[on {self._USER_BG}]   {escape(line)}{' ' * pad}[/on {self._USER_BG}]"
-            )
+            chat.write(f"[on {self._USER_BG}]   {escape(line)}{' ' * pad}[/on {self._USER_BG}]")
 
         chat.write("")
 
@@ -445,7 +448,7 @@ class YANAApp(App[TuiResult]):
         self.call_from_thread(self._show_thinking, True)
         try:
             text = self._listen_fn()
-        except Exception:  # noqa: BLE001
+        except Exception:
             text = ""
         finally:
             self._listening = False
@@ -468,7 +471,7 @@ class YANAApp(App[TuiResult]):
         self._new_messages.append((ts, {"role": "user", "content": text}))
         try:
             reply = self._on_turn(list(self._messages))
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             reply = f"[error: {exc}]"
         reply_ts = datetime.now().strftime("%H:%M:%S")
         self._messages.append({"role": "assistant", "content": reply})
@@ -539,7 +542,7 @@ class YANAApp(App[TuiResult]):
         self._new_messages.append((ts, {"role": "user", "content": text}))
         try:
             reply = self._on_turn(list(self._messages))
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             reply = f"[error: {exc}]"
         reply_ts = datetime.now().strftime("%H:%M:%S")
         self._messages.append({"role": "assistant", "content": reply})
@@ -598,8 +601,9 @@ class YANAApp(App[TuiResult]):
 
     def _save_and_exit(self) -> None:
         try:
-            self._on_exit(list(self._messages), self._chosen_session)
-        except Exception:  # noqa: BLE001
+            if self._on_exit is not None:
+                self._on_exit(list(self._messages), self._chosen_session)
+        except Exception:
             pass
         if not self._force_exited:
             self.call_from_thread(self._show_thinking, False)

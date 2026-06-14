@@ -15,6 +15,7 @@ import json
 import logging
 import subprocess
 import sys
+from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 
@@ -46,7 +47,6 @@ import providers as prov  # noqa: E402
 import sanctum_writer as sw  # noqa: E402
 import voice as v  # noqa: E402
 from strings import t  # noqa: E402
-
 
 # ---------------------------------------------------------------------------
 # CLI
@@ -260,7 +260,6 @@ def _call_with_tool_loop(
 # ---------------------------------------------------------------------------
 
 
-
 def _run_tui_conversation(
     system_prompt: str,
     providers_config: dict,
@@ -268,8 +267,8 @@ def _run_tui_conversation(
     tools: list[dict],
     initial_task: str,
     voice_mode: bool = False,
-    listen_fn: "Callable[[], str] | None" = None,
-    speak_fn: "Callable[[str], None] | None" = None,
+    listen_fn: Callable[[], str] | None = None,
+    speak_fn: Callable[[str], None] | None = None,
     greeting: str | None = None,
 ) -> None:
     """Run the Textual TUI conversation loop (text or voice mode)."""
@@ -365,7 +364,7 @@ def run_conversation() -> None:
         registry,
         tools,
         task,
-        voice_mode=False,   # TUI starts in text mode; user toggles with ctrl+v
+        voice_mode=False,  # TUI starts in text mode; user toggles with ctrl+v
         listen_fn=_listen,
         speak_fn=_speak,
     )

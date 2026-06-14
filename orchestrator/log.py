@@ -42,7 +42,9 @@ def yana_prefix(ts: str) -> None:
 
 def yana_thinking(ts: str) -> None:
     """Overwrite-able thinking indicator."""
-    console.print(f"[dim]{ts}[/dim] [bold cyan]YANA:[/bold cyan] [dim]{t('thinking')}[/dim]", end="\r")
+    console.print(
+        f"[dim]{ts}[/dim] [bold cyan]YANA:[/bold cyan] [dim]{t('thinking')}[/dim]", end="\r"
+    )
 
 
 def yana_response(text: str, markdown: bool = True) -> None:

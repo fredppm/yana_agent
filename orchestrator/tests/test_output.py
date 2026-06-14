@@ -174,6 +174,7 @@ class TestLabels:
 
     def test_user_label_contains_user_string(self):
         import strings
+
         output.configure(voice_mode=False, color=False)
         assert strings.t("user_label") in output.user_label()
 
