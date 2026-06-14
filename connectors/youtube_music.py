@@ -41,12 +41,6 @@ class YouTubeMusicConnector(Connector):
     connector_description = (
         "YouTube Music — search and play via yt-dlp/mpv (no auth needed), library access optional"
     )
-    connector_credential_hint = (
-        "Search and playback require no credentials — just mpv installed "
-        "(Windows: winget install mpv.mpv in PowerShell). "
-        "For library access run once: ytmusicapi browser --file ~/.yana/ytmusic_auth.json"
-    )
-
     def __init__(
         self,
         auth_file: str | None = None,
