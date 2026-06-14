@@ -69,6 +69,22 @@ class _Handler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         path = urlparse(self.path).path.rstrip("/")
+        # POST /tasks/{name}/run — immediate execution, bypasses scheduler
+        if path.endswith("/run"):
+            name = path[len("/tasks/"):-len("/run")]
+            if not name:
+                self._error(400, "task name required")
+                return
+            tasks = load_tasks(self.tasks_file)
+            task = next((t for t in tasks if t.name == name), None)
+            if task is None:
+                self._error(404, f"task '{name}' not found")
+                return
+            from .executor import execute_task
+            execute_task(task, self.registry)
+            output.status(f"[pulse-api] ran task '{name}' immediately")
+            self._json({"ok": True, "name": name})
+            return
         if path != "/tasks":
             self._error(404, "not found")
             return
