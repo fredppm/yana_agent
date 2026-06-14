@@ -36,6 +36,7 @@ _STRINGS: dict[str, dict[str, str]] = {
         # -- Conversation UI --
         "thinking": "thinking...",
         "listening": "listening...",
+        "voice_hint": "ctrl+t for voice",
         "saving_memory": "saving memory...",
         "session_label": "session",
         # -- Programmer mode --
@@ -62,6 +63,7 @@ _STRINGS: dict[str, dict[str, str]] = {
         # -- Conversation UI --
         "thinking": "pensando...",
         "listening": "ouvindo...",
+        "voice_hint": "ctrl+t para voz",
         "saving_memory": "salvando memória...",
         "session_label": "sessão",
         # -- Programmer mode --

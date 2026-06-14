@@ -283,7 +283,7 @@ class YANAApp(App[TuiResult]):
         yield Label(f"  ⟳ {t('thinking')}", id="thinking")
         with Horizontal(id="input-bar"):
             yield Label("❯", id="prompt-label")  # noqa: RUF001
-            placeholder = "ctrl+t para voz" if self._listen_fn else ""
+            placeholder = t("voice_hint") if self._listen_fn else ""
             yield Input(id="input", placeholder=placeholder)
 
     def on_mount(self) -> None:
