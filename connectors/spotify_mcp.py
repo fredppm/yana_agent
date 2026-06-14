@@ -1,14 +1,11 @@
 """
 connectors/spotify_mcp.py — SpotifyMCPConnector.
 
-Routes YANA connector calls to a local Spotify MCP server process via the
-Python MCP SDK. Supports playback control, search, and playlist queries.
-
-Backend: sespinosa/spotify-mcp (Python, pip-installable)
-  pip install spotify-mcp
+Uses spotipy directly for Spotify Web API access. Supports playback control,
+search, and playlist queries.
 
 Setup:
-  1. pip install spotify-mcp
+  1. pip install spotipy
   2. Create a Spotify app at https://developer.spotify.com/dashboard
      and set redirect URI to http://localhost:8888/callback
   3. Create ~/.yana/credentials/spotify_fred.json:
@@ -22,21 +19,25 @@ Setup:
            credentials_file: "~/.yana/credentials/spotify_fred.json"
            token_file: "~/.yana/tokens/spotify_fred.json"
 
-  On first use, the MCP server opens a browser for OAuth and saves the token.
-  Subsequent runs use the saved token — no interaction needed.
+  On first use, a browser opens for OAuth and saves the token automatically.
+  Subsequent runs load the saved token — no interaction needed.
 """
 
 from __future__ import annotations
 
-import asyncio
 import json
-import os
-import threading
-from contextlib import AsyncExitStack
 from pathlib import Path
 from typing import Any
 
 from connectors import Connector, command, query
+
+_SCOPE = (
+    "user-read-playback-state "
+    "user-modify-playback-state "
+    "user-read-currently-playing "
+    "playlist-read-private"
+)
+_DEFAULT_REDIRECT = "http://localhost:8888/callback"
 
 
 class SpotifyMCPConnector(Connector):
@@ -53,74 +54,108 @@ class SpotifyMCPConnector(Connector):
         self,
         credentials_file: str | None = None,
         token_file: str | None = None,
-        mcp_command: list[str] | None = None,
     ) -> None:
-        merged = dict(os.environ)
+        creds_path = Path(
+            credentials_file or "~/.yana/credentials/spotify_fred.json"
+        ).expanduser()
 
-        creds_path = Path(credentials_file or "~/.yana/credentials/spotify_fred.json").expanduser()
-        if creds_path.exists():
-            creds = json.loads(creds_path.read_text())
-            if creds.get("client_id"):
-                merged["SPOTIFY_CLIENT_ID"] = creds["client_id"]
-            if creds.get("client_secret"):
-                merged["SPOTIFY_CLIENT_SECRET"] = creds["client_secret"]
+        if not creds_path.exists():
+            raise PermissionError(
+                f"Spotify credentials not found at {creds_path}. "
+                "Create the file with client_id and client_secret from "
+                "developer.spotify.com/dashboard"
+            )
 
-        if token_file:
-            merged["SPOTIFY_TOKEN_PATH"] = os.path.expanduser(token_file)
-        self._env = merged
-
-        # Command to launch the MCP server process via stdio.
-        self._mcp_command = mcp_command or ["python", "-m", "spotify_mcp"]
-
-        self._loop = asyncio.new_event_loop()
-        self._thread = threading.Thread(
-            target=self._loop.run_forever,
-            daemon=True,
-            name=f"spotify-mcp-{id(self)}",
-        )
-        self._thread.start()
-        self._session: Any = None
-        self._exit_stack: AsyncExitStack | None = None
-        self._connect()
+        creds = json.loads(creds_path.read_text(encoding="utf-8"))
+        self._client_id: str = creds.get("client_id", "")
+        self._client_secret: str = creds.get("client_secret", "")
+        self._redirect_uri: str = creds.get("redirect_uri", _DEFAULT_REDIRECT)
+        self._token_file = Path(
+            token_file or "~/.yana/tokens/spotify_fred.json"
+        ).expanduser()
+        self._sp: Any = None  # lazy — created on first use
 
     # ------------------------------------------------------------------
-    # Session lifecycle
+    # Lazy Spotify client
     # ------------------------------------------------------------------
 
-    def _connect(self) -> None:
-        self._run(self._start_session())
+    def _spotify(self) -> Any:
+        if self._sp is not None:
+            return self._sp
+        import spotipy  # type: ignore[import-untyped]
+        from spotipy.oauth2 import SpotifyOAuth  # type: ignore[import-untyped]
 
-    def _run(self, coro: Any) -> Any:
-        """Submit a coroutine to the background loop and block until done."""
-        future = asyncio.run_coroutine_threadsafe(coro, self._loop)
-        return future.result(timeout=30)
-
-    async def _start_session(self) -> None:
-        from mcp import ClientSession, StdioServerParameters
-        from mcp.client.stdio import stdio_client
-
-        params = StdioServerParameters(
-            command=self._mcp_command[0],
-            args=self._mcp_command[1:],
-            env=self._env,
+        self._token_file.parent.mkdir(parents=True, exist_ok=True)
+        self._sp = spotipy.Spotify(
+            auth_manager=SpotifyOAuth(
+                client_id=self._client_id,
+                client_secret=self._client_secret,
+                redirect_uri=self._redirect_uri,
+                scope=_SCOPE,
+                cache_path=str(self._token_file),
+                open_browser=True,
+            )
         )
-        self._exit_stack = AsyncExitStack()
-        read, write = await self._exit_stack.enter_async_context(stdio_client(params))
-        session = ClientSession(read, write)
-        self._session = await self._exit_stack.enter_async_context(session)
-        await self._session.initialize()
+        return self._sp
 
-    async def _call_async(self, tool: str, args: dict[str, Any]) -> Any:
-        result = await self._session.call_tool(tool, args)
-        if not result.content:
-            return None
-        text = getattr(result.content[0], "text", None)
-        if text:
-            return json.loads(text)
-        return None
+    # ------------------------------------------------------------------
+    # Internal dispatcher — keeps _call_tool(tool, args) interface so
+    # existing tests can mock at this level without touching the Spotify SDK.
+    # ------------------------------------------------------------------
 
     def _call_tool(self, tool: str, args: dict[str, Any]) -> Any:
-        return self._run(self._call_async(tool, args))
+        try:
+            sp = self._spotify()
+        except Exception as exc:
+            raise PermissionError(str(exc)) from exc
+
+        try:
+            if tool == "get-playback-state":
+                return sp.current_playback()
+
+            if tool == "search":
+                return sp.search(
+                    q=args.get("query", ""),
+                    type=args.get("type", "track"),
+                    limit=args.get("limit", 5),
+                )
+
+            if tool == "get-playlists":
+                return sp.current_user_playlists(limit=args.get("limit", 20))
+
+            if tool == "start-playback":
+                if "uris" in args:
+                    sp.start_playback(uris=args["uris"])
+                elif "context_uri" in args:
+                    sp.start_playback(context_uri=args["context_uri"])
+                else:
+                    sp.start_playback()
+                return {}
+
+            if tool == "pause-playback":
+                sp.pause_playback()
+                return {}
+
+            if tool == "skip-to-next":
+                sp.next_track()
+                return {}
+
+            if tool == "skip-to-previous":
+                sp.previous_track()
+                return {}
+
+            if tool == "set-volume":
+                sp.volume(args.get("volume_percent", 50))
+                return {}
+
+        except Exception as exc:
+            import spotipy  # type: ignore[import-untyped]
+
+            if isinstance(exc, spotipy.SpotifyException) and exc.http_status in (401, 403):
+                raise PermissionError(str(exc)) from exc
+            raise
+
+        return None
 
     # ------------------------------------------------------------------
     # Queries
@@ -146,11 +181,7 @@ class SpotifyMCPConnector(Connector):
         returns={"type": "list"},
     )
     def search(self, q: str, type: str = "track", max_results: int = 5) -> list[dict]:
-        data = self._call_tool("search", {
-            "query": q,
-            "type": type,
-            "limit": max_results,
-        })
+        data = self._call_tool("search", {"query": q, "type": type, "limit": max_results})
         items = (data or {}).get("tracks", {}).get("items") or (data or {}).get("items") or []
         return [self._format_track(t) for t in items if t]
 
@@ -167,9 +198,12 @@ class SpotifyMCPConnector(Connector):
                 "id": p.get("id"),
                 "name": p.get("name"),
                 "uri": p.get("uri"),
-                "tracks": p.get("tracks", {}).get("total") if isinstance(p.get("tracks"), dict) else None,
+                "tracks": p.get("tracks", {}).get("total")
+                if isinstance(p.get("tracks"), dict)
+                else None,
             }
-            for p in items if p
+            for p in items
+            if p
         ]
 
     # ------------------------------------------------------------------

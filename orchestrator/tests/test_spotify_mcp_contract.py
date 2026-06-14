@@ -1,7 +1,7 @@
 """
 Contract tests for SpotifyMCPConnector.
 
-The MCP session is mocked at _call_tool() so no real server process is needed.
+_call_tool() is mocked so no real Spotify credentials or network are needed.
 
 Run with: python -m pytest tests/test_spotify_mcp_contract.py -v
 """
@@ -12,16 +12,13 @@ import importlib.util
 import sys
 from pathlib import Path
 from typing import Any
-from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 _CONNECTOR_FILE = Path(__file__).parent.parent.parent / "connectors" / "spotify_mcp.py"
 _spec = importlib.util.spec_from_file_location("spotify_mcp", _CONNECTOR_FILE)
 _mod = importlib.util.module_from_spec(_spec)  # type: ignore[arg-type]
-
-with patch("asyncio.new_event_loop"), patch("threading.Thread"):
-    _spec.loader.exec_module(_mod)  # type: ignore[union-attr]
+_spec.loader.exec_module(_mod)  # type: ignore[union-attr]
 
 SpotifyMCPConnector = _mod.SpotifyMCPConnector
 
@@ -89,16 +86,8 @@ _EXPECTED_PLAYLIST_KEYS = {"id", "name", "uri", "tracks"}
 
 
 def _make_connector() -> Any:
-    with (
-        patch("asyncio.new_event_loop") as mock_loop,
-        patch("threading.Thread"),
-    ):
-        mock_loop.return_value = MagicMock()
-        connector = SpotifyMCPConnector.__new__(SpotifyMCPConnector)
-        connector._loop = MagicMock()
-        connector._thread = MagicMock()
-        connector._session = MagicMock()
-        connector._exit_stack = MagicMock()
+    connector = SpotifyMCPConnector.__new__(SpotifyMCPConnector)
+    connector._sp = None
     return connector
 
 
