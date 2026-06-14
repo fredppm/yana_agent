@@ -41,7 +41,9 @@ _DEFAULT_REDIRECT = "http://localhost:8888/callback"
 
 
 class SpotifyMCPConnector(Connector):
-    connector_description = "Spotify playback control and music search — play, pause, skip, volume, search"
+    connector_description = (
+        "Spotify playback control and music search — play, pause, skip, volume, search"
+    )
     connector_credential_hint = (
         "Needs: client_id and client_secret. "
         "Steps: (1) Go to developer.spotify.com/dashboard and create an app. "
@@ -55,9 +57,7 @@ class SpotifyMCPConnector(Connector):
         credentials_file: str | None = None,
         token_file: str | None = None,
     ) -> None:
-        creds_path = Path(
-            credentials_file or "~/.yana/credentials/spotify_fred.json"
-        ).expanduser()
+        creds_path = Path(credentials_file or "~/.yana/credentials/spotify_fred.json").expanduser()
 
         if not creds_path.exists():
             raise PermissionError(
@@ -70,9 +70,7 @@ class SpotifyMCPConnector(Connector):
         self._client_id: str = creds.get("client_id", "")
         self._client_secret: str = creds.get("client_secret", "")
         self._redirect_uri: str = creds.get("redirect_uri", _DEFAULT_REDIRECT)
-        self._token_file = Path(
-            token_file or "~/.yana/tokens/spotify_fred.json"
-        ).expanduser()
+        self._token_file = Path(token_file or "~/.yana/tokens/spotify_fred.json").expanduser()
         self._sp: Any = None  # lazy — created on first use
 
     # ------------------------------------------------------------------
@@ -123,13 +121,34 @@ class SpotifyMCPConnector(Connector):
             if tool == "get-playlists":
                 return sp.current_user_playlists(limit=args.get("limit", 20))
 
+            if tool == "get-devices":
+                return sp.devices()
+
             if tool == "start-playback":
-                if "uris" in args:
-                    sp.start_playback(uris=args["uris"])
-                elif "context_uri" in args:
-                    sp.start_playback(context_uri=args["context_uri"])
-                else:
-                    sp.start_playback()
+                device_id = args.get("device_id")
+                try:
+                    if "uris" in args:
+                        sp.start_playback(device_id=device_id, uris=args["uris"])
+                    elif "context_uri" in args:
+                        sp.start_playback(device_id=device_id, context_uri=args["context_uri"])
+                    else:
+                        sp.start_playback(device_id=device_id)
+                except Exception as exc:
+                    # NO_ACTIVE_DEVICE: auto-retry on first available device
+                    if "NO_ACTIVE_DEVICE" in str(exc) and not device_id:
+                        devices = (sp.devices() or {}).get("devices") or []
+                        if devices:
+                            first = devices[0]["id"]
+                            if "uris" in args:
+                                sp.start_playback(device_id=first, uris=args["uris"])
+                            elif "context_uri" in args:
+                                sp.start_playback(device_id=first, context_uri=args["context_uri"])
+                            else:
+                                sp.start_playback(device_id=first)
+                        else:
+                            raise
+                    else:
+                        raise
                 return {}
 
             if tool == "pause-playback":
@@ -184,6 +203,23 @@ class SpotifyMCPConnector(Connector):
         data = self._call_tool("search", {"query": q, "type": type, "limit": max_results})
         items = (data or {}).get("tracks", {}).get("items") or (data or {}).get("items") or []
         return [self._format_track(t) for t in items if t]
+
+    @query(
+        description="List available Spotify devices (phone, computer, TV, etc). Use this when playback fails to find where to play.",
+        returns={"type": "list"},
+    )
+    def get_devices(self) -> list[dict]:
+        data = self._call_tool("get-devices", {})
+        return [
+            {
+                "id": d.get("id"),
+                "name": d.get("name"),
+                "type": d.get("type"),
+                "is_active": d.get("is_active", False),
+            }
+            for d in (data or {}).get("devices", [])
+            if d
+        ]
 
     @query(
         description="List the current user's playlists",
