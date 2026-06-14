@@ -6,6 +6,7 @@ Usage:
     python -m pulse
     python -m pulse --port 7891
 """
+
 from __future__ import annotations
 
 import argparse
@@ -33,4 +34,10 @@ if __name__ == "__main__":
         help="port for the Pulse HTTP API (default: 7891)",
     )
     args = parser.parse_args()
+    if args.host not in ("127.0.0.1", "localhost", "::1"):
+        print(
+            f"[pulse] WARNING: binding to {args.host} exposes the API on the network. "
+            "The Pulse API has no authentication — restrict access at the firewall level.",
+            file=sys.stderr,
+        )
     main(host=args.host, port=args.port)

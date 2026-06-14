@@ -462,6 +462,7 @@ class YANAApp(App[TuiResult]):
         """Poll pulse-inbox.json and display any pending Pulse notifications."""
         import json
         import os
+
         import core
 
         inbox_path = core.sanctum_path() / "pulse-inbox.json"
@@ -474,13 +475,14 @@ class YANAApp(App[TuiResult]):
             return
         try:
             entries = json.loads(tmp.read_text(encoding="utf-8"))
+            tmp.unlink()
         except (json.JSONDecodeError, OSError):
-            entries = []
-        finally:
+            # Restore unprocessed entries so they are not lost
             try:
-                tmp.unlink()
+                os.replace(tmp, inbox_path)
             except OSError:
                 pass
+            return
         if not entries or not isinstance(entries, list):
             return
         chat = self.query_one("#chat", RichLog)

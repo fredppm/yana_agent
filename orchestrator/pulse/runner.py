@@ -7,16 +7,16 @@ the current time falls in the quiet window.
 
 Entry point: main() — called by __main__.py.
 """
+
 from __future__ import annotations
 
 import threading
 from pathlib import Path
 
+import output
 from apscheduler.schedulers.background import BackgroundScheduler  # type: ignore[import-untyped]
 from apscheduler.triggers.cron import CronTrigger  # type: ignore[import-untyped]
 from apscheduler.triggers.date import DateTrigger  # type: ignore[import-untyped]
-
-import output
 from connectors.loader import load_connectors
 from connectors.registry import ConnectorRegistry
 from core import is_quiet_hours, sanctum_path
@@ -29,7 +29,7 @@ from .config_loader import PulseTask, TaskConfigError, load_tasks, remove_task
 # ---------------------------------------------------------------------------
 
 _DAYS_MAP = {
-    "daily": None,          # no day_of_week restriction
+    "daily": None,  # no day_of_week restriction
     "weekdays": "mon-fri",
     "weekends": "sat,sun",
 }
@@ -82,7 +82,9 @@ def build_scheduler(
                 replace_existing=True,
                 name=f"pulse:{task.name}",
             )
-            output.status(f"[pulse] scheduled '{task.name}' at {task.schedule.time} ({task.schedule.days})")
+            output.status(
+                f"[pulse] scheduled '{task.name}' at {task.schedule.time} ({task.schedule.days})"
+            )
 
     return scheduler
 
@@ -93,12 +95,14 @@ def _guarded_execute(task: PulseTask, registry: ConnectorRegistry) -> None:
         output.debug(f"[pulse] quiet hours — skipping '{task.name}'")
         return
     from .executor import execute_task
+
     execute_task(task, registry)
 
 
 def _once_execute(task: PulseTask, registry: ConnectorRegistry, tasks_file: Path) -> None:
     """Job wrapper for once tasks: executes then auto-removes from config."""
     from .executor import execute_task
+
     execute_task(task, registry)
     remove_task(tasks_file, task.name)
     output.status(f"[pulse] once task '{task.name}' completed and removed")
@@ -134,7 +138,9 @@ def main(host: str = "127.0.0.1", port: int = 7891, connectors_dir: Path | None 
     scheduler.start()
     output.status(f"[pulse] scheduler started — {len(scheduler.get_jobs())} job(s)")
 
-    api = PulseAPI(tasks_file=tasks_file, scheduler=scheduler, registry=registry, host=host, port=port)
+    api = PulseAPI(
+        tasks_file=tasks_file, scheduler=scheduler, registry=registry, host=host, port=port
+    )
     api_thread = threading.Thread(target=api.serve_forever, daemon=True)
     api_thread.start()
     output.status(f"[pulse] API listening on {host}:{port}")

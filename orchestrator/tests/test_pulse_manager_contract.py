@@ -2,6 +2,7 @@
 Tests for connectors/pulse_manager.py — connector contract and HTTP behaviour.
 All network calls are mocked; no real Pulse daemon required.
 """
+
 from __future__ import annotations
 
 import importlib.util
@@ -9,8 +10,6 @@ import json
 import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
-
-import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -110,18 +109,24 @@ def test_health_ok():
 
 
 def test_create_task_posts_correct_payload():
-    with patch("pulse_manager.urlopen", return_value=_mock_response({"ok": True, "name": "newsletters"}, 201)) as mock_open:
+    with patch(
+        "pulse_manager.urlopen",
+        return_value=_mock_response({"ok": True, "name": "newsletters"}, 201),
+    ) as mock_open:
         c = PulseManagerConnector()
-        result = c.call("create_task", {
-            "name": "newsletters",
-            "source": "gmail_fred_personal",
-            "operation": "search",
-            "params": {"query": "category:promotions is:unread"},
-            "time": "10:00",
-            "days": "daily",
-            "action": "summarize",
-            "prompt": "Summarize in PT-BR",
-        })
+        result = c.call(
+            "create_task",
+            {
+                "name": "newsletters",
+                "source": "gmail_fred_personal",
+                "operation": "search",
+                "params": {"query": "category:promotions is:unread"},
+                "time": "10:00",
+                "days": "daily",
+                "action": "summarize",
+                "prompt": "Summarize in PT-BR",
+            },
+        )
 
     assert result.ok is True
     # Verify the request body
@@ -135,15 +140,20 @@ def test_create_task_posts_correct_payload():
 
 
 def test_create_task_defaults_days_and_prompt():
-    with patch("pulse_manager.urlopen", return_value=_mock_response({"ok": True, "name": "x"}, 201)) as mock_open:
+    with patch(
+        "pulse_manager.urlopen", return_value=_mock_response({"ok": True, "name": "x"}, 201)
+    ) as mock_open:
         c = PulseManagerConnector()
-        c.call("create_task", {
-            "name": "x",
-            "source": "garmin_fred",
-            "operation": "activities",
-            "time": "08:00",
-            "action": "notify",
-        })
+        c.call(
+            "create_task",
+            {
+                "name": "x",
+                "source": "garmin_fred",
+                "operation": "activities",
+                "time": "08:00",
+                "action": "notify",
+            },
+        )
     body = json.loads(mock_open.call_args[0][0].data)
     assert body["schedule"]["days"] == "daily"
     assert body["deliver"]["prompt"] == ""
@@ -155,7 +165,9 @@ def test_create_task_defaults_days_and_prompt():
 
 
 def test_remove_task_sends_delete():
-    with patch("pulse_manager.urlopen", return_value=_mock_response({"ok": True, "name": "newsletters"})) as mock_open:
+    with patch(
+        "pulse_manager.urlopen", return_value=_mock_response({"ok": True, "name": "newsletters"})
+    ) as mock_open:
         c = PulseManagerConnector()
         result = c.call("remove_task", {"name": "newsletters"})
 

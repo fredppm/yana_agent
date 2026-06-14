@@ -13,6 +13,7 @@ Endpoints:
 Request/response bodies are JSON. All errors return {"error": "..."}.
 Server binds to 127.0.0.1 only — never exposed to the network.
 """
+
 from __future__ import annotations
 
 import json
@@ -22,6 +23,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 import output
+
 from .config_loader import (
     DeliverConfig,
     ObserveConfig,
@@ -50,10 +52,12 @@ class _Handler(BaseHTTPRequestHandler):
 
     # Minimal access log — only non-GET requests to catch missed calls
     def log_message(self, fmt: str, *args: object) -> None:
-        if args and str(args[0]).startswith('"POST') or (args and str(args[0]).startswith('"DELETE')):
+        if (args and str(args[0]).startswith('"POST')) or (
+            args and str(args[0]).startswith('"DELETE')
+        ):
             output.debug(f"[pulse-api] {fmt % args}")
 
-    def log_error(self, fmt: str, *args: object) -> None:  # noqa: ARG002
+    def log_error(self, fmt: str, *args: object) -> None:
         output.warn(f"[pulse-api] {fmt % args}")
 
     # ------------------------------------------------------------------
@@ -76,11 +80,12 @@ class _Handler(BaseHTTPRequestHandler):
         if path == "/shutdown":
             self._json({"ok": True, "message": "shutting down"})
             import threading
+
             threading.Thread(target=self._shutdown_server, daemon=True).start()
             return
         # POST /tasks/{name}/run — immediate execution, bypasses scheduler
         if path.endswith("/run"):
-            name = path[len("/tasks/"):-len("/run")]
+            name = path[len("/tasks/") : -len("/run")]
             if not name:
                 self._error(400, "task name required")
                 return
@@ -90,6 +95,7 @@ class _Handler(BaseHTTPRequestHandler):
                 self._error(404, f"task '{name}' not found")
                 return
             from .executor import execute_task
+
             execute_task(task, self.registry)
             output.status(f"[pulse-api] ran task '{name}' immediately")
             self._json({"ok": True, "name": name})
@@ -124,7 +130,7 @@ class _Handler(BaseHTTPRequestHandler):
         if not path.startswith(prefix):
             self._error(404, "not found")
             return
-        name = path[len(prefix):]
+        name = path[len(prefix) :]
         if not name:
             self._error(400, "task name required")
             return
@@ -177,25 +183,52 @@ class _Handler(BaseHTTPRequestHandler):
 
 def _reschedule(scheduler: Any, tasks_file: Path, registry: Any) -> None:
     """
-    Rebuild scheduler jobs from the current tasks file.
+    Rebuild scheduler jobs from the current tasks file with fresh triggers.
     Called after every upsert/delete via the API.
+
+    Triggers are always created anew from the task definition to avoid
+    carrying stale DateTrigger run_dates into the live scheduler.
     """
-    from .runner import build_scheduler
+    from apscheduler.triggers.cron import CronTrigger  # type: ignore[import-untyped]
+    from apscheduler.triggers.date import DateTrigger  # type: ignore[import-untyped]
+
+    from .config_loader import TaskConfigError, load_tasks
+    from .runner import _day_of_week, _guarded_execute, _once_execute
 
     # Remove all existing pulse jobs
     for job in scheduler.get_jobs():
         job.remove()
-    # Re-add from updated file
-    for job in build_scheduler(tasks_file, registry).get_jobs():
-        trigger = job.trigger
-        scheduler.add_job(
-            job.func,
-            trigger,
-            args=job.args,
-            id=job.id,
-            replace_existing=True,
-            name=job.name,
-        )
+
+    # Re-add with fresh triggers built from the current task definitions
+    try:
+        tasks = load_tasks(tasks_file)
+    except (TaskConfigError, Exception):
+        return
+
+    for task in tasks:
+        if task.schedule.mode == "once":
+            scheduler.add_job(
+                _once_execute,
+                DateTrigger(run_date=task.schedule.at),
+                args=[task, registry, tasks_file],
+                id=task.name,
+                replace_existing=True,
+                name=f"pulse:{task.name}",
+            )
+        else:
+            hour, minute = task.schedule.time.split(":", 1)
+            dow = _day_of_week(task.schedule.days)
+            trigger_kwargs: dict = {"hour": int(hour), "minute": int(minute)}
+            if dow:
+                trigger_kwargs["day_of_week"] = dow
+            scheduler.add_job(
+                _guarded_execute,
+                CronTrigger(**trigger_kwargs),
+                args=[task, registry],
+                id=task.name,
+                replace_existing=True,
+                name=f"pulse:{task.name}",
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -216,6 +249,7 @@ class PulseAPI:
         stop_event: Any = None,
     ) -> None:
         import threading
+
         self.stop_event = stop_event or threading.Event()
         # Inject dependencies into handler via class attributes
         handler = type(

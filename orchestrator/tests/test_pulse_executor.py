@@ -1,12 +1,10 @@
 """
 Tests for pulse/executor.py — all external calls (connector, LLM, sleep) are mocked.
 """
+
 from __future__ import annotations
 
-from pathlib import Path
 from unittest.mock import MagicMock, call, patch
-
-import pytest
 
 from pulse.config_loader import (
     DeliverConfig,
@@ -14,8 +12,7 @@ from pulse.config_loader import (
     PulseTask,
     ScheduleConfig,
 )
-from pulse.executor import _MAX_RETRIES, _BACKOFF_SECONDS, execute_task
-
+from pulse.executor import _BACKOFF_SECONDS, _MAX_RETRIES, execute_task
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -25,7 +22,9 @@ from pulse.executor import _MAX_RETRIES, _BACKOFF_SECONDS, execute_task
 def _task(action: str = "summarize", prompt: str = "Summarize") -> PulseTask:
     return PulseTask(
         name="test-task",
-        observe=ObserveConfig(source="gmail_fred", operation="search", params={"query": "newsletters"}),
+        observe=ObserveConfig(
+            source="gmail_fred", operation="search", params={"query": "newsletters"}
+        ),
         schedule=ScheduleConfig(mode="fixed", time="10:00", days="daily"),
         deliver=DeliverConfig(action=action, prompt=prompt),
     )

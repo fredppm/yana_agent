@@ -5,6 +5,7 @@ Writes directly to data/agent-yana/sessions/ by calling save_session_log()
 from core.py. Also writes to pulse-inbox.json so the running YANA TUI can
 display notifications in real-time (polled every 2 s by the TUI timer).
 """
+
 from __future__ import annotations
 
 import json
@@ -47,11 +48,13 @@ def _write_inbox(task_name: str, content: str) -> None:
                 entries = raw
         except (json.JSONDecodeError, OSError):
             pass
-    entries.append({
-        "task": task_name,
-        "content": content,
-        "ts": datetime.now().isoformat(timespec="seconds"),
-    })
+    entries.append(
+        {
+            "task": task_name,
+            "content": content,
+            "ts": datetime.now().isoformat(timespec="seconds"),
+        }
+    )
     tmp = inbox_path.with_suffix(".tmp")
     tmp.write_text(json.dumps(entries), encoding="utf-8")
     os.replace(tmp, inbox_path)

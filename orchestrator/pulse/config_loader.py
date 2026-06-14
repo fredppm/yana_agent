@@ -18,6 +18,7 @@ Task schema:
     action: summarize|notify|store
     prompt: str            # LLM instruction for "summarize" action
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -25,7 +26,6 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-
 
 # ---------------------------------------------------------------------------
 # Data classes
@@ -41,10 +41,10 @@ class ObserveConfig:
 
 @dataclass
 class ScheduleConfig:
-    mode: str               # "fixed" | "once"
-    time: str = ""          # "HH:MM" — required for mode=fixed
-    days: str = "daily"     # for mode=fixed
-    at: str | None = None   # ISO datetime — required for mode=once, e.g. "2026-06-14T17:05:00"
+    mode: str  # "fixed" | "once"
+    time: str = ""  # "HH:MM" — required for mode=fixed
+    days: str = "daily"  # for mode=fixed
+    at: str | None = None  # ISO datetime — required for mode=once, e.g. "2026-06-14T17:05:00"
 
 
 @dataclass

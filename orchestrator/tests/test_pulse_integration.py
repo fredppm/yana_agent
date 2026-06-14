@@ -7,28 +7,28 @@ Asserts that a session file is written to the (temp) sanctum.
 
 No Gmail, no LLM — connector and LLM are replaced with lightweight fakes.
 """
+
 from __future__ import annotations
 
 import json
-import threading
-import time
-from pathlib import Path
-from unittest.mock import MagicMock, patch
-from urllib.request import urlopen, Request
-
-import pytest
 
 # ---------------------------------------------------------------------------
 # Path setup — mirrors other test files in this suite
 # ---------------------------------------------------------------------------
-
 import sys
+import threading
+import time
+import urllib.error
+from pathlib import Path
+from unittest.mock import MagicMock, patch
+from urllib.request import Request, urlopen
+
+import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from pulse.api import PulseAPI
 from pulse.config_loader import load_tasks
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -37,6 +37,7 @@ from pulse.config_loader import load_tasks
 
 def _free_port() -> int:
     import socket
+
     with socket.socket() as s:
         s.bind(("127.0.0.1", 0))
         return s.getsockname()[1]
@@ -139,7 +140,7 @@ def test_create_and_list_task(pulse_server):
 
 
 def test_run_endpoint_calls_connector_and_writes_session(pulse_server, tmp_path):
-    base, tasks_file, sanctum_dir, registry = pulse_server
+    base, _tasks_file, sanctum_dir, registry = pulse_server
 
     # Create the task first
     _post(f"{base}/tasks", _task_payload("newsletters"), expect_status=201)
@@ -166,7 +167,7 @@ def test_run_endpoint_calls_connector_and_writes_session(pulse_server, tmp_path)
 
 def test_run_endpoint_unknown_task_returns_404(pulse_server):
     base, *_ = pulse_server
-    with pytest.raises(Exception):  # urlopen raises on 4xx
+    with pytest.raises(urllib.error.HTTPError):  # urlopen raises on 4xx
         _post(f"{base}/tasks/nonexistent/run", {})
 
 

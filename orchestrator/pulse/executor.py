@@ -9,6 +9,7 @@ Flow:
 Retry policy: up to 3 attempts with exponential backoff (1 min, 3 min, 9 min).
 Final failure is written to the Pulse session as an error notification.
 """
+
 from __future__ import annotations
 
 import time
@@ -94,7 +95,6 @@ def _summarize(data: object, prompt: str, task_name: str) -> str:
 
 def _store(task_name: str, data: object) -> None:
     from datetime import datetime
-    from pathlib import Path
 
     from core import sanctum_path
 

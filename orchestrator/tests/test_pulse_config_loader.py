@@ -1,11 +1,11 @@
 """
 Tests for pulse/config_loader.py — pure logic, no file system side effects outside tmp.
 """
+
 from __future__ import annotations
 
 import pytest
 import yaml
-
 from pulse.config_loader import (
     DeliverConfig,
     ObserveConfig,
@@ -18,7 +18,6 @@ from pulse.config_loader import (
     upsert_task,
 )
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -27,7 +26,9 @@ from pulse.config_loader import (
 def _make_task(name: str = "test-task") -> PulseTask:
     return PulseTask(
         name=name,
-        observe=ObserveConfig(source="gmail_fred", operation="search", params={"query": "is:unread"}),
+        observe=ObserveConfig(
+            source="gmail_fred", operation="search", params={"query": "is:unread"}
+        ),
         schedule=ScheduleConfig(mode="fixed", time="10:00", days="daily"),
         deliver=DeliverConfig(action="summarize", prompt="Summarize in PT-BR"),
     )
@@ -60,7 +61,11 @@ def test_load_tasks_valid(tmp_path):
         "tasks": [
             {
                 "name": "newsletters",
-                "observe": {"source": "gmail_fred", "operation": "search", "params": {"query": "newsletters"}},
+                "observe": {
+                    "source": "gmail_fred",
+                    "operation": "search",
+                    "params": {"query": "newsletters"},
+                },
                 "schedule": {"mode": "fixed", "time": "10:00", "days": "daily"},
                 "deliver": {"action": "summarize", "prompt": "Summarize"},
             }
@@ -82,7 +87,15 @@ def test_load_tasks_valid(tmp_path):
 
 
 def test_load_tasks_missing_name_raises(tmp_path):
-    data = {"tasks": [{"observe": {"source": "x", "operation": "y"}, "schedule": {"mode": "fixed", "time": "10:00"}, "deliver": {"action": "notify"}}]}
+    data = {
+        "tasks": [
+            {
+                "observe": {"source": "x", "operation": "y"},
+                "schedule": {"mode": "fixed", "time": "10:00"},
+                "deliver": {"action": "notify"},
+            }
+        ]
+    }
     f = _write_yaml(tmp_path, data)
     with pytest.raises(TaskConfigError, match="missing required field: 'name'"):
         load_tasks(f)
@@ -100,7 +113,7 @@ def test_load_tasks_invalid_mode_raises(tmp_path):
         ]
     }
     f = _write_yaml(tmp_path, data)
-    with pytest.raises(TaskConfigError, match="schedule.mode must be one of"):
+    with pytest.raises(TaskConfigError, match=r"schedule\.mode must be one of"):
         load_tasks(f)
 
 
@@ -116,7 +129,7 @@ def test_load_tasks_invalid_action_raises(tmp_path):
         ]
     }
     f = _write_yaml(tmp_path, data)
-    with pytest.raises(TaskConfigError, match="deliver.action must be one of"):
+    with pytest.raises(TaskConfigError, match=r"deliver\.action must be one of"):
         load_tasks(f)
 
 
@@ -221,7 +234,11 @@ def test_load_once_task(tmp_path):
         "tasks": [
             {
                 "name": "remind-sleep",
-                "observe": {"source": "pulse_internal", "operation": "remind", "params": {"message": "dormir cedo"}},
+                "observe": {
+                    "source": "pulse_internal",
+                    "operation": "remind",
+                    "params": {"message": "dormir cedo"},
+                },
                 "schedule": {"mode": "once", "at": "2026-06-14T23:00:00"},
                 "deliver": {"action": "notify"},
             }
@@ -255,7 +272,9 @@ def test_once_task_missing_at_raises(tmp_path):
 def test_once_task_round_trip(tmp_path):
     task = PulseTask(
         name="once-test",
-        observe=ObserveConfig(source="pulse_internal", operation="remind", params={"message": "test"}),
+        observe=ObserveConfig(
+            source="pulse_internal", operation="remind", params={"message": "test"}
+        ),
         schedule=ScheduleConfig(mode="once", at="2026-06-14T23:00:00"),
         deliver=DeliverConfig(action="notify"),
     )
