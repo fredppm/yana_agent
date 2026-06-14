@@ -8,9 +8,12 @@ Task schema:
     operation: str         # connector operation name (e.g. "search")
     params: dict           # operation parameters (optional, defaults to {})
   schedule:
-    mode: fixed            # only "fixed" in MVP
+    mode: fixed|once
+    # mode=fixed: recurring cron-style
     time: HH:MM            # local time
     days: daily|weekdays|weekends|mon,wed,fri
+    # mode=once: single fire, auto-removed after execution
+    at: ISO datetime       # e.g. "2026-06-14T17:05:00"
   deliver:
     action: summarize|notify|store
     prompt: str            # LLM instruction for "summarize" action
@@ -38,9 +41,10 @@ class ObserveConfig:
 
 @dataclass
 class ScheduleConfig:
-    mode: str   # "fixed"
-    time: str   # "HH:MM"
-    days: str = "daily"
+    mode: str               # "fixed" | "once"
+    time: str = ""          # "HH:MM" — required for mode=fixed
+    days: str = "daily"     # for mode=fixed
+    at: str | None = None   # ISO datetime — required for mode=once, e.g. "2026-06-14T17:05:00"
 
 
 @dataclass
@@ -86,11 +90,7 @@ def save_tasks(tasks_file: Path, tasks: list[PulseTask]) -> None:
                     "operation": t.observe.operation,
                     "params": t.observe.params,
                 },
-                "schedule": {
-                    "mode": t.schedule.mode,
-                    "time": t.schedule.time,
-                    "days": t.schedule.days,
-                },
+                "schedule": _serialise_schedule(t.schedule),
                 "deliver": {
                     "action": t.deliver.action,
                     "prompt": t.deliver.prompt,
@@ -127,6 +127,12 @@ def remove_task(tasks_file: Path, name: str) -> bool:
 # ---------------------------------------------------------------------------
 
 
+def _serialise_schedule(s: ScheduleConfig) -> dict:
+    if s.mode == "once":
+        return {"mode": "once", "at": s.at}
+    return {"mode": s.mode, "time": s.time, "days": s.days}
+
+
 def _parse_task(raw: dict) -> PulseTask:
     _require(raw, "name")
     _require(raw, "observe")
@@ -139,11 +145,15 @@ def _parse_task(raw: dict) -> PulseTask:
 
     sch = raw["schedule"]
     _require(sch, "mode", parent="schedule")
-    _require(sch, "time", parent="schedule")
-    if sch["mode"] != "fixed":
+    _valid_modes = ("fixed", "once")
+    if sch["mode"] not in _valid_modes:
         raise TaskConfigError(
-            f"task '{raw['name']}': schedule.mode must be 'fixed' (got '{sch['mode']}')"
+            f"task '{raw['name']}': schedule.mode must be one of {_valid_modes} (got '{sch['mode']}')"
         )
+    if sch["mode"] == "fixed":
+        _require(sch, "time", parent="schedule")
+    if sch["mode"] == "once":
+        _require(sch, "at", parent="schedule")
 
     dlv = raw["deliver"]
     _require(dlv, "action", parent="deliver")
@@ -162,8 +172,9 @@ def _parse_task(raw: dict) -> PulseTask:
         ),
         schedule=ScheduleConfig(
             mode=sch["mode"],
-            time=sch["time"],
+            time=sch.get("time", ""),
             days=sch.get("days", "daily"),
+            at=sch.get("at"),
         ),
         deliver=DeliverConfig(
             action=dlv["action"],

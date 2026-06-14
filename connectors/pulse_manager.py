@@ -61,16 +61,19 @@ class PulseManagerConnector(Connector):
         description=(
             "Create or update a Pulse task. Use when the user asks YANA to schedule "
             "an autonomous observation (e.g. 'me manda um resumo das newsletters todo dia às 10h'). "
-            "YANA resolves the correct connector source, operation, and params before calling this. "
-            "Task schema: observe(source, operation, params) + schedule(time, days) + deliver(action, prompt)."
+            "For one-time reminders use mode='once' with at=ISO datetime. "
+            "For recurring tasks use mode='fixed' with time+days. "
+            "YANA resolves the correct connector source, operation, and params before calling this."
         ),
         params={
             "name": {"type": "string", "description": "Unique task identifier, e.g. 'newsletter-morning'"},
             "source": {"type": "string", "description": "Connector instance ID from connectors.yaml, e.g. 'gmail_fred_personal'"},
             "operation": {"type": "string", "description": "Connector operation name, e.g. 'search', 'unread_important'"},
             "params": {"type": "object", "required": False, "description": "Operation parameters, e.g. {\"query\": \"category:promotions is:unread\"}"},
-            "time": {"type": "string", "description": "Time of day in HH:MM format, e.g. '08:00'"},
-            "days": {"type": "string", "required": False, "description": "Recurrence: 'daily', 'weekdays', 'weekends', or comma-separated ISO days e.g. 'mon,wed,fri'. Default: 'daily'"},
+            "mode": {"type": "string", "required": False, "description": "Schedule mode: 'fixed' (recurring, default) or 'once' (single fire, auto-removed after execution)"},
+            "time": {"type": "string", "required": False, "description": "For mode=fixed: time of day in HH:MM format, e.g. '08:00'"},
+            "days": {"type": "string", "required": False, "description": "For mode=fixed: 'daily', 'weekdays', 'weekends', or 'mon,wed,fri'. Default: 'daily'"},
+            "at": {"type": "string", "required": False, "description": "For mode=once: ISO datetime when to fire, e.g. '2026-06-14T17:05:00'. Compute as now + desired delay."},
             "action": {"type": "string", "description": "What to do with the result: 'summarize' (LLM summary), 'notify' (deliver raw), 'store' (save to file)"},
             "prompt": {"type": "string", "required": False, "description": "Instruction to the LLM when action='summarize', e.g. 'Summarize in Portuguese'"},
         },
@@ -81,16 +84,22 @@ class PulseManagerConnector(Connector):
         name: str,
         source: str,
         operation: str,
-        time: str,
         action: str,
-        params: dict | None = None,
+        mode: str = "fixed",
+        time: str = "",
         days: str = "daily",
+        at: str | None = None,
+        params: dict | None = None,
         prompt: str = "",
     ) -> bool:
+        if mode == "once":
+            schedule: dict = {"mode": "once", "at": at}
+        else:
+            schedule = {"mode": "fixed", "time": time, "days": days}
         body = {
             "name": name,
             "observe": {"source": source, "operation": operation, "params": params or {}},
-            "schedule": {"mode": "fixed", "time": time, "days": days},
+            "schedule": schedule,
             "deliver": {"action": action, "prompt": prompt},
         }
         self._post("/tasks", body)

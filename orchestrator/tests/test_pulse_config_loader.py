@@ -100,7 +100,7 @@ def test_load_tasks_invalid_mode_raises(tmp_path):
         ]
     }
     f = _write_yaml(tmp_path, data)
-    with pytest.raises(TaskConfigError, match="schedule.mode must be 'fixed'"):
+    with pytest.raises(TaskConfigError, match="schedule.mode must be one of"):
         load_tasks(f)
 
 
@@ -209,3 +209,58 @@ def test_remove_nonexistent_task_returns_false(tmp_path):
     removed = remove_task(f, "ghost")
     assert removed is False
     assert len(load_tasks(f)) == 1
+
+
+# ---------------------------------------------------------------------------
+# mode=once
+# ---------------------------------------------------------------------------
+
+
+def test_load_once_task(tmp_path):
+    data = {
+        "tasks": [
+            {
+                "name": "remind-sleep",
+                "observe": {"source": "pulse_internal", "operation": "remind", "params": {"message": "dormir cedo"}},
+                "schedule": {"mode": "once", "at": "2026-06-14T23:00:00"},
+                "deliver": {"action": "notify"},
+            }
+        ]
+    }
+    f = _write_yaml(tmp_path, data)
+    tasks = load_tasks(f)
+    assert len(tasks) == 1
+    t = tasks[0]
+    assert t.schedule.mode == "once"
+    assert t.schedule.at == "2026-06-14T23:00:00"
+    assert t.schedule.time == ""
+
+
+def test_once_task_missing_at_raises(tmp_path):
+    data = {
+        "tasks": [
+            {
+                "name": "bad",
+                "observe": {"source": "x", "operation": "y"},
+                "schedule": {"mode": "once"},
+                "deliver": {"action": "notify"},
+            }
+        ]
+    }
+    f = _write_yaml(tmp_path, data)
+    with pytest.raises(TaskConfigError, match="missing required field: 'at'"):
+        load_tasks(f)
+
+
+def test_once_task_round_trip(tmp_path):
+    task = PulseTask(
+        name="once-test",
+        observe=ObserveConfig(source="pulse_internal", operation="remind", params={"message": "test"}),
+        schedule=ScheduleConfig(mode="once", at="2026-06-14T23:00:00"),
+        deliver=DeliverConfig(action="notify"),
+    )
+    f = tmp_path / "tasks.yaml"
+    save_tasks(f, [task])
+    reloaded = load_tasks(f)
+    assert reloaded[0].schedule.mode == "once"
+    assert reloaded[0].schedule.at == "2026-06-14T23:00:00"

@@ -28,6 +28,7 @@ from .config_loader import (
     PulseTask,
     ScheduleConfig,
     TaskConfigError,
+    _serialise_schedule,
     load_tasks,
     remove_task,
     upsert_task,
@@ -219,11 +220,7 @@ def _task_to_dict(task: PulseTask) -> dict:
             "operation": task.observe.operation,
             "params": task.observe.params,
         },
-        "schedule": {
-            "mode": task.schedule.mode,
-            "time": task.schedule.time,
-            "days": task.schedule.days,
-        },
+        "schedule": _serialise_schedule(task.schedule),
         "deliver": {
             "action": task.deliver.action,
             "prompt": task.deliver.prompt,
@@ -244,8 +241,9 @@ def _dict_to_task(d: dict) -> PulseTask:
         ),
         schedule=ScheduleConfig(
             mode=sch["mode"],
-            time=sch["time"],
+            time=sch.get("time", ""),
             days=sch.get("days", "daily"),
+            at=sch.get("at"),
         ),
         deliver=DeliverConfig(
             action=dlv["action"],

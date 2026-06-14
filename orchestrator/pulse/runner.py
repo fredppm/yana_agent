@@ -14,6 +14,7 @@ from pathlib import Path
 
 from apscheduler.schedulers.background import BackgroundScheduler  # type: ignore[import-untyped]
 from apscheduler.triggers.cron import CronTrigger  # type: ignore[import-untyped]
+from apscheduler.triggers.date import DateTrigger  # type: ignore[import-untyped]
 
 import output
 from connectors.loader import load_connectors
@@ -21,7 +22,7 @@ from connectors.registry import ConnectorRegistry
 from core import is_quiet_hours, sanctum_path
 
 from .api import PulseAPI
-from .config_loader import PulseTask, TaskConfigError, load_tasks
+from .config_loader import PulseTask, TaskConfigError, load_tasks, remove_task
 
 # ---------------------------------------------------------------------------
 # Days mapping
@@ -56,32 +57,51 @@ def build_scheduler(
     tasks = _load_safe(tasks_file)
 
     for task in tasks:
-        hour, minute = task.schedule.time.split(":", 1)
-        dow = _day_of_week(task.schedule.days)
-        trigger_kwargs: dict = {"hour": int(hour), "minute": int(minute)}
-        if dow:
-            trigger_kwargs["day_of_week"] = dow
-
-        scheduler.add_job(
-            _guarded_execute,
-            CronTrigger(**trigger_kwargs),
-            args=[task, registry],
-            id=task.name,
-            replace_existing=True,
-            name=f"pulse:{task.name}",
-        )
-        output.status(f"[pulse] scheduled '{task.name}' at {task.schedule.time} ({task.schedule.days})")
+        if task.schedule.mode == "once":
+            trigger = DateTrigger(run_date=task.schedule.at)
+            scheduler.add_job(
+                _once_execute,
+                trigger,
+                args=[task, registry, tasks_file],
+                id=task.name,
+                replace_existing=True,
+                name=f"pulse:{task.name}",
+            )
+            output.status(f"[pulse] scheduled '{task.name}' once at {task.schedule.at}")
+        else:
+            hour, minute = task.schedule.time.split(":", 1)
+            dow = _day_of_week(task.schedule.days)
+            trigger_kwargs: dict = {"hour": int(hour), "minute": int(minute)}
+            if dow:
+                trigger_kwargs["day_of_week"] = dow
+            scheduler.add_job(
+                _guarded_execute,
+                CronTrigger(**trigger_kwargs),
+                args=[task, registry],
+                id=task.name,
+                replace_existing=True,
+                name=f"pulse:{task.name}",
+            )
+            output.status(f"[pulse] scheduled '{task.name}' at {task.schedule.time} ({task.schedule.days})")
 
     return scheduler
 
 
 def _guarded_execute(task: PulseTask, registry: ConnectorRegistry) -> None:
-    """Job wrapper: checks quiet hours before executing."""
+    """Job wrapper for fixed tasks: checks quiet hours before executing."""
     if is_quiet_hours():
         output.debug(f"[pulse] quiet hours — skipping '{task.name}'")
         return
     from .executor import execute_task
     execute_task(task, registry)
+
+
+def _once_execute(task: PulseTask, registry: ConnectorRegistry, tasks_file: Path) -> None:
+    """Job wrapper for once tasks: executes then auto-removes from config."""
+    from .executor import execute_task
+    execute_task(task, registry)
+    remove_task(tasks_file, task.name)
+    output.status(f"[pulse] once task '{task.name}' completed and removed")
 
 
 # ---------------------------------------------------------------------------
