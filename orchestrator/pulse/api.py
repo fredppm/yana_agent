@@ -46,6 +46,7 @@ class _Handler(BaseHTTPRequestHandler):
     tasks_file: Path
     scheduler: Any
     registry: Any
+    stop_event: Any  # threading.Event — set to trigger daemon shutdown
 
     # Silence default access log — operational logs go through output module
     def log_message(self, fmt: str, *args: object) -> None:  # noqa: ARG002
@@ -70,6 +71,12 @@ class _Handler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         path = urlparse(self.path).path.rstrip("/")
+        # POST /shutdown — graceful shutdown
+        if path == "/shutdown":
+            self._json({"ok": True, "message": "shutting down"})
+            import threading
+            threading.Thread(target=self._shutdown_server, daemon=True).start()
+            return
         # POST /tasks/{name}/run — immediate execution, bypasses scheduler
         if path.endswith("/run"):
             name = path[len("/tasks/"):-len("/run")]
@@ -135,6 +142,12 @@ class _Handler(BaseHTTPRequestHandler):
     def _error(self, status: int, msg: str) -> None:
         self._json({"error": msg}, status=status)
 
+    def _shutdown_server(self) -> None:
+        output.status("[pulse] shutdown requested via API")
+        self.scheduler.shutdown(wait=False)
+        self.stop_event.set()
+        self.server.shutdown()
+
     def _read_body(self) -> dict | None:
         length = int(self.headers.get("Content-Length", 0))
         if length == 0:
@@ -191,12 +204,20 @@ class PulseAPI:
         registry: Any,
         host: str = _DEFAULT_HOST,
         port: int = 7891,
+        stop_event: Any = None,
     ) -> None:
+        import threading
+        self.stop_event = stop_event or threading.Event()
         # Inject dependencies into handler via class attributes
         handler = type(
             "_BoundHandler",
             (_Handler,),
-            {"tasks_file": tasks_file, "scheduler": scheduler, "registry": registry},
+            {
+                "tasks_file": tasks_file,
+                "scheduler": scheduler,
+                "registry": registry,
+                "stop_event": self.stop_event,
+            },
         )
         self._server = HTTPServer((host, port), handler)
 

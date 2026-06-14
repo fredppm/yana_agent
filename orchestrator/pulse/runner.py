@@ -134,12 +134,16 @@ def main(host: str = "127.0.0.1", port: int = 7891, connectors_dir: Path | None 
     api_thread = threading.Thread(target=api.serve_forever, daemon=True)
     api_thread.start()
     output.status(f"[pulse] API listening on {host}:{port}")
+    output.status("[pulse] running — POST /shutdown or Ctrl+C to stop")
 
     try:
-        threading.Event().wait()  # block forever until KeyboardInterrupt
+        api.stop_event.wait()  # blocks until /shutdown or KeyboardInterrupt
     except (KeyboardInterrupt, SystemExit):
+        pass
+    finally:
         output.status("[pulse] shutting down")
         scheduler.shutdown(wait=False)
+        api.shutdown()
 
 
 def _load_safe(tasks_file: Path) -> list[PulseTask]:
