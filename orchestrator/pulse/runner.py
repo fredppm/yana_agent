@@ -1,0 +1,133 @@
+"""
+pulse/runner.py — APScheduler-based task runner.
+
+Loads pulse-tasks.yaml, schedules each task, and runs the blocking event loop.
+Respects quiet_hours from pulse-config.yaml — skips execution silently when
+the current time falls in the quiet window.
+
+Entry point: main() — called by __main__.py.
+"""
+from __future__ import annotations
+
+import threading
+from pathlib import Path
+
+from apscheduler.schedulers.background import BackgroundScheduler  # type: ignore[import-untyped]
+from apscheduler.triggers.cron import CronTrigger  # type: ignore[import-untyped]
+
+import output
+from connectors.loader import load_connectors
+from connectors.registry import ConnectorRegistry
+from core import is_quiet_hours, sanctum_path
+
+from .api import PulseAPI
+from .config_loader import PulseTask, TaskConfigError, load_tasks
+
+# ---------------------------------------------------------------------------
+# Days mapping
+# ---------------------------------------------------------------------------
+
+_DAYS_MAP = {
+    "daily": None,          # no day_of_week restriction
+    "weekdays": "mon-fri",
+    "weekends": "sat,sun",
+}
+
+
+def _day_of_week(days: str) -> str | None:
+    return _DAYS_MAP.get(days, days)  # pass-through for custom e.g. "mon,wed,fri"
+
+
+# ---------------------------------------------------------------------------
+# Scheduler construction
+# ---------------------------------------------------------------------------
+
+
+def build_scheduler(
+    tasks_file: Path,
+    registry: ConnectorRegistry,
+) -> BackgroundScheduler:
+    """
+    Build a BackgroundScheduler with one job per task in pulse-tasks.yaml.
+
+    Returns the scheduler (not yet started).
+    """
+    scheduler = BackgroundScheduler()
+    tasks = _load_safe(tasks_file)
+
+    for task in tasks:
+        hour, minute = task.schedule.time.split(":", 1)
+        dow = _day_of_week(task.schedule.days)
+        trigger_kwargs: dict = {"hour": int(hour), "minute": int(minute)}
+        if dow:
+            trigger_kwargs["day_of_week"] = dow
+
+        scheduler.add_job(
+            _guarded_execute,
+            CronTrigger(**trigger_kwargs),
+            args=[task, registry],
+            id=task.name,
+            replace_existing=True,
+            name=f"pulse:{task.name}",
+        )
+        output.status(f"[pulse] scheduled '{task.name}' at {task.schedule.time} ({task.schedule.days})")
+
+    return scheduler
+
+
+def _guarded_execute(task: PulseTask, registry: ConnectorRegistry) -> None:
+    """Job wrapper: checks quiet hours before executing."""
+    if is_quiet_hours():
+        output.debug(f"[pulse] quiet hours — skipping '{task.name}'")
+        return
+    from .executor import execute_task
+    execute_task(task, registry)
+
+
+# ---------------------------------------------------------------------------
+# Main entry point
+# ---------------------------------------------------------------------------
+
+
+def main(port: int = 7891, connectors_dir: Path | None = None) -> None:
+    """
+    Start the Pulse daemon:
+      1. Load connectors from connectors/ directory
+      2. Build APScheduler with tasks from pulse-tasks.yaml
+      3. Start the localhost HTTP API for YANA to call
+      4. Run until interrupted
+    """
+    output.status("[pulse] starting")
+
+    registry = ConnectorRegistry()
+    connectors_path = connectors_dir or (Path(__file__).parent.parent.parent / "connectors")
+    if connectors_path.exists():
+        load_connectors(connectors_path, registry)
+        output.status(f"[pulse] loaded connectors from {connectors_path}")
+
+    tasks_file = sanctum_path() / "pulse-tasks.yaml"
+    scheduler = build_scheduler(tasks_file, registry)
+    scheduler.start()
+    output.status(f"[pulse] scheduler started — {len(scheduler.get_jobs())} job(s)")
+
+    api = PulseAPI(tasks_file=tasks_file, scheduler=scheduler, registry=registry, port=port)
+    api_thread = threading.Thread(target=api.serve_forever, daemon=True)
+    api_thread.start()
+    output.status(f"[pulse] API listening on localhost:{port}")
+
+    try:
+        threading.Event().wait()  # block forever until KeyboardInterrupt
+    except (KeyboardInterrupt, SystemExit):
+        output.status("[pulse] shutting down")
+        scheduler.shutdown(wait=False)
+
+
+def _load_safe(tasks_file: Path) -> list[PulseTask]:
+    try:
+        return load_tasks(tasks_file)
+    except TaskConfigError as exc:
+        output.warn(f"[pulse] invalid task config: {exc}")
+        return []
+    except Exception as exc:
+        output.warn(f"[pulse] could not load tasks: {exc}")
+        return []

@@ -9,6 +9,7 @@ Modules:
   SYS — core system (sanctum, session)
   MEM — sanctum writer / memory files
   VOX — voice I/O (STT / TTS)
+  PUL — Pulse daemon (task execution, config)
 """
 
 from __future__ import annotations
@@ -28,6 +29,9 @@ _CATALOG: dict[str, str] = {
     "MEM-004": "raw response saved at {filename} for inspection",
     # Voice
     "VOX-001": "TTS playback error: {error}",
+    # Pulse
+    "PUL-001": "task '{task}' failed after {retries} attempts. Last error: {error}",
+    "PUL-002": "unknown deliver.action: '{action}'",
 }
 
 
