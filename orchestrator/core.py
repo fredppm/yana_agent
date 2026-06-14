@@ -115,6 +115,14 @@ def load_system_prompt(voice_mode: bool = False, registry=None) -> str:
         # No sanctum yet — First Breath hasn't happened
         parts.append(f"---\n[{errors.e('SYS-001')}]")
 
+    # Current datetime — injected so LLM can compute relative times (e.g. "daqui 1 minuto")
+    from datetime import datetime
+    now = datetime.now()
+    parts.append(
+        f"---\n## Current datetime\n\n"
+        f"{now.strftime('%Y-%m-%dT%H:%M:%S')} (local time, use this to compute `at` for Pulse once tasks)"
+    )
+
     # Connector manifest — lightweight, always injected when registry is present
     if registry is not None:
         manifest_section = build_connector_manifest(registry)
