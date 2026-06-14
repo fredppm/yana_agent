@@ -34,6 +34,57 @@ from typing import Any
 from connectors import Connector, command, query
 
 _LAUNCHER = Path(__file__).parent / "gcal_mcp_launcher.py"
+_SCOPES = [
+    "https://www.googleapis.com/auth/calendar.readonly",
+    "https://www.googleapis.com/auth/calendar.events.readonly",
+    "https://www.googleapis.com/auth/calendar.events",
+]
+
+
+def _ensure_gcal_auth(creds_path: Path, token_path: Path) -> None:
+    """Ensure a valid OAuth token exists. Opens browser if needed.
+
+    Must be called in the parent process — never inside an MCP subprocess
+    whose stdout is wired to the JSONRPC pipe.
+    """
+    try:
+        from google.auth.transport.requests import Request
+        from google.oauth2.credentials import Credentials
+        from google_auth_oauthlib.flow import InstalledAppFlow
+    except ImportError as exc:
+        raise RuntimeError(
+            f"Google Calendar auth: missing Google auth libraries ({exc}). "
+            "Run: pip install google-auth google-auth-oauthlib"
+        ) from exc
+
+    creds = None
+    if token_path.exists():
+        try:
+            creds = Credentials.from_authorized_user_file(str(token_path), _SCOPES)
+        except Exception:
+            pass  # corrupt token — re-auth below
+
+    if not creds or not creds.valid:
+        if creds and creds.expired and creds.refresh_token:
+            try:
+                creds.refresh(Request())
+            except Exception:
+                creds = None  # refresh failed — full re-auth
+
+        if not creds or not creds.valid:
+            if not creds_path.exists():
+                raise PermissionError(
+                    f"Google Calendar credentials not found: {creds_path}\n"
+                    "  1. Go to https://console.cloud.google.com/\n"
+                    "  2. Enable Google Calendar API\n"
+                    "  3. Create OAuth 2.0 credentials (Desktop app)\n"
+                    f"  4. Download JSON and save to: {creds_path}"
+                )
+            flow = InstalledAppFlow.from_client_secrets_file(str(creds_path), _SCOPES)
+            creds = flow.run_local_server(port=0)
+
+        token_path.parent.mkdir(parents=True, exist_ok=True)
+        token_path.write_text(creds.to_json())
 
 
 class GoogleCalendarMCPConnector(Connector):
@@ -46,6 +97,11 @@ class GoogleCalendarMCPConnector(Connector):
     ) -> None:
         creds = Path(credentials_file or "~/.yana/google_credentials.json").expanduser()
         token = Path(token_file or "~/.yana/tokens/google_calendar.json").expanduser()
+
+        # Auth MUST happen here, in YANA's process, before the MCP subprocess starts.
+        # The MCP subprocess has its stdout wired to the JSONRPC pipe — any print there
+        # breaks the protocol.
+        _ensure_gcal_auth(creds, token)
 
         merged = dict(os.environ)
         merged["GOOGLE_CREDENTIALS_PATH"] = str(creds)

@@ -7,9 +7,13 @@ Launcher for mcp-server-google-calendar that:
   2. Bypasses the server's main() function, which calls argparse.parse_args()
      and fails when sys.argv contains parent-process arguments on Windows
 
-Environment variables:
+Auth is intentionally NOT done here — it must run in the parent process
+(GoogleCalendarMCPConnector.__init__) where stdout is the terminal, not the
+JSONRPC pipe.
+
+Environment variables (set by GoogleCalendarMCPConnector):
   GOOGLE_CREDENTIALS_PATH  OAuth2 client credentials JSON (Google Cloud Console)
-  GOOGLE_TOKEN_PATH        Saved OAuth2 token (auto-created after first browser auth)
+  GOOGLE_TOKEN_PATH        Saved OAuth2 token (guaranteed to exist before this runs)
 """
 
 import asyncio
@@ -32,7 +36,6 @@ _auth.get_token_path = lambda: _token
 
 # Import server internals after patching
 from mcp_server_google_calendar.server import server  # noqa: E402
-from mcp_server_google_calendar.auth import authorize  # noqa: E402
 import mcp.server.stdio  # noqa: E402
 from mcp.server import NotificationOptions  # noqa: E402
 from mcp.server.models import InitializationOptions  # noqa: E402
@@ -40,12 +43,6 @@ from mcp.server.models import InitializationOptions  # noqa: E402
 
 async def _run() -> None:
     """Start the MCP server, bypassing the argparse-based main() entrypoint."""
-    try:
-        authorize()
-    except Exception as e:
-        print(f"Google Calendar auth failed: {e}", file=sys.stderr)
-        sys.exit(1)
-
     async with mcp.server.stdio.stdio_server() as (read_stream, write_stream):
         await server.run(
             read_stream,
