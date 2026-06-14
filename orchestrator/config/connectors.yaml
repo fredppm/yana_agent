@@ -18,7 +18,7 @@ connectors:
       credentials_file: "~/.yana/credentials/garmin_ana.json"
       token_dir: "~/.yana/tokens/garmin_ana"
 
-  - type: GoogleCalendarMCPConnector
+  - type: GoogleCalendarConnector
     id: calendar_fred
     name: "Agenda do Fred"
     description: "Eventos e compromissos do calendário pessoal do Fred"
@@ -36,27 +36,26 @@ connectors:
       credentials_file: "~/.yana/google_credentials.json"
       token_file: "~/.yana/tokens/tasks_fred.json"
 
-  - type: GmailMCPConnector
+  # Gmail — direct Gmail API (google-api-python-client, no MCP subprocess)
+  # On first YANA startup, a browser window opens for OAuth consent.
+  # Token is saved to token_file and reused on subsequent runs.
+  - type: GmailConnector
     id: gmail_fred_personal
     name: "Gmail pessoal do Fred"
     description: "Email pessoal do Fred — inbox importante, busca, envio"
     owner: fred
     config:
-      mcp_command: ["uvx", "mcp-gmail"]
-      env:
-        GOOGLE_CREDENTIALS_PATH: "~/.yana/google_credentials.json"
-        GOOGLE_TOKEN_PATH: "~/.yana/tokens/gmail_fred_personal.json"
+      credentials_file: "~/.yana/google_credentials.json"
+      token_file: "~/.yana/tokens/gmail_fred_personal.json"
 
-  - type: GmailMCPConnector
+  - type: GmailConnector
     id: gmail_fred_work
-    name: "Gmail trabalho do Fred"
+    name: "Gmail VTEX do Fred (frederico.mourao@vtex.com)"
     description: "Email de trabalho do Fred — inbox importante, busca, envio"
     owner: fred
     config:
-      mcp_command: ["uvx", "mcp-gmail"]
-      env:
-        GOOGLE_CREDENTIALS_PATH: "~/.yana/google_credentials_work.json"
-        GOOGLE_TOKEN_PATH: "~/.yana/tokens/gmail_fred_work.json"
+      credentials_file: "~/.yana/google_credentials.json"
+      token_file: "~/.yana/tokens/gmail_fred_work.json"
 
   - type: RGBLightConnector
     id: rgb_sala
