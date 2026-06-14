@@ -37,10 +37,8 @@ connectors:
       token_file: "~/.yana/tokens/tasks_fred.json"
 
   # Gmail — backend: mcp-google-gmail (pip/uvx)
-  # First-time auth per account:
-  #   GMAIL_CREDENTIALS_PATH=~/.yana/google_credentials.json \
-  #   GMAIL_TOKEN_PATH=~/.yana/tokens/gmail_fred_personal.json \
-  #   uvx mcp-google-gmail@latest auth
+  # First-time auth per account: uvx mcp-google-gmail@latest auth
+  # The server manages OAuth tokens in its own default paths after auth.
   - type: GmailMCPConnector
     id: gmail_fred_personal
     name: "Gmail pessoal do Fred"
@@ -48,9 +46,6 @@ connectors:
     owner: fred
     config:
       mcp_command: ["uvx", "mcp-google-gmail@latest"]
-      env:
-        GMAIL_CREDENTIALS_PATH: "~/.yana/google_credentials.json"
-        GMAIL_TOKEN_PATH: "~/.yana/tokens/gmail_fred_personal.json"
 
   - type: GmailMCPConnector
     id: gmail_fred_work
@@ -59,9 +54,6 @@ connectors:
     owner: fred
     config:
       mcp_command: ["uvx", "mcp-google-gmail@latest"]
-      env:
-        GMAIL_CREDENTIALS_PATH: "~/.yana/google_credentials_work.json"
-        GMAIL_TOKEN_PATH: "~/.yana/tokens/gmail_fred_work.json"
 
   - type: RGBLightConnector
     id: rgb_sala
