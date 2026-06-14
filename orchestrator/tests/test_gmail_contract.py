@@ -18,8 +18,6 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 _CONNECTOR_FILE = Path(__file__).parent.parent.parent / "connectors" / "gmail.py"
@@ -33,6 +31,7 @@ GmailConnector = _mod.GmailConnector
 # Shared Gmail API-format message payloads
 # ---------------------------------------------------------------------------
 
+
 def _make_raw_message(
     msg_id: str,
     thread_id: str,
@@ -44,6 +43,7 @@ def _make_raw_message(
 ) -> dict:
     """Build a minimal Gmail API message object."""
     import base64
+
     encoded_body = base64.urlsafe_b64encode(body_text.encode()).decode()
     return {
         "id": msg_id,
@@ -81,9 +81,7 @@ _RAW_MSG_2 = _make_raw_message(
     body_text="Prezado Fred,\n\nPrecisamos dos comprovantes de renda do primeiro trimestre.",
 )
 
-_EXPECTED_EMAIL_KEYS = {
-    "id", "thread_id", "from", "subject", "date", "snippet", "body_text"
-}
+_EXPECTED_EMAIL_KEYS = {"id", "thread_id", "from", "subject", "date", "snippet", "body_text"}
 
 
 def _make_connector() -> Any:
@@ -106,13 +104,13 @@ def _mock_svc(connector: Any, messages: list[dict] | None = None) -> MagicMock:
 
         # get() returns the matching full message by ID
         msg_map = {m["id"]: m for m in messages}
+
         def _get_execute(msg_id):
             mock = MagicMock()
             mock.execute.return_value = msg_map[msg_id]
             return mock
-        mock_svc.users().messages().get.side_effect = (
-            lambda userId, id, format: _get_execute(id)
-        )
+
+        mock_svc.users().messages().get.side_effect = lambda userId, id, format: _get_execute(id)
 
     return mock_svc
 
@@ -258,7 +256,6 @@ def test_unread_important_passes_primary_query():
     connector.call("unread_important")
 
     call_kwargs = mock_svc.users().messages().list.call_args
-    q = call_kwargs.kwargs.get("q") or call_kwargs.args[0] if call_kwargs.args else ""
     # list() is called with keyword args
     _, kwargs = call_kwargs
     assert "category:primary" in kwargs.get("q", "")
@@ -319,9 +316,12 @@ def test_format_message_body_decoded():
 
 def test_format_message_empty_subject_defaults_to_empty_string():
     import base64
+
     connector = _make_connector()
     raw = {
-        "id": "1", "threadId": "t1", "snippet": "snip",
+        "id": "1",
+        "threadId": "t1",
+        "snippet": "snip",
         "payload": {
             "mimeType": "text/plain",
             "headers": [{"name": "From", "value": "a@b.com"}],
@@ -335,11 +335,14 @@ def test_format_message_empty_subject_defaults_to_empty_string():
 def test_format_message_multipart_prefers_plain_text():
     """Multipart messages: plain text extracted, HTML ignored."""
     import base64
+
     connector = _make_connector()
     plain = base64.urlsafe_b64encode(b"plain body").decode()
     html = base64.urlsafe_b64encode(b"<html>html body</html>").decode()
     raw = {
-        "id": "1", "threadId": "t1", "snippet": "",
+        "id": "1",
+        "threadId": "t1",
+        "snippet": "",
         "payload": {
             "mimeType": "multipart/alternative",
             "headers": [],
@@ -411,11 +414,14 @@ def test_unread_important_timeout_error():
 def test_send_message_auth_error():
     connector = _make_connector()
     with patch.object(connector, "_svc", side_effect=PermissionError):
-        result = connector.call("send_message", {
-            "to": "joao@empresa.com",
-            "subject": "Re: Proposta",
-            "body": "Olá João, podemos marcar uma call?",
-        })
+        result = connector.call(
+            "send_message",
+            {
+                "to": "joao@empresa.com",
+                "subject": "Re: Proposta",
+                "body": "Olá João, podemos marcar uma call?",
+            },
+        )
     assert result.ok is False
     assert result.error == "auth"
 
