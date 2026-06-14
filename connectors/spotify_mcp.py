@@ -261,11 +261,11 @@ class SpotifyMCPConnector(Connector):
     # ------------------------------------------------------------------
 
     @command(
-        description="Start or resume playback. Pass a Spotify URI (track, album, or playlist) to play something specific.",
+        description="Start or resume playback. Pass a Spotify URI (track, album, or playlist) to play something specific. Returns the device name where playback started.",
         params={"uri": {"type": "string", "required": False}},
-        returns={"type": "boolean"},
+        returns={"type": "object"},
     )
-    def play(self, uri: str | None = None) -> bool:
+    def play(self, uri: str | None = None) -> dict:
         args: dict[str, Any] = {}
         if uri:
             if "track" in uri:
@@ -273,7 +273,14 @@ class SpotifyMCPConnector(Connector):
             else:
                 args["context_uri"] = uri
         self._call_tool("start-playback", args)
-        return True
+        # Return which device is now playing so YANA can tell the user
+        pb = self._call_tool("get-playback-state", {})
+        device = (pb or {}).get("device") or {}
+        return {
+            "ok": True,
+            "device_name": device.get("name"),
+            "device_type": device.get("type"),
+        }
 
     @command(
         description="Pause playback",

@@ -282,39 +282,49 @@ def test_get_playlists_values():
 # ---------------------------------------------------------------------------
 
 
-def test_play_returns_true():
-    c = _with_tool(_make_connector(), {"start-playback": {}})
+_PLAYBACK_TV = {
+    "device": {"name": "Guest Room TV", "type": "TV"},
+    "is_playing": True,
+    "item": _TRACK,
+}
+
+
+def test_play_returns_ok_with_device():
+    c = _with_tool(_make_connector(), {"start-playback": {}, "get-playback-state": _PLAYBACK_TV})
     result = c.call("play")
     assert result.ok is True
-    assert result.data is True
+    assert result.data["ok"] is True
+    assert result.data["device_name"] == "Guest Room TV"
 
 
 def test_play_with_track_uri():
-    called_with: dict = {}
+    calls: list = []
 
     def _fake(tool: str, args: dict) -> object:
-        called_with.update({"tool": tool, "args": args})
-        return {}
+        calls.append({"tool": tool, "args": args})
+        return _PLAYBACK_TV if tool == "get-playback-state" else {}
 
     c = _make_connector()
     c._call_tool = _fake
     result = c.call("play", {"uri": "spotify:track:abc123"})
     assert result.ok is True
-    assert called_with["args"]["uris"] == ["spotify:track:abc123"]
+    play_call = next(x for x in calls if x["tool"] == "start-playback")
+    assert play_call["args"]["uris"] == ["spotify:track:abc123"]
 
 
 def test_play_with_playlist_uri():
-    called_with: dict = {}
+    calls: list = []
 
     def _fake(tool: str, args: dict) -> object:
-        called_with.update({"tool": tool, "args": args})
-        return {}
+        calls.append({"tool": tool, "args": args})
+        return _PLAYBACK_TV if tool == "get-playback-state" else {}
 
     c = _make_connector()
     c._call_tool = _fake
     result = c.call("play", {"uri": "spotify:playlist:pl1"})
     assert result.ok is True
-    assert called_with["args"]["context_uri"] == "spotify:playlist:pl1"
+    play_call = next(x for x in calls if x["tool"] == "start-playback")
+    assert play_call["args"]["context_uri"] == "spotify:playlist:pl1"
 
 
 def test_pause_returns_true():
