@@ -65,14 +65,14 @@ class PulseManagerConnector(Connector):
             "Task schema: observe(source, operation, params) + schedule(time, days) + deliver(action, prompt)."
         ),
         params={
-            "name": {"type": "string"},
-            "source": {"type": "string"},
-            "operation": {"type": "string"},
-            "params": {"type": "object", "required": False},
-            "time": {"type": "string"},
-            "days": {"type": "string", "required": False},
-            "action": {"type": "string"},
-            "prompt": {"type": "string", "required": False},
+            "name": {"type": "string", "description": "Unique task identifier, e.g. 'newsletter-morning'"},
+            "source": {"type": "string", "description": "Connector instance ID from connectors.yaml, e.g. 'gmail_fred_personal'"},
+            "operation": {"type": "string", "description": "Connector operation name, e.g. 'search', 'unread_important'"},
+            "params": {"type": "object", "required": False, "description": "Operation parameters, e.g. {\"query\": \"category:promotions is:unread\"}"},
+            "time": {"type": "string", "description": "Time of day in HH:MM format, e.g. '08:00'"},
+            "days": {"type": "string", "required": False, "description": "Recurrence: 'daily', 'weekdays', 'weekends', or comma-separated ISO days e.g. 'mon,wed,fri'. Default: 'daily'"},
+            "action": {"type": "string", "description": "What to do with the result: 'summarize' (LLM summary), 'notify' (deliver raw), 'store' (save to file)"},
+            "prompt": {"type": "string", "required": False, "description": "Instruction to the LLM when action='summarize', e.g. 'Summarize in Portuguese'"},
         },
         returns={"type": "boolean"},
     )
