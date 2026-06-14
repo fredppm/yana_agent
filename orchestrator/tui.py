@@ -27,7 +27,7 @@ from rich.padding import Padding
 from strings import t
 from textual import work
 from textual.app import App, ComposeResult
-from textual.binding import Binding
+from textual.binding import Binding, BindingType
 from textual.containers import Horizontal
 from textual.events import Key
 from textual.screen import Screen
@@ -61,7 +61,7 @@ class SessionScreen(Screen[str | None]):
     def render(self) -> str:
         return ""
 
-    BINDINGS: ClassVar[list[Binding | tuple[str, str] | tuple[str, str, str]]] = [
+    BINDINGS: ClassVar[list[BindingType]] = [
         Binding("up", "cursor_up", show=False),
         Binding("down", "cursor_down", show=False),
         Binding("enter", "confirm", "Select"),
@@ -235,7 +235,7 @@ class YANAApp(App[TuiResult]):
     """
     )
 
-    BINDINGS: ClassVar[list[Binding | tuple[str, str] | tuple[str, str, str]]] = [
+    BINDINGS: ClassVar[list[BindingType]] = [
         Binding("ctrl+c", "quit_app", "Quit"),
         Binding("ctrl+d", "quit_app", "End session", show=True),
         Binding("ctrl+o", "toggle_history", "History", show=False),
