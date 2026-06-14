@@ -48,9 +48,10 @@ class _Handler(BaseHTTPRequestHandler):
     registry: Any
     stop_event: Any  # threading.Event — set to trigger daemon shutdown
 
-    # Silence default access log — operational logs go through output module
-    def log_message(self, fmt: str, *args: object) -> None:  # noqa: ARG002
-        pass
+    # Minimal access log — only non-GET requests to catch missed calls
+    def log_message(self, fmt: str, *args: object) -> None:
+        if args and str(args[0]).startswith('"POST') or (args and str(args[0]).startswith('"DELETE')):
+            output.debug(f"[pulse-api] {fmt % args}")
 
     def log_error(self, fmt: str, *args: object) -> None:  # noqa: ARG002
         output.warn(f"[pulse-api] {fmt % args}")
@@ -102,6 +103,7 @@ class _Handler(BaseHTTPRequestHandler):
         try:
             task = _dict_to_task(body)
         except (TaskConfigError, KeyError, TypeError) as exc:
+            output.warn(f"[pulse-api] bad request POST /tasks: {exc}")
             self._error(400, str(exc))
             return
         upsert_task(self.tasks_file, task)
