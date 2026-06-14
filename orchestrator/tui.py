@@ -642,5 +642,8 @@ def run_tui(
         speak_fn=speak_fn,
         greeting=greeting,
     )
-    result = app.run(mouse=False)
+    try:
+        result = app.run(mouse=False)
+    except KeyboardInterrupt:
+        result = None
     return result if result is not None else ([], None)
