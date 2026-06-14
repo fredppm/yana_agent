@@ -1,9 +1,8 @@
 """
-connectors/gmail.py — GmailMCPConnector.
+connectors/gmail.py — GmailConnector.
 
-Routes YANA connector calls to the mcp-google-gmail MCP server.
-The connector is intentionally dumb: it passes raw email data to YANA, which
-applies intelligence (triaging, drafting replies) using sanctum context.
+Direct Gmail API connector using google-api-python-client.
+No MCP subprocess — reads and sends email via the Gmail REST API.
 
 Gmail Primary inbox is used as the importance oracle — no custom filtering logic
 inside the connector. YANA decides what matters based on sanctum relationship
@@ -15,7 +14,7 @@ Setup:
   2. Save to the path configured as credentials_file (default: ~/.yana/google_credentials.json).
   3. Register in orchestrator/config/connectors.yaml:
 
-       - type: GmailMCPConnector
+       - type: GmailConnector
          id: gmail_fred_personal
          name: "Gmail pessoal do Fred"
          owner: fred
@@ -28,156 +27,37 @@ Setup:
 
   Multiple accounts: register one instance per account with separate token_files.
 
-Note on MCP tool names: different builds of mcp-google-gmail may use different
-tool names. Override _TOOLS at class level to adapt without changing business logic.
-
 send_message uses a generic name intentionally — first implementation of a future
 CommunicationsConnector abstraction (see issue #20).
 """
 
 from __future__ import annotations
 
-import asyncio
-import json
-import os
-import threading
-from contextlib import AsyncExitStack
+import base64
+from email.mime.text import MIMEText
 from pathlib import Path
 from typing import Any
 
 from connectors import Connector, command, event, query
 
-_LAUNCHER = Path(__file__).parent / "gmail_mcp_launcher.py"
 _SCOPES = ["https://www.googleapis.com/auth/gmail.modify"]
 
 
-def _ensure_gmail_auth(creds_path: Path, token_path: Path) -> None:
-    """Ensure a valid OAuth token exists. Opens browser if needed.
-
-    Must be called in the parent process — never inside an MCP subprocess
-    whose stdout is wired to the JSONRPC pipe.
-    """
-    try:
-        from google.auth.transport.requests import Request
-        from google.oauth2.credentials import Credentials
-        from google_auth_oauthlib.flow import InstalledAppFlow
-    except ImportError as exc:
-        raise RuntimeError(
-            f"Gmail auth: missing Google auth libraries ({exc}). "
-            "Run: pip install google-auth google-auth-oauthlib"
-        ) from exc
-
-    creds = None
-    if token_path.exists():
-        try:
-            creds = Credentials.from_authorized_user_file(str(token_path), _SCOPES)
-        except Exception:
-            pass  # corrupt token — re-auth below
-
-    if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
-            try:
-                creds.refresh(Request())
-            except Exception:
-                creds = None  # refresh failed — full re-auth
-
-        if not creds or not creds.valid:
-            if not creds_path.exists():
-                raise PermissionError(
-                    f"Gmail credentials not found: {creds_path}\n"
-                    "  1. Go to https://console.cloud.google.com/\n"
-                    "  2. Enable Gmail API\n"
-                    "  3. Create OAuth 2.0 credentials (Desktop app)\n"
-                    f"  4. Download JSON and save to: {creds_path}"
-                )
-            flow = InstalledAppFlow.from_client_secrets_file(str(creds_path), _SCOPES)
-            creds = flow.run_local_server(port=0)
-
-        token_path.parent.mkdir(parents=True, exist_ok=True)
-        token_path.write_text(creds.to_json())
-
-
-class GmailMCPConnector(Connector):
-    connector_description = "Gmail email access via MCP — unread important, search, send, label"
-
-    # Override to adapt to a different Gmail MCP server's tool names.
-    _TOOLS: dict[str, str] = {
-        "list_emails": "list_emails",
-        "send_email": "send_email",
-        "mark_as_read": "mark_as_read",
-        "modify_labels": "modify_labels",
-    }
+class GmailConnector(Connector):
+    connector_description = "Gmail email access — unread important, search, send, label"
 
     def __init__(
         self,
         credentials_file: str | None = None,
         token_file: str | None = None,
     ) -> None:
-        creds = Path(credentials_file or "~/.yana/google_credentials.json").expanduser()
-        token = Path(token_file or "~/.yana/tokens/gmail.json").expanduser()
-
-        # Auth MUST happen here, in YANA's process, before the MCP subprocess starts.
-        # The MCP subprocess has its stdout wired to the JSONRPC pipe — any print there
-        # (e.g. "Please visit this URL...") breaks the protocol.
-        # Running auth in the parent process keeps all OAuth output on the terminal.
-        _ensure_gmail_auth(creds, token)
-
-        # Pass paths to launcher so it can configure the server to use our token.
-        merged: dict[str, str] = dict(os.environ)
-        merged["GMAIL_CREDENTIALS_PATH"] = str(creds)
-        merged["GMAIL_TOKEN_PATH"] = str(token)
-        self._env = merged
-        # Dedicated event loop in a background thread — keeps the MCP session
-        # and the Gmail MCP subprocess alive across calls.
-        self._loop = asyncio.new_event_loop()
-        self._thread = threading.Thread(
-            target=self._loop.run_forever,
-            daemon=True,
-            name=f"gmail-mcp-{id(self)}",
-        )
-        self._thread.start()
-        self._session: Any = None
-        self._exit_stack: AsyncExitStack | None = None
-        self._connect()
-
-    # ------------------------------------------------------------------
-    # Session lifecycle
-    # ------------------------------------------------------------------
-
-    def _connect(self) -> None:
-        self._run(self._start_session())
-
-    def _run(self, coro: Any) -> Any:
-        """Submit a coroutine to the background loop and block until done."""
-        future = asyncio.run_coroutine_threadsafe(coro, self._loop)
-        return future.result(timeout=60)
-
-    async def _start_session(self) -> None:
-        from mcp import ClientSession, StdioServerParameters
-        from mcp.client.stdio import stdio_client
-
-        params = StdioServerParameters(
-            command="python",
-            args=[str(_LAUNCHER)],
-            env=self._env,
-        )
-        self._exit_stack = AsyncExitStack()
-        read, write = await self._exit_stack.enter_async_context(stdio_client(params))
-        session = ClientSession(read, write)
-        self._session = await self._exit_stack.enter_async_context(session)
-        await self._session.initialize()
-
-    async def _call_async(self, tool: str, args: dict[str, Any]) -> Any:
-        result = await self._session.call_tool(tool, args)
-        if not result.content:
-            return None
-        text = getattr(result.content[0], "text", None)
-        if text:
-            return json.loads(text)
-        return None
-
-    def _call_tool(self, tool: str, args: dict[str, Any]) -> Any:
-        return self._run(self._call_async(tool, args))
+        self._credentials_file = Path(
+            credentials_file or "~/.yana/google_credentials.json"
+        ).expanduser()
+        self._token_file = Path(
+            token_file or "~/.yana/tokens/gmail.json"
+        ).expanduser()
+        self._service = None  # lazy — built on first call
 
     # ------------------------------------------------------------------
     # Queries
@@ -192,12 +72,10 @@ class GmailMCPConnector(Connector):
         returns={"type": "list"},
     )
     def unread_important(self, max_results: int = 10) -> list[dict]:
-        data = self._call_tool(self._TOOLS["list_emails"], {
-            "query": "in:inbox is:unread category:primary",
-            "max_results": max_results,
-        })
-        items = self._extract_emails(data)
-        return [self._format_email(e) for e in items]
+        return self._fetch_messages(
+            "in:inbox is:unread category:primary",
+            max_results=max_results,
+        )
 
     @query(
         description=(
@@ -209,9 +87,7 @@ class GmailMCPConnector(Connector):
         returns={"type": "list"},
     )
     def search(self, query: str) -> list[dict]:
-        data = self._call_tool(self._TOOLS["list_emails"], {"query": query})
-        items = self._extract_emails(data)
-        return [self._format_email(e) for e in items]
+        return self._fetch_messages(query)
 
     # ------------------------------------------------------------------
     # Commands
@@ -231,11 +107,13 @@ class GmailMCPConnector(Connector):
         returns={"type": "boolean"},
     )
     def send_message(self, to: str, subject: str, body: str) -> bool:
-        self._call_tool(self._TOOLS["send_email"], {
-            "to": to,
-            "subject": subject,
-            "body": body,
-        })
+        msg = MIMEText(body)
+        msg["to"] = to
+        msg["subject"] = subject
+        raw = base64.urlsafe_b64encode(msg.as_bytes()).decode()
+        self._svc().users().messages().send(
+            userId="me", body={"raw": raw}
+        ).execute()
         return True
 
     @command(
@@ -244,7 +122,11 @@ class GmailMCPConnector(Connector):
         returns={"type": "boolean"},
     )
     def mark_read(self, email_id: str) -> bool:
-        self._call_tool(self._TOOLS["mark_as_read"], {"email_id": email_id})
+        self._svc().users().messages().modify(
+            userId="me",
+            id=email_id,
+            body={"removeLabelIds": ["UNREAD"]},
+        ).execute()
         return True
 
     @command(
@@ -256,10 +138,12 @@ class GmailMCPConnector(Connector):
         returns={"type": "boolean"},
     )
     def label(self, email_id: str, label_name: str) -> bool:
-        self._call_tool(self._TOOLS["modify_labels"], {
-            "email_id": email_id,
-            "add_labels": [label_name],
-        })
+        label_id = self._resolve_label(label_name)
+        self._svc().users().messages().modify(
+            userId="me",
+            id=email_id,
+            body={"addLabelIds": [label_id]},
+        ).execute()
         return True
 
     # ------------------------------------------------------------------
@@ -278,37 +162,109 @@ class GmailMCPConnector(Connector):
         """Polling-based event handler — PULSE calls unread_important() to check."""
 
     # ------------------------------------------------------------------
-    # Response transformer
+    # Internals
     # ------------------------------------------------------------------
 
-    def _extract_emails(self, data: Any) -> list[dict]:
-        """Normalize MCP response to a list of raw email dicts.
+    def _svc(self):
+        if self._service is None:
+            self._service = self._build_service()
+        return self._service
 
-        Handles both {"emails": [...]} and plain list responses.
-        """
-        if isinstance(data, list):
-            return data
-        if isinstance(data, dict):
-            return data.get("emails") or []
-        return []
+    def _build_service(self):
+        from google.auth.transport.requests import Request
+        from google.oauth2.credentials import Credentials
+        from google_auth_oauthlib.flow import InstalledAppFlow
+        from googleapiclient.discovery import build
 
-    def _format_email(self, raw: dict) -> dict:
-        """Normalize a raw MCP email response to the YANA contract shape.
+        creds = None
+        if self._token_file.exists():
+            try:
+                creds = Credentials.from_authorized_user_file(
+                    str(self._token_file), _SCOPES
+                )
+            except Exception:
+                pass
+
+        if not creds or not creds.valid:
+            if creds and creds.expired and creds.refresh_token:
+                try:
+                    creds.refresh(Request())
+                except Exception:
+                    creds = None
+            if not creds or not creds.valid:
+                if not self._credentials_file.exists():
+                    raise PermissionError(
+                        f"Gmail credentials not found: {self._credentials_file}\n"
+                        "  1. Go to https://console.cloud.google.com/\n"
+                        "  2. Enable Gmail API\n"
+                        "  3. Create OAuth 2.0 credentials (Desktop app)\n"
+                        f"  4. Download JSON and save to: {self._credentials_file}"
+                    )
+                flow = InstalledAppFlow.from_client_secrets_file(
+                    str(self._credentials_file), _SCOPES
+                )
+                creds = flow.run_local_server(port=0)
+            self._token_file.parent.mkdir(parents=True, exist_ok=True)
+            self._token_file.write_text(creds.to_json())
+
+        return build("gmail", "v1", credentials=creds)
+
+    def _fetch_messages(self, gmail_query: str, max_results: int = 10) -> list[dict]:
+        svc = self._svc()
+        result = svc.users().messages().list(
+            userId="me",
+            q=gmail_query,
+            maxResults=max_results,
+        ).execute()
+        out = []
+        for stub in result.get("messages", []):
+            raw = svc.users().messages().get(
+                userId="me",
+                id=stub["id"],
+                format="full",
+            ).execute()
+            out.append(self._format_message(raw))
+        return out
+
+    def _resolve_label(self, label_name: str) -> str:
+        """Return label ID for label_name, creating it if necessary."""
+        svc = self._svc()
+        all_labels = svc.users().labels().list(userId="me").execute()
+        for lbl in all_labels.get("labels", []):
+            if lbl["name"] == label_name:
+                return lbl["id"]
+        created = svc.users().labels().create(
+            userId="me", body={"name": label_name}
+        ).execute()
+        return created["id"]
+
+    def _format_message(self, raw: dict) -> dict:
+        """Normalize a Gmail API message to the YANA contract shape.
 
         HTML body is discarded — YANA only receives plain text.
-        Handles field name variations across different Gmail MCP server implementations.
         """
+        payload = raw.get("payload", {})
+        headers = {h["name"].lower(): h["value"] for h in payload.get("headers", [])}
         return {
             "id": raw.get("id"),
-            "thread_id": raw.get("threadId") or raw.get("thread_id"),
-            "from": raw.get("from") or raw.get("sender"),
-            "subject": raw.get("subject", ""),
-            "date": raw.get("date") or raw.get("internalDate"),
+            "thread_id": raw.get("threadId"),
+            "from": headers.get("from", ""),
+            "subject": headers.get("subject", ""),
+            "date": headers.get("date", ""),
             "snippet": raw.get("snippet", ""),
-            "body_text": (
-                raw.get("body")
-                or raw.get("body_text")
-                or raw.get("plainText")
-                or ""
-            ),
+            "body_text": self._extract_plain_text(payload),
         }
+
+    def _extract_plain_text(self, payload: dict) -> str:
+        """Extract plain text body from a message payload, ignoring HTML parts."""
+        mime = payload.get("mimeType", "")
+        if mime == "text/plain":
+            data = payload.get("body", {}).get("data", "")
+            if data:
+                return base64.urlsafe_b64decode(data + "==").decode("utf-8", errors="replace")
+            return ""
+        for part in payload.get("parts", []):
+            text = self._extract_plain_text(part)
+            if text:
+                return text
+        return ""
