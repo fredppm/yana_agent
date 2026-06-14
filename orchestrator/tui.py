@@ -139,7 +139,8 @@ class SessionScreen(Screen[str | None]):
 
     def _update_hint(self) -> None:
         frame = self._SPINNER[self._spinner_idx]
-        self.query_one("#session-hint", Label).update(f"  {frame}  {t('sessions_hint')}")
+        hint = f"{t('sessions_hint_nav')}   {t('sessions_hint_select')}   {t('sessions_hint_quit')}"
+        self.query_one("#session-hint", Label).update(f"  {frame}  {hint}")
 
     def _render_list(self) -> None:
         lst = self.query_one("#session-list", RichLog)

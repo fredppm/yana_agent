@@ -28,7 +28,9 @@ _STRINGS: dict[str, dict[str, str]] = {
         "user_label": "You",
         # -- Session browser --
         "sessions_new": "new session",
-        "sessions_hint": "↑↓ navigate   Enter select   q quit",
+        "sessions_hint_nav": "↑↓ navigate",
+        "sessions_hint_select": "Enter select",
+        "sessions_hint_quit": "q quit",
         "sessions_continuing": "continuing",
         "session_today": "today",
         "session_yesterday": "yesterday",
@@ -55,7 +57,9 @@ _STRINGS: dict[str, dict[str, str]] = {
         "user_label": "Você",
         # -- Session browser --
         "sessions_new": "nova sessão",
-        "sessions_hint": "↑↓ navegar   Enter selecionar   q sair",
+        "sessions_hint_nav": "↑↓ navegar",
+        "sessions_hint_select": "Enter selecionar",
+        "sessions_hint_quit": "q sair",
         "sessions_continuing": "continuando",
         "session_today": "hoje",
         "session_yesterday": "ontem",
