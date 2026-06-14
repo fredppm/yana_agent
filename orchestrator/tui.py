@@ -239,7 +239,7 @@ class YANAApp(App[TuiResult]):
         Binding("ctrl+c", "quit_app", "Quit"),
         Binding("ctrl+d", "quit_app", "End session", show=True),
         Binding("ctrl+o", "toggle_history", "History", show=False),
-        Binding("ctrl+v", "toggle_voice", "Voice", show=True),
+        Binding("ctrl+t", "toggle_voice", "Voice", show=True),
     ]
 
     _SPINNER = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
@@ -283,7 +283,7 @@ class YANAApp(App[TuiResult]):
         yield Label(f"  ⟳ {t('thinking')}", id="thinking")
         with Horizontal(id="input-bar"):
             yield Label("❯", id="prompt-label")  # noqa: RUF001
-            placeholder = "ctrl+v para voz" if self._listen_fn else ""
+            placeholder = "ctrl+t para voz" if self._listen_fn else ""
             yield Input(id="input", placeholder=placeholder)
 
     def on_mount(self) -> None:
