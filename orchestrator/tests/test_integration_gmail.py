@@ -76,9 +76,7 @@ def test_personal_search_returns_list(registry):
 @pytest.mark.integration
 def test_personal_search_with_sender_query(registry):
     """Smoke test: search by sender returns list (may be empty — that's fine)."""
-    result = registry.call(
-        "gmail_fred_personal", "search", {"query": "from:noreply@github.com"}
-    )
+    result = registry.call("gmail_fred_personal", "search", {"query": "from:noreply@github.com"})
     assert result.ok is True, f"call failed: {result.error}"
     assert isinstance(result.data, list)
 

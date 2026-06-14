@@ -50,11 +50,11 @@ connectors:
 
   - type: GmailConnector
     id: gmail_fred_work
-    name: "Gmail trabalho do Fred"
+    name: "Gmail VTEX do Fred (frederico.mourao@vtex.com)"
     description: "Email de trabalho do Fred — inbox importante, busca, envio"
     owner: fred
     config:
-      credentials_file: "~/.yana/google_credentials_work.json"
+      credentials_file: "~/.yana/google_credentials.json"
       token_file: "~/.yana/tokens/gmail_fred_work.json"
 
   - type: RGBLightConnector
