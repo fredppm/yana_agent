@@ -1,29 +1,29 @@
 """
-spikes/memory_zep.py — Graphiti-core + FalkorDB + Bedrock (via LiteLLM) spike.
+spikes/memory_zep.py — Graphiti-core + Neo4j + Bedrock (via LiteLLM) spike.
 
-Stack 100% self-hosted, zero custo de API gerenciada:
-  - FalkorDB    → knowledge graph (Redis-compatible, leve)
-  - LiteLLM     → proxy OpenAI-compatible → AWS Bedrock
-  - graphiti-core → extração de entidades e relações
+100% self-hosted stack, zero managed-service cost:
+  - Neo4j        -> knowledge graph (Bolt protocol, port 7687)
+  - LiteLLM      -> OpenAI-compatible proxy -> AWS Bedrock
+  - graphiti-core -> entity and relation extraction
 
 Setup:
-    # 1. Garante que as credenciais AWS estão no ambiente
-    #    (já devem estar se você usa Bedrock no YANA normalmente)
+    # 1. Ensure AWS credentials are in the environment
+    #    (already set up if you use Bedrock for YANA normally)
 
-    # 2. Sobe FalkorDB + LiteLLM
+    # 2. Start Neo4j + LiteLLM
     cd orchestrator/spikes
     docker-compose up -d
 
-    # 3. Instala deps
+    # 3. Install deps
     pip install graphiti-core
 
-    # 4. Roda o spike
+    # 4. Run the spike
     python orchestrator/spikes/memory_zep.py
 
-O que este spike demonstra:
-  1. store_session()  — substitui sanctum_writer.write_sanctum() — sem bloqueio no close
-  2. load_context()   — substitui leitura de BOND.md + MEMORY.md no boot
-  3. Demo end-to-end  — sessão → armazenamento → busca na próxima sessão
+What this spike demonstrates:
+  1. store_session()  -- replaces sanctum_writer.write_sanctum() -- no blocking on close
+  2. load_context()   -- replaces reading BOND.md + MEMORY.md at boot
+  3. End-to-end demo  -- session -> storage -> search in the next session
 """
 
 from __future__ import annotations
@@ -40,32 +40,30 @@ from graphiti_core.llm_client.openai_client import OpenAIClient
 from graphiti_core.nodes import EpisodeType
 
 # ---------------------------------------------------------------------------
-# Config
+# Config — override via environment variables
 # ---------------------------------------------------------------------------
 
 GRAPHITI_URI = os.environ.get("GRAPHITI_URI", "bolt://localhost:7687")
-GRAPHITI_USER = os.environ.get("GRAPHITI_USER", "falkordb")
+GRAPHITI_USER = os.environ.get("GRAPHITI_USER", "")
 GRAPHITI_PASS = os.environ.get("GRAPHITI_PASS", "")
 
 LITELLM_URL = os.environ.get("LITELLM_URL", "http://localhost:4000")
-LITELLM_MODEL = os.environ.get("LITELLM_MODEL", "bedrock-claude-haiku")  # haiku = barato pra extração
-
-# group_id escopa dados por instância YANA
-# YANA-Fred e YANA-Esposa teriam group_ids diferentes
-GROUP_ID = "yana-fred"
-
-
+LITELLM_MODEL = os.environ.get("LITELLM_MODEL", "bedrock-claude-haiku")  # haiku = cheap for extraction
 LITELLM_EMBED_MODEL = os.environ.get("LITELLM_EMBED_MODEL", "bedrock-embed")
+
+# group_id scopes data per YANA instance — YANA-Fred and YANA-Wife have different group_ids.
+# In production this comes from providers.yaml -> graphiti.group_id (see memory.py).
+GROUP_ID = os.environ.get("YANA_GROUP_ID", "yana-fred")
 
 
 def _client() -> Graphiti:
-    """Graphiti conectado ao FalkorDB via LiteLLM → Bedrock (LLM + embeddings)."""
+    """Build a Graphiti client connected to Neo4j via LiteLLM -> Bedrock."""
     llm = OpenAIClient(
         config=LLMConfig(
-            api_key="bedrock",      # LiteLLM não valida a key quando proxeia pro Bedrock
+            api_key="bedrock",          # LiteLLM does not validate the key when proxying to Bedrock
             base_url=LITELLM_URL,
             model=LITELLM_MODEL,
-            small_model=LITELLM_MODEL,  # evita fallback para gpt-4.1-nano
+            small_model=LITELLM_MODEL,  # prevent fallback to gpt-4.1-nano
         )
     )
     embedder = OpenAIEmbedder(
@@ -93,23 +91,23 @@ def _client() -> Graphiti:
 
 
 # ---------------------------------------------------------------------------
-# 1. Store session — substitui sanctum_writer.write_sanctum()
+# 1. Store session — replaces sanctum_writer.write_sanctum()
 #
-# Pega as mensagens da sessão e adiciona ao knowledge graph.
-# Graphiti extrai entidades, relações e fatos via Bedrock (através do LiteLLM).
-# Não bloqueia o close — caller pode fazer fire-and-forget.
+# Takes session messages and adds them to the knowledge graph.
+# Graphiti extracts entities, relations, and facts via Bedrock (through LiteLLM).
+# Does not block on close — caller can fire-and-forget.
 # ---------------------------------------------------------------------------
 
 
 async def store_session(messages: list[dict], session_id: str) -> None:
     """
-    Adiciona mensagens da sessão ao knowledge graph.
+    Add session messages to the Graphiti knowledge graph.
 
-    Substitui sanctum_writer.write_sanctum(). O close da sessão não espera
-    esta função — pode ser disparada como task em background.
+    Replaces sanctum_writer.write_sanctum(). Session close does not wait
+    for this function -- it can be dispatched as a background task.
 
     Args:
-        messages: lista de {"role": "user"/"assistant", "content": "..."}
+        messages: list of {"role": "user"/"assistant", "content": "..."}
         session_id: e.g. "2026-06-14_16-00-00"
     """
     client = _client()
@@ -135,21 +133,21 @@ async def store_session(messages: list[dict], session_id: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# 2. Load context at session start — substitui leitura de BOND.md + MEMORY.md
+# 2. Load context at session start — replaces reading BOND.md + MEMORY.md
 # ---------------------------------------------------------------------------
 
 
 async def load_context(
-    query: str = "quem é Fred, o que está acontecendo na vida dele agora",
+    query: str = "who is Fred, what is happening in his life right now",
 ) -> str:
     """
-    Busca memória relevante para injetar no system prompt da YANA.
+    Search relevant memory to inject into YANA's system prompt.
 
-    Substitui a leitura dos arquivos do sanctum em core.py.
-    Graphiti retorna fatos com temporalidade — fatos obsoletos são marcados.
+    Replaces reading sanctum files in core.py.
+    Graphiti returns facts with temporality -- stale facts are marked as such.
 
     Returns:
-        Bloco de texto para appender ao system prompt.
+        Markdown block to append to the system prompt.
     """
     client = _client()
     results = await client.search(query, group_ids=[GROUP_ID], num_results=15)
@@ -167,27 +165,27 @@ async def load_context(
 
 
 # ---------------------------------------------------------------------------
-# 3. Setup — roda uma vez para criar índices no FalkorDB
+# 3. Setup — run once to create indexes in Neo4j
 # ---------------------------------------------------------------------------
 
 
 async def setup() -> None:
-    """Cria índices e constraints no FalkorDB. Idempotente."""
+    """Create indexes and constraints in Neo4j. Idempotent."""
     client = _client()
     await client.build_indices_and_constraints()
     await client.close()
-    print("[graphiti] índices criados no FalkorDB")
+    print("[graphiti] indexes created in Neo4j")
 
 
 # ---------------------------------------------------------------------------
-# Demo — fluxo end-to-end
+# Demo — end-to-end flow
 # ---------------------------------------------------------------------------
 
 
 async def demo() -> None:
-    print("=== Graphiti + FalkorDB + Bedrock (LiteLLM) Spike ===\n")
+    print("=== Graphiti + Neo4j + Bedrock (LiteLLM) Spike ===\n")
 
-    print("0. Setup índices no FalkorDB...")
+    print("0. Setting up Neo4j indexes...")
     await setup()
 
     session_id = f"spike-{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}"
@@ -200,26 +198,26 @@ async def demo() -> None:
         {"role": "assistant", "content": "Entrevista na Stripe — anoto. Quer que eu te ajude a preparar?"},
     ]
 
-    print(f"\n1. Armazenando sessão {session_id}...")
+    print(f"\n1. Storing session {session_id}...")
     await store_session(fake_session, session_id)
 
-    print("\n   aguardando extração de entidades...")
+    print("\n   waiting for entity extraction...")
     await asyncio.sleep(3)
 
-    print("\n2. Carregando contexto para próxima sessão...")
-    context = await load_context("o que Fred tem pendente e o que está acontecendo com ele")
-    print(context or "(sem resultados ainda)")
+    print("\n2. Loading context for next session...")
+    context = await load_context("what does Fred have pending and what is happening with him")
+    print(context or "(no results yet)")
 
-    print("\n3. Buscando fato específico...")
-    stripe = await load_context("entrevista Stripe")
-    print(stripe or "(não encontrado)")
+    print("\n3. Searching for specific fact...")
+    stripe = await load_context("Stripe interview")
+    print(stripe or "(not found)")
 
-    print("\n=== Spike completo ===")
-    print("\nSe funcionou, próximos passos:")
-    print("  1. Substituir sw.write_sanctum() por store_session() em main.py:on_exit")
-    print("  2. Injetar load_context() no system prompt em core.py:load_system_prompt()")
-    print("  3. Avaliar usar haiku para extração e sonnet só para conversas")
-    print("  4. Planejar migração do sanctum markdown existente para o graph")
+    print("\n=== Spike complete ===")
+    print("\nNext steps if it worked:")
+    print("  1. Replace sw.write_sanctum() with store_session() in main.py:on_exit")
+    print("  2. Inject load_context() into the system prompt in core.py:load_system_prompt()")
+    print("  3. Evaluate using haiku for extraction and sonnet only for conversations")
+    print("  4. Plan migration of existing sanctum markdown files into the graph")
 
 
 if __name__ == "__main__":
