@@ -67,6 +67,11 @@ connectors:
     name: "Luz do Banheiro"
     description: "Luz RGB do banheiro"
 
+  - type: InternalConnector
+    id: internal
+    name: "Internal"
+    description: "Operações internas da YANA — lembretes e mensagens simples sem serviço externo"
+
   # Pulse task manager — requires `python -m pulse` to be running
   - type: PulseManagerConnector
     id: pulse
