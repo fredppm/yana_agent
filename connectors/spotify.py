@@ -1,5 +1,5 @@
 """
-connectors/spotify_mcp.py — SpotifyMCPConnector.
+connectors/spotify.py — SpotifyConnector.
 
 Uses spotipy directly for Spotify Web API access. Supports playback control,
 search, and playlist queries.
@@ -11,7 +11,7 @@ Setup:
   3. Create ~/.yana/credentials/spotify_fred.json:
        {"client_id": "...", "client_secret": "..."}
   4. Register in orchestrator/config/connectors.yaml:
-       - type: SpotifyMCPConnector
+       - type: SpotifyConnector
          id: spotify_fred
          name: "Spotify do Fred"
          owner: fred
@@ -40,7 +40,7 @@ _SCOPE = (
 _DEFAULT_REDIRECT = "http://localhost:8888/callback"
 
 
-class SpotifyMCPConnector(Connector):
+class SpotifyConnector(Connector):
     connector_description = (
         "Spotify playback control and music search — play, pause, skip, volume, search"
     )
@@ -69,6 +69,10 @@ class SpotifyMCPConnector(Connector):
         creds = json.loads(creds_path.read_text(encoding="utf-8"))
         self._client_id: str = creds.get("client_id", "")
         self._client_secret: str = creds.get("client_secret", "")
+        if not self._client_id or not self._client_secret:
+            raise PermissionError(
+                f"Spotify credentials at {creds_path} are missing client_id or client_secret."
+            )
         self._redirect_uri: str = creds.get("redirect_uri", _DEFAULT_REDIRECT)
         self._token_file = Path(token_file or "~/.yana/tokens/spotify_fred.json").expanduser()
         self._sp: Any = None  # lazy — created on first use
@@ -76,6 +80,7 @@ class SpotifyMCPConnector(Connector):
         # Suppress spotipy's internal HTTP error logging — retries are handled
         # internally and the raw 404/503 noise should not reach the user's console.
         import logging
+
         logging.getLogger("spotipy").setLevel(logging.CRITICAL)
 
     # ------------------------------------------------------------------

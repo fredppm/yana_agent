@@ -242,4 +242,6 @@ connectors:
 
     result = registry.call("ghost", "anything")
     assert result.ok is False
-    assert result.error == "auth"
+    # KeyError from missing type registration — not an auth error
+    assert result.error != "auth"
+    assert "UnknownType" in result.error

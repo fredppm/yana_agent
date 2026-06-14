@@ -37,7 +37,9 @@ from connectors import Connector, event, query
 
 
 class GarminMCPConnector(Connector):
-    connector_description = "Health and activity data via Garmin Connect MCP — steps, sleep, stress, runs"
+    connector_description = (
+        "Health and activity data via Garmin Connect MCP — steps, sleep, stress, runs"
+    )
 
     def __init__(
         self,
@@ -119,10 +121,13 @@ class GarminMCPConnector(Connector):
         returns={"type": "number", "unit": "steps/day"},
     )
     def steps_today(self) -> int:
-        data = self._call_tool("query_activity_metrics", {
-            "date": "today",
-            "metrics": ["steps"],
-        })
+        data = self._call_tool(
+            "query_activity_metrics",
+            {
+                "date": "today",
+                "metrics": ["steps"],
+            },
+        )
         steps = (data or {}).get("steps") or {}
         return int(steps.get("totalSteps") or 0)
 
@@ -131,10 +136,13 @@ class GarminMCPConnector(Connector):
         returns={"type": "number", "unit": "kcal"},
     )
     def calories_today(self) -> int:
-        data = self._call_tool("query_activity_metrics", {
-            "date": "today",
-            "metrics": ["steps"],
-        })
+        data = self._call_tool(
+            "query_activity_metrics",
+            {
+                "date": "today",
+                "metrics": ["steps"],
+            },
+        )
         steps = (data or {}).get("steps") or {}
         return int(steps.get("totalKilocalories") or steps.get("activeKilocalories") or 0)
 
@@ -143,10 +151,13 @@ class GarminMCPConnector(Connector):
         returns={"type": "number", "unit": "stress_score"},
     )
     def stress_level(self) -> int:
-        data = self._call_tool("query_activity_metrics", {
-            "date": "today",
-            "metrics": ["stress"],
-        })
+        data = self._call_tool(
+            "query_activity_metrics",
+            {
+                "date": "today",
+                "metrics": ["stress"],
+            },
+        )
         stress = (data or {}).get("stress") or {}
         value = stress.get("avgStressLevel")
         return int(value) if value is not None and value >= 0 else -1
@@ -165,10 +176,13 @@ class GarminMCPConnector(Connector):
         returns={"type": "object"},
     )
     def last_activity(self) -> dict:
-        data = self._call_tool("query_activities", {
-            "start_date": date.today().isoformat(),
-            "limit": 1,
-        })
+        data = self._call_tool(
+            "query_activities",
+            {
+                "start_date": date.today().isoformat(),
+                "limit": 1,
+            },
+        )
         activities = data if isinstance(data, list) else (data or {}).get("activities") or []
         return self._format_activity(activities[0]) if activities else {}
 
@@ -182,6 +196,7 @@ class GarminMCPConnector(Connector):
         readings = (data or {}).get("heartRateValues") or []
         if hours < 24:
             import time as _time
+
             cutoff_ms = int((_time.time() - hours * 3600) * 1000)
             readings = [r for r in readings if r and r[0] and r[0] >= cutoff_ms]
         return [

@@ -73,10 +73,10 @@ def test_get_playlists_returns_list(registry):
 
 
 @pytest.mark.integration
-def test_play_resume_returns_true(registry):
+def test_play_resume_returns_device(registry):
     result = registry.call("spotify_fred", "play")
     assert result.ok is True, f"call failed: {result.error}"
-    assert result.data is True
+    assert result.data["ok"] is True
 
 
 @pytest.mark.integration

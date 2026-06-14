@@ -175,10 +175,11 @@ class ConnectorRegistry:
             return ConnectorResult(ok=False, error="unavailable")
         try:
             connector = self._get_connector(instance_id)
-        except Exception:
-            # Connector failed to initialize (e.g. missing credentials file, import error)
+        except PermissionError:
             hint = self._credential_hint(instance_id)
             return ConnectorResult(ok=False, error="auth", detail=hint or None)
+        except Exception as exc:
+            return ConnectorResult(ok=False, error=str(exc))
         return connector.call(operation, params)
 
     def get_instance(self, instance_id: str) -> ConnectorInstance:
@@ -234,7 +235,10 @@ class ConnectorRegistry:
         """
         candidates: list[dict[str, str]] = []
         for instance_id in self._instances:
-            connector = self._get_connector(instance_id)
+            try:
+                connector = self._get_connector(instance_id)
+            except Exception:
+                continue
             has_events = any(m.kind == "event" for m in connector._operations.values())
             if not has_events:
                 for name, meta in connector._operations.items():

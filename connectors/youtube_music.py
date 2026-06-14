@@ -38,7 +38,9 @@ _IS_WINDOWS = sys.platform == "win32"
 
 
 class YouTubeMusicConnector(Connector):
-    connector_description = "YouTube Music — search and play via yt-dlp/mpv (no auth needed), library access optional"
+    connector_description = (
+        "YouTube Music — search and play via yt-dlp/mpv (no auth needed), library access optional"
+    )
     connector_credential_hint = (
         "Search and playback require no credentials — just mpv installed "
         "(Windows: winget install mpv.mpv in PowerShell). "
@@ -74,6 +76,7 @@ class YouTubeMusicConnector(Connector):
                 f"Run: ytmusicapi browser --file {self._auth_file}"
             )
         from ytmusicapi import YTMusic  # type: ignore[import-untyped]
+
         self._ytm = YTMusic(str(self._auth_file))
 
     # ------------------------------------------------------------------
@@ -90,9 +93,7 @@ class YouTubeMusicConnector(Connector):
             f"ytsearch{max_results}:{query}",
         ]
         try:
-            result = subprocess.run(
-                cmd, capture_output=True, text=True, timeout=30
-            )
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
         except (FileNotFoundError, subprocess.TimeoutExpired) as exc:
             raise RuntimeError(f"yt-dlp unavailable: {exc}") from exc
 
@@ -102,14 +103,16 @@ class YouTubeMusicConnector(Connector):
                 data = json.loads(line)
                 video_id = data.get("id")
                 url = data.get("url") or data.get("webpage_url")
-                items.append({
-                    "title": data.get("title"),
-                    "artist": data.get("uploader") or data.get("channel"),
-                    "album": None,
-                    "video_id": video_id,
-                    "duration": data.get("duration_string") or str(data.get("duration", "")),
-                    "url": url,
-                })
+                items.append(
+                    {
+                        "title": data.get("title"),
+                        "artist": data.get("uploader") or data.get("channel"),
+                        "album": None,
+                        "video_id": video_id,
+                        "duration": data.get("duration_string") or str(data.get("duration", "")),
+                        "url": url,
+                    }
+                )
             except (json.JSONDecodeError, KeyError):
                 continue
         return items

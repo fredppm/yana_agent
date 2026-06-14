@@ -1,9 +1,9 @@
 """
-Contract tests for SpotifyMCPConnector.
+Contract tests for SpotifyConnector.
 
 _call_tool() is mocked so no real Spotify credentials or network are needed.
 
-Run with: python -m pytest tests/test_spotify_mcp_contract.py -v
+Run with: python -m pytest tests/test_spotify_contract.py -v
 """
 
 from __future__ import annotations
@@ -15,12 +15,12 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-_CONNECTOR_FILE = Path(__file__).parent.parent.parent / "connectors" / "spotify_mcp.py"
-_spec = importlib.util.spec_from_file_location("spotify_mcp", _CONNECTOR_FILE)
+_CONNECTOR_FILE = Path(__file__).parent.parent.parent / "connectors" / "spotify.py"
+_spec = importlib.util.spec_from_file_location("spotify", _CONNECTOR_FILE)
 _mod = importlib.util.module_from_spec(_spec)  # type: ignore[arg-type]
 _spec.loader.exec_module(_mod)  # type: ignore[union-attr]
 
-SpotifyMCPConnector = _mod.SpotifyMCPConnector
+SpotifyConnector = _mod.SpotifyConnector
 
 # ---------------------------------------------------------------------------
 # Shared MCP response payloads
@@ -86,7 +86,7 @@ _EXPECTED_PLAYLIST_KEYS = {"id", "name", "uri", "tracks"}
 
 
 def _make_connector() -> Any:
-    connector = SpotifyMCPConnector.__new__(SpotifyMCPConnector)
+    connector = SpotifyConnector.__new__(SpotifyConnector)
     connector._sp = None
     return connector
 
@@ -105,43 +105,43 @@ def _with_tool(connector: Any, responses: dict[str, object]) -> Any:
 
 
 def test_now_playing_is_query():
-    assert "now_playing" in SpotifyMCPConnector._operations
-    assert SpotifyMCPConnector._operations["now_playing"].kind == "query"
+    assert "now_playing" in SpotifyConnector._operations
+    assert SpotifyConnector._operations["now_playing"].kind == "query"
 
 
 def test_search_is_query():
-    assert "search" in SpotifyMCPConnector._operations
-    assert SpotifyMCPConnector._operations["search"].kind == "query"
+    assert "search" in SpotifyConnector._operations
+    assert SpotifyConnector._operations["search"].kind == "query"
 
 
 def test_get_playlists_is_query():
-    assert "get_playlists" in SpotifyMCPConnector._operations
-    assert SpotifyMCPConnector._operations["get_playlists"].kind == "query"
+    assert "get_playlists" in SpotifyConnector._operations
+    assert SpotifyConnector._operations["get_playlists"].kind == "query"
 
 
 def test_play_is_command():
-    assert "play" in SpotifyMCPConnector._operations
-    assert SpotifyMCPConnector._operations["play"].kind == "command"
+    assert "play" in SpotifyConnector._operations
+    assert SpotifyConnector._operations["play"].kind == "command"
 
 
 def test_pause_is_command():
-    assert "pause" in SpotifyMCPConnector._operations
-    assert SpotifyMCPConnector._operations["pause"].kind == "command"
+    assert "pause" in SpotifyConnector._operations
+    assert SpotifyConnector._operations["pause"].kind == "command"
 
 
 def test_skip_next_is_command():
-    assert "skip_next" in SpotifyMCPConnector._operations
-    assert SpotifyMCPConnector._operations["skip_next"].kind == "command"
+    assert "skip_next" in SpotifyConnector._operations
+    assert SpotifyConnector._operations["skip_next"].kind == "command"
 
 
 def test_skip_prev_is_command():
-    assert "skip_prev" in SpotifyMCPConnector._operations
-    assert SpotifyMCPConnector._operations["skip_prev"].kind == "command"
+    assert "skip_prev" in SpotifyConnector._operations
+    assert SpotifyConnector._operations["skip_prev"].kind == "command"
 
 
 def test_set_volume_is_command():
-    assert "set_volume" in SpotifyMCPConnector._operations
-    assert SpotifyMCPConnector._operations["set_volume"].kind == "command"
+    assert "set_volume" in SpotifyConnector._operations
+    assert SpotifyConnector._operations["set_volume"].kind == "command"
 
 
 # ---------------------------------------------------------------------------
@@ -150,7 +150,7 @@ def test_set_volume_is_command():
 
 
 def test_all_operations_have_descriptions():
-    for name, op in SpotifyMCPConnector._operations.items():
+    for name, op in SpotifyConnector._operations.items():
         assert op.description, f"Operation '{name}' has no description"
 
 
@@ -160,23 +160,23 @@ def test_all_operations_have_descriptions():
 
 
 def test_search_requires_q():
-    params = SpotifyMCPConnector._operations["search"].params
+    params = SpotifyConnector._operations["search"].params
     assert params["q"].required is True
 
 
 def test_search_type_and_max_are_optional():
-    params = SpotifyMCPConnector._operations["search"].params
+    params = SpotifyConnector._operations["search"].params
     assert params["type"].required is False
     assert params["max_results"].required is False
 
 
 def test_play_uri_is_optional():
-    params = SpotifyMCPConnector._operations["play"].params
+    params = SpotifyConnector._operations["play"].params
     assert params["uri"].required is False
 
 
 def test_set_volume_requires_level():
-    params = SpotifyMCPConnector._operations["set_volume"].params
+    params = SpotifyConnector._operations["set_volume"].params
     assert params["level"].required is True
 
 
