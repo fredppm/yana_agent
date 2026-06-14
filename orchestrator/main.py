@@ -211,7 +211,7 @@ def _call_with_tool_loop(
 
         if not tool_uses:
             if not silent:
-                # Final text response — optionally clear a pending "pensando" line
+                # Final text response — optionally clear a pending "thinking" line
                 if clear_line:
                     log.console.print(" " * 60, end="\r")
                     clear_line = False  # only clear once
