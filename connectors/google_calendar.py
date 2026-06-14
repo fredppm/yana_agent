@@ -227,6 +227,13 @@ class GoogleCalendarConnector(Connector):
 
         return build("calendar", "v3", credentials=creds)
 
+    @staticmethod
+    def _ensure_tz(iso: str) -> str:
+        """Append Z if the ISO string has no timezone info — Calendar API requires RFC3339."""
+        if iso and not iso.endswith("Z") and "+" not in iso[10:] and "-" not in iso[10:]:
+            return iso + "Z"
+        return iso
+
     def _list_events(
         self,
         time_min: str | None = None,
@@ -240,9 +247,9 @@ class GoogleCalendarConnector(Connector):
             "orderBy": "startTime",
         }
         if time_min:
-            kwargs["timeMin"] = time_min
+            kwargs["timeMin"] = self._ensure_tz(time_min)
         if time_max:
-            kwargs["timeMax"] = time_max
+            kwargs["timeMax"] = self._ensure_tz(time_max)
 
         result = self._svc().events().list(**kwargs).execute()
         return [self._format_event(e) for e in result.get("items", [])]
