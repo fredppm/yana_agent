@@ -118,14 +118,11 @@ def load_system_prompt(voice_mode: bool = False, registry=None) -> str:
         parts.append(f"---\n[{errors.e('SYS-001')}]")
 
     # Episodic memory from Graphiti — injected when available
-    try:
-        import memory as mem
+    import memory as mem
 
-        graphiti_ctx = mem.load_context_sync()
-        if graphiti_ctx:
-            parts.append(graphiti_ctx)
-    except Exception:
-        pass  # graceful fallback — never block session start
+    graphiti_ctx = mem.load_context_sync()
+    if graphiti_ctx:
+        parts.append(graphiti_ctx)
 
     # Connector manifest — lightweight, always injected when registry is present
     if registry is not None:
