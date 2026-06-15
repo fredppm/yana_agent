@@ -144,8 +144,8 @@ def run_pulse(task: str = "full", source: str = "", event: str = "", payload: st
     print()  # newline after stream
     messages.append({"role": "assistant", "content": reply})
     session_id = f"pulse-{task}-{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}"
-    core.save_session_log(messages, session_id=session_id)
-    output.status(f"PULSE done — log: {session_id}")
+    mem.store_session_background(messages, session_id)
+    output.status(f"PULSE done — session: {session_id}")
 
 
 # ---------------------------------------------------------------------------
@@ -297,9 +297,6 @@ def _run_tui_conversation(
     def on_exit(final_messages: list[dict], chosen_session: str | None) -> None:
         session_id = chosen_session or datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         session_date = session_id[:10]
-
-        # Always write raw session log immediately (fast file I/O, never blocks)
-        core.save_session_log(final_messages, session_id)
 
         bond = core.sanctum_path() / "BOND.md"
         is_first_breath = not core.sanctum_exists() or (

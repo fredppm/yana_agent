@@ -47,7 +47,8 @@ yana_agent/
 | `sanctum_path()` | `() -> Path` | Always `project_root/data/agent-yana` |
 | `load_system_prompt()` | `() -> str` | Raises `FileNotFoundError` if SKILL.md missing |
 | `is_quiet_hours(pulse_config?)` | `(dict?) -> bool` | Parses `quiet_hours: "HH:MM-HH:MM"` — handles overnight windows (e.g. 23:00–07:00) |
-| `save_session_log(messages, session_id)` | `(list[dict], str) -> None` | Writes to `data/agent-yana/sessions/session-{id}.md` |
+| `list_sessions(limit?)` | `(int) -> list[tuple[str, datetime, str]]` | Returns sessions from Neo4j as `(id, datetime, preview)` |
+| `load_session_messages(session_id)` | `(str) -> list[dict]` | Returns messages from Neo4j for the given session |
 
 ### providers.py
 

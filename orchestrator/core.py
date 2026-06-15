@@ -49,12 +49,6 @@ def _sanctum_root() -> Path:
     return _project_root() / "data" / "agent-yana"
 
 
-def _sessions_dir() -> Path:
-    sessions = _sanctum_root() / "sessions"
-    sessions.mkdir(parents=True, exist_ok=True)
-    return sessions
-
-
 # ---------------------------------------------------------------------------
 # System prompt assembly
 # ---------------------------------------------------------------------------
@@ -152,89 +146,21 @@ def load_system_prompt(voice_mode: bool = False, registry=None) -> str:
 # ---------------------------------------------------------------------------
 
 
-def _session_preview(path: Path, max_chars: int = 48) -> str:
-    """Return first user message snippet from a session file."""
-    import re
-
-    try:
-        text = path.read_text(encoding="utf-8")
-        m = re.search(r"\n## USER\n\n(.+)", text)
-        if m:
-            snippet = m.group(1).strip()[:max_chars].replace("\n", " ")
-            return snippet
-    except OSError:
-        pass
-    return ""
-
-
 def list_sessions(limit: int = 20) -> list[tuple[str, datetime, str]]:
     """List recent sessions as (session_id, datetime, preview), newest first."""
     import memory as mem
 
     active = get_active_profile()
-    if active:
-        result = mem.list_sessions_sync(active, limit=limit)
-        if result:
-            return result
-    # fallback: .md files (migration path for pre-Neo4j sessions)
-    sessions_dir = _sessions_dir()
-    result = []
-    for f in sorted(sessions_dir.glob("session-*.md"), reverse=True)[:limit]:
-        sid = f.stem[8:]  # strip "session-"
-        try:
-            dt = datetime.strptime(sid, "%Y-%m-%d_%H-%M-%S")
-        except ValueError:
-            dt = datetime.fromtimestamp(f.stat().st_mtime)
-        result.append((sid, dt, _session_preview(f)))
-    return result
+    if not active:
+        return []
+    return mem.list_sessions_sync(active, limit=limit)
 
 
 def load_session_messages(session_id: str) -> list[dict]:
-    """Load messages from a saved session file into a list of role/content dicts."""
-    import re
-
+    """Load messages for a session from Neo4j."""
     import memory as mem
 
-    msgs = mem.load_session_messages_sync(session_id)
-    if msgs:
-        return msgs
-    # fallback: .md parsing (migration path for pre-Neo4j sessions)
-    path = _sessions_dir() / f"session-{session_id}.md"
-    if not path.exists():
-        return []
-    text = path.read_text(encoding="utf-8")
-    messages = []
-    parts = re.split(r"\n## (USER|ASSISTANT)\n\n", text)
-    i = 1
-    while i + 1 < len(parts):
-        role = "user" if parts[i] == "USER" else "assistant"
-        content = parts[i + 1].strip()
-        if content:
-            messages.append({"role": role, "content": content})
-        i += 2
-    return messages
-
-
-def load_recent_sessions(n: int = 3) -> str:
-    """Return the last n session logs concatenated, or empty string."""
-    sessions_dir = _sessions_dir()
-    logs = sorted(sessions_dir.glob("session-*.md"), reverse=True)[:n]
-    if not logs:
-        return ""
-    parts = ["---\n## Recent Session Logs\n"]
-    for log in reversed(logs):  # oldest first
-        parts.append(f"### {log.name}\n\n{log.read_text(encoding='utf-8')}")
-    return "\n\n".join(parts)
-
-
-def save_session_log(messages: list[dict], session_id: str | None = None) -> Path:
-    """
-    Sessions are stored in Neo4j by store_session_background().
-    This function returns the canonical path (no file is written).
-    """
-    if session_id is None:
-        session_id = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    return _sessions_dir() / f"session-{session_id}.md"
+    return mem.load_session_messages_sync(session_id)
 
 
 # ---------------------------------------------------------------------------
@@ -272,29 +198,11 @@ def load_pulse_config() -> dict:
 _PROVIDERS_CFG_PATH = Path(__file__).parent / "config" / "providers.yaml"
 
 
-def _profiles_path() -> Path:
-    """Machine-local profiles registry — lives in sanctum dir (gitignored)."""
-    return _sanctum_root() / "profiles.yaml"
-
-
 def list_profiles() -> list[dict]:
-    """Return configured profiles [{id, label}, ...] from Neo4j, falling back to profiles.yaml."""
+    """Return configured profiles [{id, label}, ...] from Neo4j."""
     import memory as mem
 
-    result = mem.list_profiles_sync()
-    if result:
-        return result
-    # fallback: profiles.yaml (migration path)
-    p = _profiles_path()
-    if not p.exists():
-        return []
-    try:
-        import yaml
-
-        data = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
-        return data.get("profiles", [])
-    except Exception:
-        return []
+    return mem.list_profiles_sync()
 
 
 def profiles_exist() -> bool:
@@ -329,60 +237,22 @@ def set_active_profile(profile_id: str) -> None:
 
 
 def add_profile(profile_id: str, label: str) -> None:
-    """Add or update a profile in the registry and set it as active."""
-    import yaml
+    """Add a profile to Neo4j and set it as active."""
+    import memory as mem
 
-    p = _profiles_path()
-    data: dict = {}
-    if p.exists():
-        try:
-            data = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
-        except Exception:
-            data = {}
-    profiles: list[dict] = data.get("profiles", [])
-    if not any(pr["id"] == profile_id for pr in profiles):
-        profiles.append({"id": profile_id, "label": label})
-    data["profiles"] = profiles
-    p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(
-        yaml.dump(data, allow_unicode=True, default_flow_style=False),
-        encoding="utf-8",
-    )
+    mem.add_profile_sync(profile_id, label)
     set_active_profile(profile_id)
-    try:
-        import memory as mem
-
-        mem.add_profile_sync(profile_id, label)
-    except Exception:
-        pass
 
 
 def delete_profile(profile_id: str) -> None:
-    """Remove a profile from the registry and update active_profile if needed."""
-    import yaml
+    """Remove a profile from Neo4j and update active_profile if needed."""
+    import memory as mem
 
-    p = _profiles_path()
-    if not p.exists():
-        return
-    try:
-        data = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
-    except Exception:
-        return
-    data["profiles"] = [pr for pr in data.get("profiles", []) if pr["id"] != profile_id]
-    p.write_text(
-        yaml.dump(data, allow_unicode=True, default_flow_style=False),
-        encoding="utf-8",
-    )
+    mem.delete_profile_sync(profile_id)
     if get_active_profile() == profile_id:
-        remaining = data["profiles"]
+        remaining = list_profiles()
         if remaining:
             set_active_profile(remaining[0]["id"])
-    try:
-        import memory as mem
-
-        mem.delete_profile_sync(profile_id)
-    except Exception:
-        pass
 
 
 def is_quiet_hours(pulse_config: dict | None = None) -> bool:
