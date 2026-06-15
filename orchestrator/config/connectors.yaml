@@ -66,3 +66,17 @@ connectors:
     id: rgb_banheiro
     name: "Luz do Banheiro"
     description: "Luz RGB do banheiro"
+
+  - type: InternalConnector
+    id: internal
+    name: "Internal"
+    description: "Operações internas da YANA — lembretes e mensagens simples sem serviço externo"
+
+  # Pulse task manager — requires `python -m pulse` to be running
+  - type: PulseManagerConnector
+    id: pulse
+    name: "Pulse"
+    description: "Agenda tarefas autônomas do Pulse — criar, listar e remover"
+    config:
+      host: "127.0.0.1"  # change to remote IP for distributed deploy
+      port: 7891
