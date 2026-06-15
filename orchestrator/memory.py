@@ -19,10 +19,13 @@ Config lives in providers.yaml under the `graphiti:` key.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import threading
+from collections.abc import Coroutine
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 log = logging.getLogger(__name__)
 
@@ -104,11 +107,8 @@ def _build_client(cfg: dict):  # returns Graphiti
 
 async def store_session(messages: list[dict], session_id: str) -> None:
     """
-    Add session messages to the Graphiti knowledge graph.
-
-    Graphiti extracts entities, relations, and facts from the conversation
-    via LLM (Bedrock through LiteLLM) — asynchronously on their side.
-    This call returns as soon as messages are submitted.
+    Add session to the Graphiti knowledge graph as a single episode,
+    and persist session node + messages_json in Neo4j.
     """
     from graphiti_core.nodes import EpisodeType
 
@@ -117,25 +117,45 @@ async def store_session(messages: list[dict], session_id: str) -> None:
         log.debug("memory: graphiti disabled, skipping store_session")
         return
 
-    client = _build_client(cfg)
-    workspace_gid = cfg.get("active_profile") or cfg.get("group_id", "yana-fred")
+    workspace_id = cfg.get("active_profile") or cfg.get("group_id", "yana-fred")
 
-    try:
-        for i, msg in enumerate(messages):
-            if not isinstance(msg.get("content"), str) or not msg["content"].strip():
-                continue
-            role = "Fred" if msg["role"] == "user" else "YANA"
+    # Build conversation text for Graphiti episode
+    lines = []
+    for m in messages:
+        if not isinstance(m.get("content"), str) or not m["content"].strip():
+            continue
+        role = "Fred" if m["role"] == "user" else "YANA"
+        lines.append(f"{role}: {m['content']}")
+    conversation_text = "\n".join(lines)
+
+    # Preview: first user message, 60 chars
+    preview = ""
+    for m in messages:
+        if m.get("role") == "user" and isinstance(m.get("content"), str) and m["content"].strip():
+            preview = m["content"].strip()[:60]
+            break
+
+    messages_json_str = json.dumps(messages, ensure_ascii=False)
+    created_at = datetime.now(UTC).isoformat()
+
+    # Persist session node in Neo4j
+    await create_session(cfg, session_id, workspace_id, created_at, preview, messages_json_str)
+
+    # Add one Graphiti episode for the whole conversation
+    if conversation_text:
+        client = _build_client(cfg)
+        try:
             await client.add_episode(
-                name=f"{session_id}-msg-{i}",
-                episode_body=f"{role}: {msg['content']}",
+                name=session_id,
+                episode_body=conversation_text,
                 source=EpisodeType.text,
                 source_description=f"YANA session {session_id}",
                 reference_time=datetime.now(UTC),
-                group_id=workspace_gid,
+                group_id=workspace_id,
             )
-        log.debug("memory: stored %d messages -> %s", len(messages), session_id)
-    finally:
-        await client.close()
+            log.debug("memory: stored session episode -> %s", session_id)
+        finally:
+            await client.close()
 
 
 async def load_context(
@@ -229,3 +249,244 @@ def load_context_sync(
     t.start()
     t.join(timeout=timeout)
     return result[0]
+
+
+# ---------------------------------------------------------------------------
+# Neo4j graph operations (direct Cypher — sessions, profiles, connectors)
+# ---------------------------------------------------------------------------
+
+
+async def _neo4j_write(cfg: dict, query: str, params: dict) -> None:
+    from neo4j import AsyncGraphDatabase
+
+    driver = AsyncGraphDatabase.driver(cfg["uri"], auth=None)
+    try:
+        async with driver.session() as session:
+            await session.run(query, params)
+    finally:
+        await driver.close()
+
+
+async def _neo4j_read(cfg: dict, query: str, params: dict) -> list[dict]:
+    from neo4j import AsyncGraphDatabase
+
+    driver = AsyncGraphDatabase.driver(cfg["uri"], auth=None)
+    try:
+        async with driver.session() as session:
+            result = await session.run(query, params)
+            return [record.data() for record in await result.fetch(1000)]
+    finally:
+        await driver.close()
+
+
+async def init_schema(cfg: dict) -> None:
+    constraints = [
+        "CREATE CONSTRAINT yana_owner_id IF NOT EXISTS FOR (n:YANAOwner) REQUIRE n.id IS UNIQUE",
+        "CREATE CONSTRAINT yana_workspace_id IF NOT EXISTS FOR (n:YANAWorkspace) REQUIRE n.id IS UNIQUE",
+        "CREATE CONSTRAINT yana_session_id IF NOT EXISTS FOR (n:YANASession) REQUIRE n.id IS UNIQUE",
+    ]
+    for c in constraints:
+        await _neo4j_write(cfg, c, {})
+
+
+async def add_profile(cfg: dict, workspace_id: str, label: str) -> None:
+    owner_id = workspace_id.split("::")[0] if "::" in workspace_id else workspace_id
+    query = (
+        "MERGE (o:YANAOwner {id: $owner_id}) "
+        "MERGE (w:YANAWorkspace {id: $workspace_id}) "
+        "SET w.label = $label, w.owner_id = $owner_id "
+        "MERGE (o)-[:HAS_WORKSPACE]->(w)"
+    )
+    await _neo4j_write(
+        cfg, query, {"owner_id": owner_id, "workspace_id": workspace_id, "label": label}
+    )
+
+
+async def list_profiles(cfg: dict) -> list[dict]:
+    query = "MATCH (w:YANAWorkspace) RETURN w.id AS id, w.label AS label ORDER BY w.id"
+    return await _neo4j_read(cfg, query, {})
+
+
+async def delete_profile(cfg: dict, workspace_id: str) -> None:
+    query = (
+        "MATCH (w:YANAWorkspace {id: $workspace_id}) "
+        "OPTIONAL MATCH (w)-[:HAS_SESSION]->(s:YANASession) "
+        "OPTIONAL MATCH (w)-[:HAS_CONNECTOR]->(c:YANAConnector) "
+        "DETACH DELETE w, s, c"
+    )
+    await _neo4j_write(cfg, query, {"workspace_id": workspace_id})
+
+
+async def save_connector(
+    cfg: dict, workspace_id: str, instance_id: str, config_json_str: str
+) -> None:
+    query = (
+        "MERGE (w:YANAWorkspace {id: $workspace_id}) "
+        "MERGE (c:YANAConnector {workspace_id: $workspace_id, instance_id: $instance_id}) "
+        "SET c.config_json = $config_json "
+        "MERGE (w)-[:HAS_CONNECTOR]->(c)"
+    )
+    await _neo4j_write(
+        cfg,
+        query,
+        {"workspace_id": workspace_id, "instance_id": instance_id, "config_json": config_json_str},
+    )
+
+
+async def list_connectors(cfg: dict, workspace_id: str) -> list[dict]:
+    query = (
+        "MATCH (w:YANAWorkspace {id: $workspace_id})-[:HAS_CONNECTOR]->(c:YANAConnector) "
+        "RETURN c.instance_id AS instance_id, c.config_json AS config_json"
+    )
+    return await _neo4j_read(cfg, query, {"workspace_id": workspace_id})
+
+
+async def create_session(
+    cfg: dict,
+    session_id: str,
+    workspace_id: str,
+    created_at_iso: str,
+    preview: str,
+    messages_json_str: str,
+) -> None:
+    query = (
+        "MERGE (w:YANAWorkspace {id: $workspace_id}) "
+        "MERGE (s:YANASession {id: $session_id}) "
+        "SET s.workspace_id = $workspace_id, "
+        "    s.created_at = $created_at, "
+        "    s.preview = $preview, "
+        "    s.messages_json = $messages_json "
+        "MERGE (w)-[:HAS_SESSION]->(s)"
+    )
+    await _neo4j_write(
+        cfg,
+        query,
+        {
+            "workspace_id": workspace_id,
+            "session_id": session_id,
+            "created_at": created_at_iso,
+            "preview": preview,
+            "messages_json": messages_json_str,
+        },
+    )
+
+
+async def list_sessions(
+    cfg: dict, workspace_id: str, limit: int = 20
+) -> list[tuple[str, datetime, str]]:
+    query = (
+        "MATCH (w:YANAWorkspace {id: $workspace_id})-[:HAS_SESSION]->(s:YANASession) "
+        "RETURN s.id AS id, s.created_at AS created_at, s.preview AS preview "
+        "ORDER BY s.created_at DESC "
+        "LIMIT $limit"
+    )
+    rows = await _neo4j_read(cfg, query, {"workspace_id": workspace_id, "limit": limit})
+    result = []
+    for row in rows:
+        sid = row.get("id", "")
+        preview = row.get("preview", "") or ""
+        raw_dt = row.get("created_at", "")
+        try:
+            dt = datetime.fromisoformat(raw_dt)
+        except Exception:
+            try:
+                dt = datetime.strptime(sid, "%Y-%m-%d_%H-%M-%S")
+            except Exception:
+                dt = datetime.now(UTC)
+        result.append((sid, dt, preview))
+    return result
+
+
+async def load_session_messages(cfg: dict, session_id: str) -> list[dict]:
+    query = "MATCH (s:YANASession {id: $session_id}) RETURN s.messages_json AS messages_json"
+    rows = await _neo4j_read(cfg, query, {"session_id": session_id})
+    if not rows or not rows[0].get("messages_json"):
+        return []
+    try:
+        return json.loads(rows[0]["messages_json"])
+    except Exception:
+        return []
+
+
+# ---------------------------------------------------------------------------
+# Public sync wrappers for Neo4j operations
+# ---------------------------------------------------------------------------
+
+
+def _run_async(coro: Coroutine[Any, Any, Any], timeout: float = 10.0) -> Any:
+    """Run an async coroutine in a daemon thread with timeout. Returns result or None."""
+    result: list = [None]
+    exc: list = [None]
+
+    def _run() -> None:
+        try:
+            result[0] = asyncio.run(coro)
+        except Exception as e:
+            exc[0] = e
+
+    t = threading.Thread(target=_run, daemon=True)
+    t.start()
+    t.join(timeout=timeout)
+    if exc[0] is not None:
+        log.debug("memory: async op failed: %s", exc[0])
+    return result[0]
+
+
+def init_schema_sync() -> None:
+    cfg = _load_config()
+    if not cfg.get("enabled"):
+        return
+    _run_async(init_schema(cfg))
+
+
+def list_profiles_sync() -> list[dict]:
+    cfg = _load_config()
+    if not cfg.get("enabled"):
+        return []
+    result = _run_async(list_profiles(cfg))
+    return result if isinstance(result, list) else []
+
+
+def add_profile_sync(workspace_id: str, label: str) -> None:
+    cfg = _load_config()
+    if not cfg.get("enabled"):
+        return
+    _run_async(add_profile(cfg, workspace_id, label))
+
+
+def delete_profile_sync(workspace_id: str) -> None:
+    cfg = _load_config()
+    if not cfg.get("enabled"):
+        return
+    _run_async(delete_profile(cfg, workspace_id))
+
+
+def list_sessions_sync(workspace_id: str, limit: int = 20) -> list[tuple[str, datetime, str]]:
+    cfg = _load_config()
+    if not cfg.get("enabled"):
+        return []
+    result = _run_async(list_sessions(cfg, workspace_id, limit=limit))
+    return result if isinstance(result, list) else []
+
+
+def load_session_messages_sync(session_id: str) -> list[dict]:
+    cfg = _load_config()
+    if not cfg.get("enabled"):
+        return []
+    result = _run_async(load_session_messages(cfg, session_id))
+    return result if isinstance(result, list) else []
+
+
+def list_connectors_sync(workspace_id: str) -> list[dict]:
+    cfg = _load_config()
+    if not cfg.get("enabled"):
+        return []
+    result = _run_async(list_connectors(cfg, workspace_id))
+    return result if isinstance(result, list) else []
+
+
+def save_connector_sync(workspace_id: str, instance_id: str, config_json_str: str) -> None:
+    cfg = _load_config()
+    if not cfg.get("enabled"):
+        return
+    _run_async(save_connector(cfg, workspace_id, instance_id, config_json_str))

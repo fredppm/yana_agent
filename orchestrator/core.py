@@ -169,6 +169,16 @@ def _session_preview(path: Path, max_chars: int = 48) -> str:
 
 def list_sessions(limit: int = 20) -> list[tuple[str, datetime, str]]:
     """List recent sessions as (session_id, datetime, preview), newest first."""
+    import memory as mem
+
+    cfg = mem._load_config()
+    if cfg.get("enabled"):
+        active = get_active_profile()
+        if active:
+            result = mem.list_sessions_sync(active, limit=limit)
+            if result is not None:
+                return result
+    # fallback: .md files
     sessions_dir = _sessions_dir()
     result = []
     for f in sorted(sessions_dir.glob("session-*.md"), reverse=True)[:limit]:
@@ -185,6 +195,14 @@ def load_session_messages(session_id: str) -> list[dict]:
     """Load messages from a saved session file into a list of role/content dicts."""
     import re
 
+    import memory as mem
+
+    cfg = mem._load_config()
+    if cfg.get("enabled"):
+        msgs = mem.load_session_messages_sync(session_id)
+        if msgs:
+            return msgs
+    # fallback: existing .md parsing
     path = _sessions_dir() / f"session-{session_id}.md"
     if not path.exists():
         return []
@@ -220,6 +238,15 @@ def save_session_log(messages: list[dict], session_id: str | None = None) -> Pat
     messages: list of {role, content} dicts
     Returns the path written.
     """
+    import memory as mem
+
+    cfg = mem._load_config()
+    if cfg.get("enabled"):
+        # Sessions stored in Neo4j by store_session_background(); skip file write.
+        if session_id is None:
+            session_id = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        return _sessions_dir() / f"session-{session_id}.md"
+
     if session_id is None:
         session_id = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
@@ -272,7 +299,15 @@ def _profiles_path() -> Path:
 
 
 def list_profiles() -> list[dict]:
-    """Return configured profiles [{id, label}, ...] from the local profiles registry."""
+    """Return configured profiles [{id, label}, ...] from Neo4j (when enabled) or profiles.yaml."""
+    import memory as mem
+
+    cfg = mem._load_config()
+    if cfg.get("enabled"):
+        result = mem.list_profiles_sync()
+        if result is not None:
+            return result
+    # fallback: profiles.yaml
     p = _profiles_path()
     if not p.exists():
         return []
@@ -337,6 +372,15 @@ def add_profile(profile_id: str, label: str) -> None:
         encoding="utf-8",
     )
     set_active_profile(profile_id)
+    # Sync to Neo4j when enabled
+    try:
+        import memory as mem
+
+        mem_cfg = mem._load_config()
+        if mem_cfg.get("enabled"):
+            mem.add_profile_sync(profile_id, label)
+    except Exception:
+        pass
 
 
 def delete_profile(profile_id: str) -> None:
@@ -359,6 +403,15 @@ def delete_profile(profile_id: str) -> None:
         remaining = data["profiles"]
         if remaining:
             set_active_profile(remaining[0]["id"])
+    # Sync deletion to Neo4j when enabled
+    try:
+        import memory as mem
+
+        mem_cfg = mem._load_config()
+        if mem_cfg.get("enabled"):
+            mem.delete_profile_sync(profile_id)
+    except Exception:
+        pass
 
 
 def is_quiet_hours(pulse_config: dict | None = None) -> bool:

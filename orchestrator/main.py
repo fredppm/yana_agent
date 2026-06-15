@@ -372,6 +372,8 @@ def _register_first_profile() -> None:
 
 def run_conversation() -> None:
     providers_config = prov.load_providers()
+    # Initialize Neo4j schema (idempotent — safe to run on every startup)
+    mem.init_schema_sync()
     voice_cfg = v.load_voice_config(providers_config)
 
     registry = connectors_setup.build_registry()
