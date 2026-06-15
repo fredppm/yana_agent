@@ -106,9 +106,18 @@ def pulse_server(tmp_path):
     )
     t = threading.Thread(target=api.serve_forever, daemon=True)
     t.start()
-    time.sleep(0.05)  # let the server bind
 
+    # Poll until the server is accepting connections (handles slow CI runners)
     base = f"http://127.0.0.1:{port}"
+    deadline = time.time() + 5.0
+    while time.time() < deadline:
+        try:
+            urlopen(f"{base}/health", timeout=1)
+            break
+        except Exception:
+            time.sleep(0.05)
+    else:
+        raise RuntimeError(f"Pulse API did not start on port {port}")
     yield base, tasks_file, sanctum_dir, registry
 
     api.shutdown()
