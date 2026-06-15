@@ -36,7 +36,6 @@ log = logging.getLogger(__name__)
 _CONFIG_PATH = Path(__file__).parent / "config" / "providers.yaml"
 
 _DEFAULT_CONFIG: dict = {
-    "enabled": False,
     "uri": "bolt://localhost:7687",
     "user": "",
     "password": "",
@@ -113,9 +112,6 @@ async def store_session(messages: list[dict], session_id: str) -> None:
     from graphiti_core.nodes import EpisodeType
 
     cfg = _load_config()
-    if not cfg.get("enabled"):
-        log.debug("memory: graphiti disabled, skipping store_session")
-        return
 
     workspace_id = cfg.get("active_profile") or cfg.get("group_id", "yana-fred")
 
@@ -167,9 +163,6 @@ async def load_context(
     Returns a formatted markdown block, or empty string if unavailable.
     """
     cfg = _load_config()
-    if not cfg.get("enabled"):
-        return ""
-
     client = _build_client(cfg)
     workspace_gid = cfg.get("active_profile") or cfg.get("group_id", "yana-fred")
     # Search both owner-level (fred) and workspace-level (fred::pessoal) group_ids
@@ -210,10 +203,6 @@ def store_session_background(messages: list[dict], session_id: str) -> None:
     The TUI can close immediately. Thread is non-daemon so the process
     stays alive until indexing finishes (typically a few seconds).
     """
-    cfg = _load_config()
-    if not cfg.get("enabled"):
-        return
-
     def _run() -> None:
         try:
             asyncio.run(store_session(messages, session_id))
@@ -233,10 +222,6 @@ def load_context_sync(
     Safe to call from sync code (e.g. core.load_system_prompt).
     Returns empty string on timeout or error — never raises.
     """
-    cfg = _load_config()
-    if not cfg.get("enabled"):
-        return ""
-
     result: list[str] = [""]
 
     def _run() -> None:
@@ -433,60 +418,36 @@ def _run_async(coro: Coroutine[Any, Any, Any], timeout: float = 10.0) -> Any:
 
 
 def init_schema_sync() -> None:
-    cfg = _load_config()
-    if not cfg.get("enabled"):
-        return
-    _run_async(init_schema(cfg))
+    _run_async(init_schema(_load_config()))
 
 
 def list_profiles_sync() -> list[dict]:
-    cfg = _load_config()
-    if not cfg.get("enabled"):
-        return []
-    result = _run_async(list_profiles(cfg))
+    result = _run_async(list_profiles(_load_config()))
     return result if isinstance(result, list) else []
 
 
 def add_profile_sync(workspace_id: str, label: str) -> None:
-    cfg = _load_config()
-    if not cfg.get("enabled"):
-        return
-    _run_async(add_profile(cfg, workspace_id, label))
+    _run_async(add_profile(_load_config(), workspace_id, label))
 
 
 def delete_profile_sync(workspace_id: str) -> None:
-    cfg = _load_config()
-    if not cfg.get("enabled"):
-        return
-    _run_async(delete_profile(cfg, workspace_id))
+    _run_async(delete_profile(_load_config(), workspace_id))
 
 
 def list_sessions_sync(workspace_id: str, limit: int = 20) -> list[tuple[str, datetime, str]]:
-    cfg = _load_config()
-    if not cfg.get("enabled"):
-        return []
-    result = _run_async(list_sessions(cfg, workspace_id, limit=limit))
+    result = _run_async(list_sessions(_load_config(), workspace_id, limit=limit))
     return result if isinstance(result, list) else []
 
 
 def load_session_messages_sync(session_id: str) -> list[dict]:
-    cfg = _load_config()
-    if not cfg.get("enabled"):
-        return []
-    result = _run_async(load_session_messages(cfg, session_id))
+    result = _run_async(load_session_messages(_load_config(), session_id))
     return result if isinstance(result, list) else []
 
 
 def list_connectors_sync(workspace_id: str) -> list[dict]:
-    cfg = _load_config()
-    if not cfg.get("enabled"):
-        return []
-    result = _run_async(list_connectors(cfg, workspace_id))
+    result = _run_async(list_connectors(_load_config(), workspace_id))
     return result if isinstance(result, list) else []
 
 
 def save_connector_sync(workspace_id: str, instance_id: str, config_json_str: str) -> None:
-    cfg = _load_config()
-    if not cfg.get("enabled"):
-        return
-    _run_async(save_connector(cfg, workspace_id, instance_id, config_json_str))
+    _run_async(save_connector(_load_config(), workspace_id, instance_id, config_json_str))

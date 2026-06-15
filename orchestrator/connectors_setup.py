@@ -37,7 +37,7 @@ def build_registry() -> ConnectorRegistry:
     if manifest.exists():
         registry.load_manifest(manifest)
 
-    # When Graphiti enabled, sync connector configs to Neo4j for this workspace
+    # Sync connector configs to Neo4j for this workspace
     try:
         import json
 
@@ -45,13 +45,12 @@ def build_registry() -> ConnectorRegistry:
         import yaml
 
         cfg = mem._load_config()
-        if cfg.get("enabled"):
-            workspace_id = cfg.get("active_profile") or cfg.get("group_id", "")
-            if workspace_id and manifest.exists():
-                data = yaml.safe_load(manifest.read_text(encoding="utf-8")) or {}
-                for c in data.get("connectors", []):
-                    config_str = json.dumps(c, ensure_ascii=False)
-                    mem.save_connector_sync(workspace_id, c["id"], config_str)
+        workspace_id = cfg.get("active_profile") or cfg.get("group_id", "")
+        if workspace_id and manifest.exists():
+            data = yaml.safe_load(manifest.read_text(encoding="utf-8")) or {}
+            for c in data.get("connectors", []):
+                config_str = json.dumps(c, ensure_ascii=False)
+                mem.save_connector_sync(workspace_id, c["id"], config_str)
     except Exception:
         pass
 

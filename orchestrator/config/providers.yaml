@@ -44,7 +44,6 @@ engines:
     flags: []                 # extra CLI flags (e.g. ["--dangerously-skip-permissions"])
 
 graphiti:
-  enabled: false             # set true after running orchestrator/spikes/docker-compose.yml
   uri: "bolt://localhost:7687"
   user: ""
   password: ""
