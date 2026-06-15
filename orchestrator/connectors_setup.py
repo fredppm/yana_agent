@@ -38,20 +38,17 @@ def build_registry() -> ConnectorRegistry:
         registry.load_manifest(manifest)
 
     # Sync connector configs to Neo4j for this workspace
-    try:
-        import json
+    import json
 
-        import memory as mem
-        import yaml
+    import memory as mem
+    import yaml
 
-        cfg = mem._load_config()
-        workspace_id = cfg.get("active_profile") or cfg.get("group_id", "")
-        if workspace_id and manifest.exists():
-            data = yaml.safe_load(manifest.read_text(encoding="utf-8")) or {}
-            for c in data.get("connectors", []):
-                config_str = json.dumps(c, ensure_ascii=False)
-                mem.save_connector_sync(workspace_id, c["id"], config_str)
-    except Exception:
-        pass
+    cfg = mem._load_config()
+    workspace_id = cfg.get("active_profile") or cfg.get("group_id", "")
+    if workspace_id and manifest.exists():
+        data = yaml.safe_load(manifest.read_text(encoding="utf-8")) or {}
+        for c in data.get("connectors", []):
+            config_str = json.dumps(c, ensure_ascii=False)
+            mem.save_connector_sync(workspace_id, c["id"], config_str)
 
     return registry
