@@ -86,60 +86,89 @@ class TestResolveMode:
 
 
 # ---------------------------------------------------------------------------
-# Sanctum context load
+# Sanctum context load (from Neo4j via mocked memory)
 # ---------------------------------------------------------------------------
 
 
 class TestSanctumContext:
-    def test_load_happy_path(self, tmp_path: Path) -> None:
-        (tmp_path / "BOND.md").write_text("Fred is a developer.", encoding="utf-8")
-        (tmp_path / "MEMORY.md").write_text("Working on yana_agent.", encoding="utf-8")
-        (tmp_path / "PERSONA.md").write_text("I am YANA.", encoding="utf-8")
+    def _mock_fields(self, fields: dict[str, str]):
+        """Patch memory + core so SanctumContext.load() returns the given fields."""
+        return [
+            patch("memory.load_sanctum_fields_sync", return_value=fields),
+            patch("core.get_active_profile", return_value="fred::pessoal"),
+        ]
 
-        ctx = SanctumContext.load(tmp_path)
-        assert "Fred is a developer" in ctx.bond
-        assert "yana_agent" in ctx.memory
-        assert "YANA" in ctx.persona
+    def test_load_happy_path(self) -> None:
+        fields = {
+            "BOND.md": "Fred is a developer.",
+            "MEMORY.md": "Working on yana_agent.",
+            "PERSONA.md": "I am YANA.",
+        }
+        patches = self._mock_fields(fields)
+        for p in patches:
+            p.start()
+        try:
+            ctx = SanctumContext.load()
+            assert "Fred is a developer" in ctx.bond
+            assert "yana_agent" in ctx.memory
+            assert "YANA" in ctx.persona
+        finally:
+            for p in patches:
+                p.stop()
 
-    def test_load_missing_sanctum_raises(self) -> None:
-        with pytest.raises(FileNotFoundError):
-            SanctumContext.load(Path("/nonexistent/sanctum"))
+    def test_load_missing_profile_raises(self) -> None:
+        with patch("core.get_active_profile", return_value=""):
+            with pytest.raises(FileNotFoundError):
+                SanctumContext.load()
 
-    def test_load_partial_sanctum_fills_empty_strings(self, tmp_path: Path) -> None:
-        # Only PERSONA.md exists — BOND and MEMORY are absent
-        (tmp_path / "PERSONA.md").write_text("I am YANA.", encoding="utf-8")
+    def test_load_no_persona_raises(self) -> None:
+        patches = self._mock_fields({"BOND.md": "something"})
+        for p in patches:
+            p.start()
+        try:
+            with pytest.raises(FileNotFoundError):
+                SanctumContext.load()
+        finally:
+            for p in patches:
+                p.stop()
 
-        ctx = SanctumContext.load(tmp_path)
-        assert ctx.persona == "I am YANA."
-        assert ctx.bond == ""
-        assert ctx.memory == ""
+    def test_load_partial_sanctum_fills_empty_strings(self) -> None:
+        fields = {"PERSONA.md": "I am YANA."}
+        patches = self._mock_fields(fields)
+        for p in patches:
+            p.start()
+        try:
+            ctx = SanctumContext.load()
+            assert ctx.persona == "I am YANA."
+            assert ctx.bond == ""
+            assert ctx.memory == ""
+        finally:
+            for p in patches:
+                p.stop()
 
-    def test_as_context_string_includes_bond_and_memory(self, tmp_path: Path) -> None:
-        (tmp_path / "BOND.md").write_text("Fred values speed.", encoding="utf-8")
-        (tmp_path / "MEMORY.md").write_text("Working on story 1.1.", encoding="utf-8")
-
-        ctx = SanctumContext.load(tmp_path)
+    def test_as_context_string_includes_bond_and_memory(self) -> None:
+        ctx = SanctumContext(
+            bond="Fred values speed.",
+            memory="Working on story 1.1.",
+            persona="I am YANA.",
+        )
         result = ctx.as_context_string()
-
         assert "Fred values speed" in result
         assert "story 1.1" in result
 
-    def test_as_context_string_excludes_persona(self, tmp_path: Path) -> None:
-        (tmp_path / "PERSONA.md").write_text("YANA persona info.", encoding="utf-8")
-        (tmp_path / "BOND.md").write_text("Fred.", encoding="utf-8")
-
-        ctx = SanctumContext.load(tmp_path)
+    def test_as_context_string_excludes_persona(self) -> None:
+        ctx = SanctumContext(
+            bond="Fred.",
+            memory="",
+            persona="YANA persona info.",
+        )
         result = ctx.as_context_string()
-
         assert "YANA persona info" not in result
 
-    def test_as_context_string_truncates_at_max_tokens(self, tmp_path: Path) -> None:
+    def test_as_context_string_truncates_at_max_tokens(self) -> None:
         long_text = "x" * 10_000
-        (tmp_path / "BOND.md").write_text(long_text, encoding="utf-8")
-
-        ctx = SanctumContext.load(tmp_path)
+        ctx = SanctumContext(bond=long_text, memory="", persona="")
         result = ctx.as_context_string(max_tokens=100)
-
         assert len(result) <= 100 * 4 + 100  # allow for header text overhead
 
 
@@ -196,16 +225,16 @@ class TestModePeristence:
 
 
 class TestRunProgrammerModeHardStop:
-    def test_exits_with_1_if_sanctum_missing(self, tmp_path: Path) -> None:
-        missing = tmp_path / "no_sanctum_here"
-
-        with pytest.raises(SystemExit) as exc_info:
+    def test_exits_with_1_if_sanctum_missing(self) -> None:
+        with (
+            patch("core.get_active_profile", return_value=""),
+            pytest.raises(SystemExit) as exc_info,
+        ):
             from programmer.mode import run_programmer_mode
 
             run_programmer_mode(
                 text_flag=True,
                 voice_flag=False,
-                sanctum_path=missing,
                 speak_fn=None,
             )
 

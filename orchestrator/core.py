@@ -45,24 +45,6 @@ def _skill_root() -> Path:
     return _project_root() / "skills" / "agent-yana"
 
 
-def _sanctum_root() -> Path:
-    return _project_root() / "data" / "agent-yana"
-
-
-# ---------------------------------------------------------------------------
-# System prompt assembly
-# ---------------------------------------------------------------------------
-
-_SANCTUM_FILES = [
-    "PERSONA.md",
-    "CREED.md",
-    "BOND.md",
-    "MEMORY.md",
-    "CAPABILITIES.md",
-    "PULSE.md",
-]
-
-
 def build_connector_manifest(registry) -> str:
     """Return lightweight connector manifest formatted as a system-prompt section."""
     try:
@@ -80,13 +62,9 @@ def build_connector_manifest(registry) -> str:
     return "\n".join(lines)
 
 
-def _read_file(path: Path, name: str) -> str:
-    return f"---\n## {name}\n\n{path.read_text(encoding='utf-8')}"
-
-
 def load_system_prompt(voice_mode: bool = False, registry=None) -> str:
     """
-    Build the system prompt by concatenating SKILL.md + sanctum files.
+    Build the system prompt by concatenating SKILL.md + sanctum fields from Neo4j.
 
     If sanctum doesn't exist yet, returns only SKILL.md so the orchestrator
     can still start and trigger First Breath.
@@ -98,23 +76,32 @@ def load_system_prompt(voice_mode: bool = False, registry=None) -> str:
     if not skill_md.exists():
         raise FileNotFoundError(f"SKILL.md not found at {skill_md}")
 
-    parts: list[str] = [_read_file(skill_md, "SKILL.md")]
+    parts: list[str] = [f"---\n## SKILL.md\n\n{skill_md.read_text(encoding='utf-8')}"]
 
-    # Sanctum files — in order, skip missing
-    sanctum = _sanctum_root()
-    if sanctum.exists():
-        for fname in _SANCTUM_FILES:
-            fpath = sanctum / fname
-            if fpath.exists():
-                parts.append(_read_file(fpath, fname))
-        # pulse-config.yaml as raw text (YANA reads it for PULSE tasks)
-        pulse_cfg = sanctum / "pulse-config.yaml"
-        if pulse_cfg.exists():
-            parts.append(
-                f"---\n## pulse-config.yaml\n\n```yaml\n{pulse_cfg.read_text(encoding='utf-8')}\n```"
-            )
+    # Sanctum fields from Neo4j — in order, skip missing
+    active = get_active_profile()
+    if active:
+        import memory as mem
+
+        owner_id = active.split("::")[0] if "::" in active else active
+        fields = mem.load_sanctum_fields_sync(owner_id, active)
+        file_order = [
+            "PERSONA.md",
+            "CREED.md",
+            "BOND.md",
+            "MEMORY.md",
+            "CAPABILITIES.md",
+            "PULSE.md",
+        ]
+        for fname in file_order:
+            content = fields.get(fname)
+            if content:
+                parts.append(f"---\n## {fname}\n\n{content}")
+        pulse_config = fields.get("pulse-config.yaml")
+        if pulse_config:
+            parts.append(f"---\n## pulse-config.yaml\n\n```yaml\n{pulse_config}\n```")
     else:
-        # No sanctum yet — First Breath hasn't happened
+        # No active profile — First Breath hasn't happened
         parts.append(f"---\n[{errors.e('SYS-001')}]")
 
     # Episodic memory from Graphiti — injected when available
@@ -166,12 +153,15 @@ def load_session_messages(session_id: str) -> list[dict]:
 
 
 def sanctum_exists() -> bool:
-    """True if the sanctum has been initialised (PERSONA.md present)."""
-    return (_sanctum_root() / "PERSONA.md").exists()
+    """True if owner PERSONA is stored in Neo4j for active profile."""
+    import memory as mem
 
-
-def sanctum_path() -> Path:
-    return _sanctum_root()
+    active = get_active_profile()
+    if not active:
+        return False
+    owner_id = active.split("::")[0] if "::" in active else active
+    fields = mem.load_sanctum_fields_sync(owner_id, active)
+    return bool(fields.get("PERSONA.md"))
 
 
 # ---------------------------------------------------------------------------
@@ -180,14 +170,20 @@ def sanctum_path() -> Path:
 
 
 def load_pulse_config() -> dict:
-    """Load pulse-config.yaml from the sanctum. Returns empty dict if missing or invalid."""
+    """Load pulse config from Neo4j workspace context."""
+    import memory as mem
     import yaml
 
-    cfg_path = _sanctum_root() / "pulse-config.yaml"
-    if not cfg_path.exists():
+    active = get_active_profile()
+    if not active:
+        return {}
+    owner_id = active.split("::")[0] if "::" in active else active
+    fields = mem.load_sanctum_fields_sync(owner_id, active)
+    raw = fields.get("pulse-config.yaml", "")
+    if not raw:
         return {}
     try:
-        return yaml.safe_load(cfg_path.read_text(encoding="utf-8")) or {}
+        return yaml.safe_load(raw) or {}
     except Exception:
         return {}
 

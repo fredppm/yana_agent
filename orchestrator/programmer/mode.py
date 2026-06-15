@@ -13,7 +13,6 @@ import sys
 from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
-from pathlib import Path
 
 # ---------------------------------------------------------------------------
 # Interaction mode
@@ -46,25 +45,24 @@ class SanctumContext:
     persona: str  # PERSONA.md — YANA's identity
 
     @classmethod
-    def load(cls, sanctum_path: Path) -> SanctumContext:
-        """
-        Load BOND.md, MEMORY.md, PERSONA.md from the sanctum.
+    def load(cls) -> SanctumContext:
+        """Load BOND, MEMORY, PERSONA from Neo4j."""
+        import core
+        import memory as mem
 
-        Raises FileNotFoundError if sanctum_path does not exist.
-        Missing individual files are replaced with empty strings
-        (sanctum may be partially initialised).
-        """
-        if not sanctum_path.exists():
-            raise FileNotFoundError(f"Sanctum not found at {sanctum_path}")
-
-        def _read(fname: str) -> str:
-            p = sanctum_path / fname
-            return p.read_text(encoding="utf-8") if p.exists() else ""
-
+        active = core.get_active_profile()
+        if not active:
+            raise FileNotFoundError("No active profile — sanctum not initialised")
+        owner_id = active.split("::")[0] if "::" in active else active
+        fields = mem.load_sanctum_fields_sync(owner_id, active)
+        if not fields.get("PERSONA.md"):
+            raise FileNotFoundError(
+                "Sanctum not initialised — run YANA first to complete First Breath"
+            )
         return cls(
-            bond=_read("BOND.md"),
-            memory=_read("MEMORY.md"),
-            persona=_read("PERSONA.md"),
+            bond=fields.get("BOND.md", ""),
+            memory=fields.get("MEMORY.md", ""),
+            persona=fields.get("PERSONA.md", ""),
         )
 
     def as_context_string(self, max_tokens: int = 500) -> str:
@@ -133,7 +131,6 @@ def parse_mode_switch(text: str) -> InteractionMode | None:
 def run_programmer_mode(
     text_flag: bool,
     voice_flag: bool,
-    sanctum_path: Path,
     speak_fn: Callable[[str], None] | None = None,
     providers_config: dict | None = None,
 ) -> None:
@@ -142,7 +139,6 @@ def run_programmer_mode(
 
     text_flag:        True if --text was passed
     voice_flag:       True if --voice was passed
-    sanctum_path:     path to the sanctum directory (from core.sanctum_path())
     speak_fn:         TTS callable for voice mode (None = text only)
     providers_config: providers.yaml dict (loaded from file if None)
 
@@ -156,13 +152,10 @@ def run_programmer_mode(
     output.configure(voice_mode=False)  # text output during setup; reconfigured after mode chosen
 
     # --- Sanctum load (hard stop if missing) ---
-    if not sanctum_path.exists():
-        print(f"  [{t('programmer_sanctum_missing')}]", file=sys.stderr)
-        sys.exit(1)
-
     try:
-        sanctum = SanctumContext.load(sanctum_path)
+        sanctum = SanctumContext.load()
     except FileNotFoundError as exc:
+        print(f"  [{t('programmer_sanctum_missing')}]", file=sys.stderr)
         print(f"  [erro: {exc}]", file=sys.stderr)
         sys.exit(1)
 

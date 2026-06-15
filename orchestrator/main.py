@@ -298,10 +298,7 @@ def _run_tui_conversation(
         session_id = chosen_session or datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         session_date = session_id[:10]
 
-        bond = core.sanctum_path() / "BOND.md"
-        is_first_breath = not core.sanctum_exists() or (
-            bond.exists() and "{" in bond.read_text(encoding="utf-8")
-        )
+        is_first_breath = not core.sanctum_exists()
 
         if is_first_breath:
             # First Breath: write sanctum files synchronously, then register profile
@@ -343,27 +340,33 @@ def _register_first_profile() -> None:
     if core.profiles_exist():
         return  # Already registered
 
-    import getpass
+    import re
 
-    persona_path = core.sanctum_path() / "PERSONA.md"
-    owner: str | None = None
-    if persona_path.exists():
-        import re
+    import memory as mem_mod
 
-        text = persona_path.read_text(encoding="utf-8")
-        m = re.search(
-            r"(?:#|YANA)[^\n\S]*(?:YANA[^\n—]*)?[—\-]\s*([A-Za-záéíóúàèìòùãõâêîôûñç]+)", text
-        )
-        if m:
-            owner = m.group(1).lower().strip()
-    if not owner:
+    active = core.get_active_profile()
+    owner_id: str | None = None
+    if active:
+        candidate = active.split("::")[0] if "::" in active else active
+        fields = mem_mod.load_sanctum_fields_sync(candidate, active)
+        persona = fields.get("PERSONA.md", "")
+        if persona:
+            m = re.search(
+                r"(?:#|YANA)[^\n\S]*(?:YANA[^\n—]*)?[—\-]\s*([A-Za-záéíóúàèìòùãõâêîôûñç]+)",
+                persona,
+            )
+            if m:
+                owner_id = m.group(1).lower().strip()
+    if not owner_id:
+        import getpass
+
         try:
-            owner = getpass.getuser().lower()
+            owner_id = getpass.getuser().lower()
         except Exception:
-            owner = "user"
+            owner_id = "user"
 
-    profile_id = f"{owner}::pessoal"
-    label = f"{owner.capitalize()} — Pessoal"
+    profile_id = f"{owner_id}::pessoal"
+    label = f"{owner_id.capitalize()} — Pessoal"
     core.add_profile(profile_id, label)
 
 
@@ -459,7 +462,6 @@ def main() -> None:
         return
 
     if args.programmer:
-        import core
         from programmer.mode import run_programmer_mode
 
         providers_config = prov.load_providers()
@@ -479,7 +481,6 @@ def main() -> None:
         run_programmer_mode(
             text_flag=bool(args.text),
             voice_flag=args.voice,
-            sanctum_path=core.sanctum_path(),
             speak_fn=speak_fn,
             providers_config=providers_config,
         )

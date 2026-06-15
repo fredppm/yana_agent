@@ -203,6 +203,7 @@ def store_session_background(messages: list[dict], session_id: str) -> None:
     The TUI can close immediately. Thread is non-daemon so the process
     stays alive until indexing finishes (typically a few seconds).
     """
+
     def _run() -> None:
         try:
             asyncio.run(store_session(messages, session_id))
@@ -451,3 +452,71 @@ def list_connectors_sync(workspace_id: str) -> list[dict]:
 
 def save_connector_sync(workspace_id: str, instance_id: str, config_json_str: str) -> None:
     _run_async(save_connector(_load_config(), workspace_id, instance_id, config_json_str))
+
+
+# ---------------------------------------------------------------------------
+# Sanctum identity fields — stored on YANAOwner / YANAWorkspace nodes
+# ---------------------------------------------------------------------------
+
+_OWNER_FIELDS: dict[str, str] = {
+    "PERSONA.md": "persona",
+    "CREED.md": "creed",
+    "BOND.md": "bond",
+}
+_WORKSPACE_FIELDS: dict[str, str] = {
+    "MEMORY.md": "memory",
+    "CAPABILITIES.md": "capabilities",
+    "PULSE.md": "pulse",
+    "pulse-config.yaml": "pulse_config",
+}
+
+
+async def save_sanctum_fields(
+    cfg: dict, owner_id: str, workspace_id: str, fields: dict[str, str]
+) -> None:
+    """Write {filename: content} to YANAOwner and YANAWorkspace node properties."""
+    owner_props = {_OWNER_FIELDS[k]: v for k, v in fields.items() if k in _OWNER_FIELDS}
+    workspace_props = {_WORKSPACE_FIELDS[k]: v for k, v in fields.items() if k in _WORKSPACE_FIELDS}
+    if owner_props:
+        sets = ", ".join(f"o.{k} = ${k}" for k in owner_props)
+        await _neo4j_write(
+            cfg,
+            f"MERGE (o:YANAOwner {{id: $owner_id}}) SET {sets}",
+            {"owner_id": owner_id, **owner_props},
+        )
+    if workspace_props:
+        sets = ", ".join(f"w.{k} = ${k}" for k in workspace_props)
+        await _neo4j_write(
+            cfg,
+            f"MERGE (w:YANAWorkspace {{id: $workspace_id}}) SET {sets}",
+            {"workspace_id": workspace_id, **workspace_props},
+        )
+
+
+async def load_sanctum_fields(cfg: dict, owner_id: str, workspace_id: str) -> dict[str, str]:
+    """Load all sanctum fields from YANAOwner and YANAWorkspace, returns {filename: content}."""
+    rows = await _neo4j_read(
+        cfg,
+        """
+        OPTIONAL MATCH (o:YANAOwner {id: $owner_id})
+        OPTIONAL MATCH (w:YANAWorkspace {id: $workspace_id})
+        RETURN o.persona AS persona, o.creed AS creed, o.bond AS bond,
+               w.memory AS memory, w.capabilities AS capabilities,
+               w.pulse AS pulse, w.pulse_config AS pulse_config
+        """,
+        {"owner_id": owner_id, "workspace_id": workspace_id},
+    )
+    if not rows:
+        return {}
+    row = rows[0]
+    inv = {v: k for k, v in {**_OWNER_FIELDS, **_WORKSPACE_FIELDS}.items()}
+    return {inv[prop]: val for prop, val in row.items() if val and prop in inv}
+
+
+def save_sanctum_fields_sync(owner_id: str, workspace_id: str, fields: dict[str, str]) -> None:
+    _run_async(save_sanctum_fields(_load_config(), owner_id, workspace_id, fields))
+
+
+def load_sanctum_fields_sync(owner_id: str, workspace_id: str) -> dict[str, str]:
+    result = _run_async(load_sanctum_fields(_load_config(), owner_id, workspace_id))
+    return result if isinstance(result, dict) else {}

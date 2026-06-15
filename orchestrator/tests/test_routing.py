@@ -46,11 +46,12 @@ class _MockEngine(CodingEngine):
 
 
 @pytest.fixture
-def sanctum(tmp_path: Path) -> SanctumContext:
-    (tmp_path / "BOND.md").write_text("Fred is a developer.", encoding="utf-8")
-    (tmp_path / "MEMORY.md").write_text("Working on yana_agent.", encoding="utf-8")
-    (tmp_path / "PERSONA.md").write_text("I am YANA.", encoding="utf-8")
-    return SanctumContext.load(tmp_path)
+def sanctum() -> SanctumContext:
+    return SanctumContext(
+        bond="Fred is a developer.",
+        memory="Working on yana_agent.",
+        persona="I am YANA.",
+    )
 
 
 @pytest.fixture
