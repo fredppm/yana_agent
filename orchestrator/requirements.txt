@@ -26,6 +26,7 @@ numpy>=1.24.0
 # Install ffmpeg separately if using pydub: https://ffmpeg.org/download.html
 
 # PostgreSQL — operational storage (profiles, sanctum, sessions, connectors)
+SQLAlchemy>=2.0
 psycopg2-binary>=2.9.0
 
 # Gmail / Google Calendar connectors — OAuth2 auth in parent process
