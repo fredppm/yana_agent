@@ -118,7 +118,11 @@ def pulse_server(tmp_path):
             time.sleep(0.05)
     else:
         raise RuntimeError(f"Pulse API did not start on port {port}")
-    yield base, tasks_file, sanctum_dir, registry
+
+    # _reschedule imports apscheduler which is not installed in CI lint envs.
+    # Mock it out — the tests exercise HTTP routing, not APScheduler scheduling.
+    with patch("pulse.api._reschedule"):
+        yield base, tasks_file, sanctum_dir, registry
 
     api.shutdown()
 
