@@ -372,8 +372,6 @@ def _register_first_profile() -> None:
 def run_conversation() -> None:
     providers_config = prov.load_providers()
     voice_cfg = v.load_voice_config(providers_config)
-
-    registry = connectors_setup.build_registry()
     tools = prov.CONNECTOR_TOOLS
 
     output.configure(voice_mode=False)
@@ -383,6 +381,9 @@ def run_conversation() -> None:
     profiles = core.list_profiles()
     if profiles:
         core.set_runtime_profile(profiles[0]["id"])
+
+    # Build registry after profile is set — connectors are profile-scoped
+    registry = connectors_setup.build_registry()
 
     # State detection: route based on identity state, not CLI flags.
     active_profile = core.get_active_profile()

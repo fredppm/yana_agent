@@ -113,18 +113,31 @@ class ConnectorRegistry:
         with open(path) as f:
             data = yaml.safe_load(f)
         for entry in data.get("connectors", []):
-            # description falls back to the registered type's class description
-            cls = self._types.get(entry["type"])
-            fallback_desc = cls.connector_description if cls else ""
-            instance = ConnectorInstance(
-                id=entry["id"],
-                name=entry["name"],
-                description=entry.get("description") or fallback_desc,
-                type=entry["type"],
-                owner=entry.get("owner"),
-                config=entry.get("config") or {},
-            )
-            self._instances[instance.id] = instance
+            self._load_entry(entry)
+
+    def load_from_db(self, rows: list[dict]) -> None:
+        """Load connector instances from PostgreSQL rows ({instance_id, config_json})."""
+        import json
+
+        for row in rows:
+            try:
+                entry = json.loads(row["config_json"])
+                self._load_entry(entry)
+            except Exception:
+                continue
+
+    def _load_entry(self, entry: dict) -> None:
+        cls = self._types.get(entry["type"])
+        fallback_desc = cls.connector_description if cls else ""
+        instance = ConnectorInstance(
+            id=entry["id"],
+            name=entry["name"],
+            description=entry.get("description") or fallback_desc,
+            type=entry["type"],
+            owner=entry.get("owner"),
+            config=entry.get("config") or {},
+        )
+        self._instances[instance.id] = instance
 
     def lightweight_manifest(self) -> list[dict[str, Any]]:
         result = []
