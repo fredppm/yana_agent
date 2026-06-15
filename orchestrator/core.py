@@ -59,7 +59,7 @@ def load_system_prompt(
     if not skill_md.exists():
         raise FileNotFoundError(f"SKILL.md not found at {skill_md}")
 
-    parts: list[str] = [f"---\n## SKILL.md\n\n{skill_md.read_text(encoding='utf-8')}"]
+    parts: list[str] = [f"---\n## SKILL\n\n{skill_md.read_text(encoding='utf-8')}"]
 
     # Sanctum fields from Neo4j — in order, skip missing
     active = get_active_profile()
