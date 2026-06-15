@@ -51,7 +51,7 @@ graphiti:
   litellm_url: "http://localhost:4000"
   model: "bedrock-claude-haiku"
   embed_model: "bedrock-embed"
-  group_id: "fred::pessoal"  # format: owner::context — e.g. fred::pessoal, fred::trabalho, fernanda::pessoal
+  active_profile: "fred::pessoal"  # owner::context format — e.g. fred::pessoal, fred::trabalho, fernanda::pessoal
 
 stt:
   provider: faster-whisper   # openai-whisper | faster-whisper

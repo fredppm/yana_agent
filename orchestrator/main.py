@@ -47,7 +47,6 @@ import output  # noqa: E402
 import providers as prov  # noqa: E402
 import sanctum_writer as sw  # noqa: E402
 import voice as v  # noqa: E402
-from strings import t  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # CLI
@@ -271,11 +270,14 @@ def _run_tui_conversation(
     listen_fn: Callable[[], str] | None = None,
     speak_fn: Callable[[str], None] | None = None,
     greeting: str | None = None,
+    profiles: list[dict] | None = None,
+    active_profile: str = "",
+    sessions: list | None = None,
 ) -> None:
     """Run the Textual TUI conversation loop (text or voice mode)."""
     from tui import run_tui
 
-    sessions = core.list_sessions() if core.sanctum_exists() else []
+    _sessions = sessions if sessions is not None else []
     task_ref = [initial_task]
 
     def on_turn(msgs: list[dict]) -> str:
@@ -305,7 +307,7 @@ def _run_tui_conversation(
         )
 
         if is_first_breath:
-            # First Breath: must write sanctum files synchronously (creates PERSONA, CREED, etc.)
+            # First Breath: write sanctum files synchronously, then register profile
             try:
                 sw.write_sanctum(
                     final_messages,
@@ -317,19 +319,88 @@ def _run_tui_conversation(
                 )
             except KeyboardInterrupt:
                 pass
+            # Register the new profile in providers.yaml (CAP-4)
+            _register_first_profile()
         else:
             # Regular session: store in Graphiti in background — TUI closes immediately
             mem.store_session_background(final_messages, session_id)
 
     run_tui(
-        sessions,
+        _sessions,
         on_turn=on_turn,
         on_exit=on_exit,
         voice_mode=voice_mode,
         listen_fn=listen_fn,
         speak_fn=speak_fn,
         greeting=greeting,
+        profiles=profiles,
+        active_profile_id=active_profile,
     )
+
+
+def _auto_migrate_profile_if_needed() -> None:
+    """
+    One-time migration: if a sanctum exists but no profiles are registered,
+    auto-create a profile based on the existing sanctum (PERSONA.md).
+    This handles upgrades from pre-profile YANA installations.
+    """
+    if core.profiles_exist() or not core.sanctum_exists():
+        return
+
+    import getpass
+
+    persona_path = core.sanctum_path() / "PERSONA.md"
+    owner: str | None = None
+    if persona_path.exists():
+        import re
+
+        text = persona_path.read_text(encoding="utf-8")
+        m = re.search(
+            r"(?:#|YANA)[^\n\S]*(?:YANA[^\n—]*)?[—\-]\s*([A-Za-záéíóúàèìòùãõâêîôûñç]+)", text
+        )
+        if m:
+            owner = m.group(1).lower().strip()
+    if not owner:
+        try:
+            owner = getpass.getuser().lower()
+        except Exception:
+            owner = "user"
+
+    profile_id = f"{owner}::pessoal"
+    label = f"{owner.capitalize()} — Pessoal"
+    core.add_profile(profile_id, label)
+
+
+def _register_first_profile() -> None:
+    """
+    After a successful First Breath, register the owner profile in providers.yaml.
+    Called from on_exit when is_first_breath is True and no profiles existed.
+    """
+    if core.profiles_exist():
+        return  # Already registered
+
+    import getpass
+
+    persona_path = core.sanctum_path() / "PERSONA.md"
+    owner: str | None = None
+    if persona_path.exists():
+        import re
+
+        text = persona_path.read_text(encoding="utf-8")
+        m = re.search(
+            r"(?:#|YANA)[^\n\S]*(?:YANA[^\n—]*)?[—\-]\s*([A-Za-záéíóúàèìòùãõâêîôûñç]+)", text
+        )
+        if m:
+            owner = m.group(1).lower().strip()
+    if not owner:
+        try:
+            owner = getpass.getuser().lower()
+        except Exception:
+            owner = "user"
+
+    profile_id = f"{owner}::pessoal"
+    label = f"{owner.capitalize()} — Pessoal"
+    core.add_profile(profile_id, label)
 
 
 def run_conversation() -> None:
@@ -341,14 +412,16 @@ def run_conversation() -> None:
 
     output.configure(voice_mode=False)
 
-    if not core.sanctum_exists():
-        output.setup_warning(
-            t("sanctum_missing"),
-            hint="Execute: python main.py --init",
-        )
+    # State detection (CAP-6): route based on identity state, not CLI flags.
+    _auto_migrate_profile_if_needed()  # one-time upgrade for existing sanctums
+    profiles = core.list_profiles()
+    active_profile = core.get_active_profile()
+    is_first_breath = not profiles and not core.sanctum_exists()
+
+    sessions = core.list_sessions() if (profiles or core.sanctum_exists()) else []
 
     system_prompt = core.load_system_prompt(registry=registry)
-    task = "first_breath" if not core.sanctum_exists() else "conversation"
+    task = "first_breath" if is_first_breath else "conversation"
 
     # Voice closures — passed to TUI so ctrl+v can activate them at any time
     _cfg = voice_cfg
@@ -377,6 +450,9 @@ def run_conversation() -> None:
         voice_mode=False,  # TUI starts in text mode; user toggles with ctrl+v
         listen_fn=_listen,
         speak_fn=_speak,
+        profiles=profiles,
+        active_profile=active_profile,
+        sessions=sessions,
     )
 
 

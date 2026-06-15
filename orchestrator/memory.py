@@ -21,7 +21,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import threading
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 
 log = logging.getLogger(__name__)
@@ -40,7 +40,8 @@ _DEFAULT_CONFIG: dict = {
     "litellm_url": "http://localhost:4000",
     "model": "bedrock-claude-haiku",
     "embed_model": "bedrock-embed",
-    "group_id": "yana-fred",
+    "active_profile": "",  # owner::context — set by First Breath; falls back to group_id
+    "group_id": "yana-fred",  # legacy key — superseded by active_profile
 }
 
 
@@ -50,7 +51,11 @@ def _load_config() -> dict:
         import yaml
 
         raw = yaml.safe_load(_CONFIG_PATH.read_text(encoding="utf-8")) or {}
-        return {**_DEFAULT_CONFIG, **raw.get("graphiti", {})}
+        cfg = {**_DEFAULT_CONFIG, **raw.get("graphiti", {})}
+        # Normalize: active_profile supersedes legacy group_id key
+        if not cfg.get("active_profile") and cfg.get("group_id"):
+            cfg["active_profile"] = cfg["group_id"]
+        return cfg
     except Exception:
         return dict(_DEFAULT_CONFIG)
 
@@ -113,7 +118,7 @@ async def store_session(messages: list[dict], session_id: str) -> None:
         return
 
     client = _build_client(cfg)
-    group_id = cfg["group_id"]
+    workspace_gid = cfg.get("active_profile") or cfg.get("group_id", "yana-fred")
 
     try:
         for i, msg in enumerate(messages):
@@ -125,8 +130,8 @@ async def store_session(messages: list[dict], session_id: str) -> None:
                 episode_body=f"{role}: {msg['content']}",
                 source=EpisodeType.text,
                 source_description=f"YANA session {session_id}",
-                reference_time=datetime.now(datetime.UTC),
-                group_id=group_id,
+                reference_time=datetime.now(UTC),
+                group_id=workspace_gid,
             )
         log.debug("memory: stored %d messages -> %s", len(messages), session_id)
     finally:
@@ -146,10 +151,14 @@ async def load_context(
         return ""
 
     client = _build_client(cfg)
+    workspace_gid = cfg.get("active_profile") or cfg.get("group_id", "yana-fred")
+    # Search both owner-level (fred) and workspace-level (fred::pessoal) group_ids
+    owner_gid = workspace_gid.split("::")[0] if "::" in workspace_gid else workspace_gid
+    search_group_ids = list({owner_gid, workspace_gid})
     try:
         results = await client.search(
             query,
-            group_ids=[cfg["group_id"]],
+            group_ids=search_group_ids,
             num_results=15,
         )
     except Exception as e:

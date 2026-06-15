@@ -7,6 +7,7 @@ Saves and loads session logs for continuity.
 
 from __future__ import annotations
 
+import re
 from datetime import datetime
 from pathlib import Path
 
@@ -242,6 +243,104 @@ def load_pulse_config() -> dict:
         return yaml.safe_load(cfg_path.read_text(encoding="utf-8")) or {}
     except Exception:
         return {}
+
+
+_PROVIDERS_CFG_PATH = Path(__file__).parent / "config" / "providers.yaml"
+
+
+def _profiles_path() -> Path:
+    """Machine-local profiles registry — lives in sanctum dir (gitignored)."""
+    return _sanctum_root() / "profiles.yaml"
+
+
+def list_profiles() -> list[dict]:
+    """Return configured profiles [{id, label}, ...] from the local profiles registry."""
+    p = _profiles_path()
+    if not p.exists():
+        return []
+    try:
+        import yaml
+
+        data = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
+        return data.get("profiles", [])
+    except Exception:
+        return []
+
+
+def profiles_exist() -> bool:
+    """True if at least one profile is configured."""
+    return bool(list_profiles())
+
+
+def get_active_profile() -> str:
+    """Return the active profile id from providers.yaml (active_profile or group_id fallback)."""
+    try:
+        import yaml
+
+        raw = yaml.safe_load(_PROVIDERS_CFG_PATH.read_text(encoding="utf-8")) or {}
+        g = raw.get("graphiti", {})
+        return g.get("active_profile") or g.get("group_id", "")
+    except Exception:
+        return ""
+
+
+def set_active_profile(profile_id: str) -> None:
+    """Update active_profile in providers.yaml in-place (preserves comments and structure)."""
+    text = _PROVIDERS_CFG_PATH.read_text(encoding="utf-8")
+    if "  active_profile:" in text:
+        text = re.sub(r"  active_profile:.*", f'  active_profile: "{profile_id}"', text)
+    elif "  group_id:" in text:
+        text = re.sub(
+            r"  group_id:.*",
+            f'  active_profile: "{profile_id}"  # owner::context format',
+            text,
+        )
+    _PROVIDERS_CFG_PATH.write_text(text, encoding="utf-8")
+
+
+def add_profile(profile_id: str, label: str) -> None:
+    """Add or update a profile in the registry and set it as active."""
+    import yaml
+
+    p = _profiles_path()
+    data: dict = {}
+    if p.exists():
+        try:
+            data = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
+        except Exception:
+            data = {}
+    profiles: list[dict] = data.get("profiles", [])
+    if not any(pr["id"] == profile_id for pr in profiles):
+        profiles.append({"id": profile_id, "label": label})
+    data["profiles"] = profiles
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(
+        yaml.dump(data, allow_unicode=True, default_flow_style=False),
+        encoding="utf-8",
+    )
+    set_active_profile(profile_id)
+
+
+def delete_profile(profile_id: str) -> None:
+    """Remove a profile from the registry and update active_profile if needed."""
+    import yaml
+
+    p = _profiles_path()
+    if not p.exists():
+        return
+    try:
+        data = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
+    except Exception:
+        return
+    data["profiles"] = [pr for pr in data.get("profiles", []) if pr["id"] != profile_id]
+    p.write_text(
+        yaml.dump(data, allow_unicode=True, default_flow_style=False),
+        encoding="utf-8",
+    )
+    if get_active_profile() == profile_id:
+        remaining = data["profiles"]
+        if remaining:
+            set_active_profile(remaining[0]["id"])
 
 
 def is_quiet_hours(pulse_config: dict | None = None) -> bool:
