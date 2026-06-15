@@ -243,7 +243,7 @@ class ProfileSessionScreen(Screen[str | None]):
 
         profile = self._profiles[self._profile_idx] if self._profiles else {}
         if profile:
-            core.set_active_profile(profile["id"])
+            core.set_runtime_profile(profile["id"])
         self._render_profile_bar()
 
     def action_cursor_up(self) -> None:
@@ -267,7 +267,7 @@ class ProfileSessionScreen(Screen[str | None]):
         self._profiles.pop(self._profile_idx)
         self._profile_idx = min(self._profile_idx, len(self._profiles) - 1)
         if self._profiles:
-            core.set_active_profile(self._profiles[self._profile_idx]["id"])
+            core.set_runtime_profile(self._profiles[self._profile_idx]["id"])
         self._render_profile_bar()
         self._update_hint()
 
@@ -563,6 +563,9 @@ class YANAApp(App[TuiResult]):
                 self._write_yana(chat, self._greeting, ts)
             self._voice_start(self._voice_gen)
         else:
+            if self._greeting:
+                ts = datetime.now().strftime("%H:%M:%S")
+                self._write_yana(chat, self._greeting, ts)
             self.query_one(Input).focus()
 
     @work(thread=True)

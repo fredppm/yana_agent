@@ -39,8 +39,6 @@ _DEFAULT_CONFIG: dict = {
     "litellm_url": "http://localhost:4000",
     "model": "bedrock-claude-haiku",
     "embed_model": "bedrock-embed",
-    "active_profile": "",  # owner::context — used as Graphiti group_id
-    "group_id": "yana-fred",  # legacy key — superseded by active_profile
 }
 
 
@@ -50,11 +48,7 @@ def _load_config() -> dict:
         import yaml
 
         raw = yaml.safe_load(_CONFIG_PATH.read_text(encoding="utf-8")) or {}
-        cfg = {**_DEFAULT_CONFIG, **raw.get("graphiti", {})}
-        # Normalize: active_profile supersedes legacy group_id key
-        if not cfg.get("active_profile") and cfg.get("group_id"):
-            cfg["active_profile"] = cfg["group_id"]
-        return cfg
+        return {**_DEFAULT_CONFIG, **raw.get("graphiti", {})}
     except Exception:
         return dict(_DEFAULT_CONFIG)
 
@@ -109,8 +103,10 @@ async def store_session(messages: list[dict], session_id: str) -> None:
 
     from graphiti_core.nodes import EpisodeType
 
+    import core
+
     cfg = _load_config()
-    profile_id = cfg.get("active_profile") or cfg.get("group_id", "yana-fred")
+    profile_id = core.get_active_profile() or "yana-default"
 
     # Build conversation text for Graphiti episode
     lines = []
@@ -164,9 +160,11 @@ async def load_context(
 
     Returns a formatted markdown block, or empty string if unavailable.
     """
+    import core
+
     cfg = _load_config()
     client = _build_client(cfg)
-    profile_gid = cfg.get("active_profile") or cfg.get("group_id", "yana-fred")
+    profile_gid = core.get_active_profile() or "yana-default"
     # Search both owner-level (fred) and profile-level (fred::pessoal) group_ids
     owner_gid = profile_gid.split("::")[0]
     search_group_ids = list({owner_gid, profile_gid})

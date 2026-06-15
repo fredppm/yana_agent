@@ -378,15 +378,19 @@ def run_conversation() -> None:
 
     output.configure(voice_mode=False)
 
-    # State detection (CAP-6): route based on identity state, not CLI flags.
-    # Load sanctum fields once — shared by state detection and system prompt assembly.
+    # Profile selection — runtime, not persisted.
+    # 0 profiles → First Breath. 1 profile → auto-select. N → pick first (future: selection UI).
+    profiles = core.list_profiles()
+    if profiles:
+        core.set_runtime_profile(profiles[0]["id"])
+
+    # State detection: route based on identity state, not CLI flags.
     active_profile = core.get_active_profile()
     sanctum_fields: dict = {}
     if active_profile:
         owner_id = core.owner_id_from_profile(active_profile)
         sanctum_fields = store.load_sanctum_fields_sync(owner_id, active_profile)
 
-    profiles = core.list_profiles()
     has_sanctum = bool(sanctum_fields.get("persona"))
     is_first_breath = not profiles and not has_sanctum
 
@@ -394,6 +398,20 @@ def run_conversation() -> None:
 
     system_prompt = core.load_system_prompt(registry=registry, _sanctum_fields=sanctum_fields)
     task = "first_breath" if is_first_breath else "conversation"
+
+    # First Breath: pre-generate YANA's opening line so TUI doesn't open blank
+    greeting: str | None = None
+    if is_first_breath:
+        try:
+            greeting = prov.call_llm(
+                [{"role": "user", "content": "..."}],
+                system_prompt,
+                task="first_breath",
+                stream=False,
+                config=providers_config,
+            )
+        except Exception:
+            pass
 
     # Voice closures — passed to TUI so ctrl+v can activate them at any time
     _cfg = voice_cfg
@@ -422,6 +440,7 @@ def run_conversation() -> None:
         voice_mode=False,  # TUI starts in text mode; user toggles with ctrl+v
         listen_fn=_listen,
         speak_fn=_speak,
+        greeting=greeting,
         profiles=profiles,
         active_profile=active_profile,
         sessions=sessions,

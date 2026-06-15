@@ -7,11 +7,16 @@ Saves and loads session logs for continuity.
 
 from __future__ import annotations
 
-import re
 from datetime import datetime
 from pathlib import Path
 
 import errors
+
+# ---------------------------------------------------------------------------
+# Runtime state — set once at startup via set_runtime_profile()
+# ---------------------------------------------------------------------------
+
+_active_profile: str = ""
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -86,8 +91,12 @@ def load_system_prompt(
         if pulse_config:
             parts.append(f"---\n## PULSE CONFIG\n\n```yaml\n{pulse_config}\n```")
     else:
-        # No active profile — First Breath hasn't happened
-        parts.append(f"---\n[{errors.e('SYS-001')}]")
+        # No active profile — First Breath: inject the birth protocol
+        first_breath_path = _skill_root() / "references" / "first-breath.md"
+        if first_breath_path.exists():
+            parts.append(f"---\n## FIRST BREATH\n\n{first_breath_path.read_text(encoding='utf-8')}")
+        else:
+            parts.append(f"---\n[{errors.e('SYS-001')}]")
 
     # Episodic memory from Graphiti — injected when available
     import memory as mem
@@ -183,9 +192,6 @@ def load_pulse_config() -> dict:
         return {}
 
 
-_PROVIDERS_CFG_PATH = Path(__file__).parent / "config" / "providers.yaml"
-
-
 def list_profiles() -> list[dict]:
     """Return configured profiles [{id, label}, ...] from PostgreSQL."""
     import store
@@ -199,48 +205,32 @@ def profiles_exist() -> bool:
 
 
 def get_active_profile() -> str:
-    """Return the active profile id from providers.yaml (active_profile or group_id fallback)."""
-    try:
-        import yaml
-
-        raw = yaml.safe_load(_PROVIDERS_CFG_PATH.read_text(encoding="utf-8")) or {}
-        g = raw.get("graphiti", {})
-        return g.get("active_profile") or g.get("group_id", "")
-    except Exception:
-        return ""
+    """Return the runtime-selected profile id (set at startup via set_runtime_profile)."""
+    return _active_profile
 
 
-def set_active_profile(profile_id: str) -> None:
-    """Update active_profile in providers.yaml in-place (preserves comments and structure)."""
-    text = _PROVIDERS_CFG_PATH.read_text(encoding="utf-8")
-    if "  active_profile:" in text:
-        text = re.sub(r"  active_profile:.*", f'  active_profile: "{profile_id}"', text)
-    elif "  group_id:" in text:
-        text = re.sub(
-            r"  group_id:.*",
-            f'  active_profile: "{profile_id}"  # owner::context format',
-            text,
-        )
-    _PROVIDERS_CFG_PATH.write_text(text, encoding="utf-8")
+def set_runtime_profile(profile_id: str) -> None:
+    """Set the active profile for this process. Called once at startup after profile selection."""
+    global _active_profile
+    _active_profile = profile_id
 
 
 def add_profile(profile_id: str, label: str) -> None:
-    """Add a profile to PostgreSQL and set it as active."""
+    """Add a profile to PostgreSQL and activate it in this process."""
     import store
 
     store.add_profile_sync(profile_id, label)
-    set_active_profile(profile_id)
+    set_runtime_profile(profile_id)
 
 
 def delete_profile(profile_id: str) -> None:
-    """Remove a profile from PostgreSQL and update active_profile if needed."""
+    """Remove a profile from PostgreSQL. Clears runtime profile if it was the active one."""
     import store
 
     store.delete_profile_sync(profile_id)
     if get_active_profile() == profile_id:
         remaining = list_profiles()
-        if remaining:
-            set_active_profile(remaining[0]["id"])
+        set_runtime_profile(remaining[0]["id"] if remaining else "")
 
 
 def is_quiet_hours(pulse_config: dict | None = None) -> bool:
