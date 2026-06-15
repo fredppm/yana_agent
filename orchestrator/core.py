@@ -64,7 +64,13 @@ def load_system_prompt(
     if not skill_md.exists():
         raise FileNotFoundError(f"SKILL.md not found at {skill_md}")
 
-    parts: list[str] = [f"---\n## SKILL\n\n{skill_md.read_text(encoding='utf-8')}"]
+    now = datetime.now()
+    date_str = now.strftime("%A, %d %B %Y")
+    time_str = now.strftime("%H:%M")
+    parts: list[str] = [
+        f"---\n## Context\n\nDate: {date_str}\nTime: {time_str}",
+        f"---\n## SKILL\n\n{skill_md.read_text(encoding='utf-8')}",
+    ]
 
     # Sanctum fields from PostgreSQL — in order, skip missing
     active = get_active_profile()
