@@ -371,8 +371,6 @@ def _register_first_profile() -> None:
 
 def run_conversation() -> None:
     providers_config = prov.load_providers()
-    # Initialize PostgreSQL schema (idempotent — safe to run on every startup)
-    store.init_schema_sync()
     voice_cfg = v.load_voice_config(providers_config)
 
     registry = connectors_setup.build_registry()
@@ -470,6 +468,9 @@ def main() -> None:
     if args.init:
         run_init()
         return
+
+    # Initialize PostgreSQL schema on every startup (idempotent — CREATE TABLE IF NOT EXISTS)
+    store.init_schema_sync()
 
     if args.programmer:
         from programmer.mode import run_programmer_mode
