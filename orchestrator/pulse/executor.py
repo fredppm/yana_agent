@@ -13,6 +13,7 @@ Final failure is written to the Pulse session as an error notification.
 from __future__ import annotations
 
 import time
+from typing import Any
 
 import errors
 import output
@@ -30,7 +31,7 @@ _BACKOFF_SECONDS = (60, 180, 540)  # 1 min → 3 min → 9 min
 # ---------------------------------------------------------------------------
 
 
-def execute_task(task: PulseTask, registry: object) -> None:
+def execute_task(task: PulseTask, registry: Any) -> None:
     """
     Execute task with retry/backoff. Writes result or error to a YANA session.
 
@@ -61,9 +62,9 @@ def execute_task(task: PulseTask, registry: object) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _run_once(task: PulseTask, registry: object) -> None:
+def _run_once(task: PulseTask, registry: Any) -> None:
     """Single execution attempt — raises on any failure."""
-    result = registry.call(task.observe.source, task.observe.operation, task.observe.params)  # type: ignore[union-attr]
+    result = registry.call(task.observe.source, task.observe.operation, task.observe.params)
 
     if not result.ok:
         raise RuntimeError(
@@ -90,7 +91,7 @@ def _summarize(data: object, prompt: str, task_name: str) -> str:
         f"You are YANA's Pulse summarization engine. Task: {task_name}. "
         "Be concise and useful. Respond in the same language as the user prompt."
     )
-    return call_llm(messages=messages, system=system, task="pulse_scheduled", stream=False)
+    return call_llm(messages=messages, system_prompt=system, task="pulse_scheduled", stream=False)
 
 
 def _store(task_name: str, data: object) -> None:

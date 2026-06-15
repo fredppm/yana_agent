@@ -189,8 +189,8 @@ def _reschedule(scheduler: Any, tasks_file: Path, registry: Any) -> None:
     Triggers are always created anew from the task definition to avoid
     carrying stale DateTrigger run_dates into the live scheduler.
     """
-    from apscheduler.triggers.cron import CronTrigger  # type: ignore[import-untyped]
-    from apscheduler.triggers.date import DateTrigger  # type: ignore[import-untyped]
+    from apscheduler.triggers.cron import CronTrigger
+    from apscheduler.triggers.date import DateTrigger
 
     from .config_loader import TaskConfigError, load_tasks
     from .runner import _day_of_week, _guarded_execute, _once_execute

@@ -14,9 +14,9 @@ import threading
 from pathlib import Path
 
 import output
-from apscheduler.schedulers.background import BackgroundScheduler  # type: ignore[import-untyped]
-from apscheduler.triggers.cron import CronTrigger  # type: ignore[import-untyped]
-from apscheduler.triggers.date import DateTrigger  # type: ignore[import-untyped]
+from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.cron import CronTrigger
+from apscheduler.triggers.date import DateTrigger
 from connectors.loader import load_connectors
 from connectors.registry import ConnectorRegistry
 from core import is_quiet_hours, sanctum_path

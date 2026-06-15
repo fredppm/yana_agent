@@ -117,6 +117,7 @@ def load_system_prompt(voice_mode: bool = False, registry=None) -> str:
 
     # Current datetime — injected so LLM can compute relative times (e.g. "daqui 1 minuto")
     from datetime import datetime
+
     now = datetime.now()
     parts.append(
         f"---\n## Current datetime\n\n"
