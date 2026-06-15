@@ -120,7 +120,7 @@ async def store_session(messages: list[dict], session_id: str) -> None:
     for m in messages:
         if not isinstance(m.get("content"), str) or not m["content"].strip():
             continue
-        role = "Fred" if m["role"] == "user" else "YANA"
+        role = "user" if m["role"] == "user" else "YANA"
         lines.append(f"{role}: {m['content']}")
     conversation_text = "\n".join(lines)
 
@@ -155,7 +155,7 @@ async def store_session(messages: list[dict], session_id: str) -> None:
 
 
 async def load_context(
-    query: str = "quem e Fred, o que esta acontecendo na vida dele agora",
+    query: str = "quem e o usuario, o que esta acontecendo na vida dele agora",
 ) -> str:
     """
     Retrieve relevant memory from Graphiti to inject into the system prompt.
@@ -214,7 +214,7 @@ def store_session_background(messages: list[dict], session_id: str) -> None:
 
 
 def load_context_sync(
-    query: str = "quem e Fred, o que esta acontecendo na vida dele agora",
+    query: str = "quem e o usuario, o que esta acontecendo na vida dele agora",
     timeout: float = 5.0,
 ) -> str:
     """

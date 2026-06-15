@@ -71,7 +71,7 @@ class SanctumContext:
         persona is YANA's identity, not needed by the engine.
         Hard-truncates at max_tokens*4 chars as a rough proxy.
         """
-        combined = f"## Who Fred is (BOND)\n\n{self.bond}\n" if self.bond else ""
+        combined = f"## BOND\n\n{self.bond}\n" if self.bond else ""
         char_limit = max_tokens * 4
         return combined[:char_limit] if len(combined) > char_limit else combined
 
