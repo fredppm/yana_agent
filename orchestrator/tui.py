@@ -181,7 +181,7 @@ class ProfileSessionScreen(Screen[str | None]):
             return
         parts = []
         for i, p in enumerate(self._profiles):
-            label = escape(p.get("label", p["id"]))
+            label = escape(p.get("label") or p["id"])
             if i == self._profile_idx:
                 parts.append(f"[bold white]{label}[/bold white]")
             else:

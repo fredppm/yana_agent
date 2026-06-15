@@ -382,13 +382,20 @@ def run_conversation() -> None:
     output.configure(voice_mode=False)
 
     # State detection (CAP-6): route based on identity state, not CLI flags.
-    profiles = core.list_profiles()
+    # Load sanctum fields once — shared by state detection and system prompt assembly.
     active_profile = core.get_active_profile()
-    is_first_breath = not profiles and not core.sanctum_exists()
+    sanctum_fields: dict = {}
+    if active_profile:
+        owner_id = active_profile.split("::")[0] if "::" in active_profile else active_profile
+        sanctum_fields = mem.load_sanctum_fields_sync(owner_id, active_profile)
 
-    sessions = core.list_sessions() if (profiles or core.sanctum_exists()) else []
+    profiles = core.list_profiles()
+    has_sanctum = bool(sanctum_fields.get("PERSONA.md"))
+    is_first_breath = not profiles and not has_sanctum
 
-    system_prompt = core.load_system_prompt(registry=registry)
+    sessions = core.list_sessions() if (profiles or has_sanctum) else []
+
+    system_prompt = core.load_system_prompt(registry=registry, _sanctum_fields=sanctum_fields)
     task = "first_breath" if is_first_breath else "conversation"
 
     # Voice closures — passed to TUI so ctrl+v can activate them at any time
@@ -456,6 +463,10 @@ def main() -> None:
         level=logging.DEBUG if args.verbose else logging.WARNING,
         format="[%(levelname)s] %(name)s: %(message)s",
     )
+    # Neo4j emits schema warnings for properties that don't exist yet (empty graph).
+    # These are expected on first run and add no signal — suppress unless verbose.
+    if not args.verbose:
+        logging.getLogger("neo4j.notifications").setLevel(logging.ERROR)
 
     if args.init:
         run_init()

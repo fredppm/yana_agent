@@ -62,15 +62,16 @@ def build_connector_manifest(registry) -> str:
     return "\n".join(lines)
 
 
-def load_system_prompt(voice_mode: bool = False, registry=None) -> str:
+def load_system_prompt(
+    voice_mode: bool = False,
+    registry=None,
+    _sanctum_fields: dict[str, str] | None = None,
+) -> str:
     """
     Build the system prompt by concatenating SKILL.md + sanctum fields from Neo4j.
 
-    If sanctum doesn't exist yet, returns only SKILL.md so the orchestrator
-    can still start and trigger First Breath.
-
-    voice_mode=True appends a no-markdown instruction.
-    registry: if provided, injects the lightweight connector manifest.
+    _sanctum_fields: pre-loaded sanctum fields (avoids a second Neo4j query when the
+    caller already has them). If None, loads from Neo4j.
     """
     skill_md = _skill_root() / "SKILL.md"
     if not skill_md.exists():
@@ -83,8 +84,11 @@ def load_system_prompt(voice_mode: bool = False, registry=None) -> str:
     if active:
         import memory as mem
 
-        owner_id = active.split("::")[0] if "::" in active else active
-        fields = mem.load_sanctum_fields_sync(owner_id, active)
+        if _sanctum_fields is None:
+            owner_id = active.split("::")[0] if "::" in active else active
+            fields = mem.load_sanctum_fields_sync(owner_id, active)
+        else:
+            fields = _sanctum_fields
         file_order = [
             "PERSONA.md",
             "CREED.md",
