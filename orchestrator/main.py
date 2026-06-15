@@ -347,7 +347,7 @@ def _register_first_profile() -> None:
     active = core.get_active_profile()
     owner_id: str | None = None
     if active:
-        candidate = active.split("::")[0] if "::" in active else active
+        candidate = core.owner_id_from_profile(active)
         fields = mem_mod.load_sanctum_fields_sync(candidate, active)
         persona = fields.get("PERSONA.md", "")
         if persona:
@@ -386,7 +386,7 @@ def run_conversation() -> None:
     active_profile = core.get_active_profile()
     sanctum_fields: dict = {}
     if active_profile:
-        owner_id = active_profile.split("::")[0] if "::" in active_profile else active_profile
+        owner_id = core.owner_id_from_profile(active_profile)
         sanctum_fields = mem.load_sanctum_fields_sync(owner_id, active_profile)
 
     profiles = core.list_profiles()

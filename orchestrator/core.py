@@ -85,7 +85,7 @@ def load_system_prompt(
         import memory as mem
 
         if _sanctum_fields is None:
-            owner_id = active.split("::")[0] if "::" in active else active
+            owner_id = owner_id_from_profile(active)
             fields = mem.load_sanctum_fields_sync(owner_id, active)
         else:
             fields = _sanctum_fields
@@ -152,6 +152,16 @@ def load_session_messages(session_id: str) -> list[dict]:
 
 
 # ---------------------------------------------------------------------------
+# Profile identity helpers
+# ---------------------------------------------------------------------------
+
+
+def owner_id_from_profile(profile_id: str) -> str:
+    """Extract owner from a profile id. 'fred::pessoal' → 'fred'."""
+    return profile_id.split("::")[0]
+
+
+# ---------------------------------------------------------------------------
 # Sanctum state check
 # ---------------------------------------------------------------------------
 
@@ -163,7 +173,7 @@ def sanctum_exists() -> bool:
     active = get_active_profile()
     if not active:
         return False
-    owner_id = active.split("::")[0] if "::" in active else active
+    owner_id = owner_id_from_profile(active)
     fields = mem.load_sanctum_fields_sync(owner_id, active)
     return bool(fields.get("PERSONA.md"))
 
@@ -181,7 +191,7 @@ def load_pulse_config() -> dict:
     active = get_active_profile()
     if not active:
         return {}
-    owner_id = active.split("::")[0] if "::" in active else active
+    owner_id = owner_id_from_profile(active)
     fields = mem.load_sanctum_fields_sync(owner_id, active)
     raw = fields.get("pulse-config.yaml", "")
     if not raw:

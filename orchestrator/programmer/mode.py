@@ -53,7 +53,7 @@ class SanctumContext:
         active = core.get_active_profile()
         if not active:
             raise FileNotFoundError("No active profile — sanctum not initialised")
-        owner_id = active.split("::")[0] if "::" in active else active
+        owner_id = core.owner_id_from_profile(active)
         fields = mem.load_sanctum_fields_sync(owner_id, active)
         if not fields.get("PERSONA.md"):
             raise FileNotFoundError(

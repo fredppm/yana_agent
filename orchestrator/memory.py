@@ -166,7 +166,7 @@ async def load_context(
     client = _build_client(cfg)
     workspace_gid = cfg.get("active_profile") or cfg.get("group_id", "yana-fred")
     # Search both owner-level (fred) and workspace-level (fred::pessoal) group_ids
-    owner_gid = workspace_gid.split("::")[0] if "::" in workspace_gid else workspace_gid
+    owner_gid = workspace_gid.split("::")[0]
     search_group_ids = list({owner_gid, workspace_gid})
     try:
         results = await client.search(
@@ -276,7 +276,7 @@ async def init_schema(cfg: dict) -> None:
 
 
 async def add_profile(cfg: dict, workspace_id: str, label: str) -> None:
-    owner_id = workspace_id.split("::")[0] if "::" in workspace_id else workspace_id
+    owner_id = workspace_id.split("::")[0]
     query = (
         "MERGE (o:YANAOwner {id: $owner_id}) "
         "MERGE (w:YANAWorkspace {id: $workspace_id}) "

@@ -124,7 +124,7 @@ def write_sanctum(
 
     if written:
         active = core.get_active_profile()
-        owner_id = active.split("::")[0] if "::" in active else active
+        owner_id = core.owner_id_from_profile(active)
         import memory as mem
 
         mem.save_sanctum_fields_sync(owner_id, active, written)
