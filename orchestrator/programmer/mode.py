@@ -2,9 +2,6 @@
 mode.py — YANA programmer mode activation and session loop.
 
 Entry point: run_programmer_mode(). Called from main.py when --programmer is passed.
-
-Story 1.1 scope: activation, mode selection, sanctum load, readiness signal.
-Stories 1.2-1.4 will extend _handle_request() with clarification, routing, and filtering.
 """
 
 from __future__ import annotations
@@ -28,24 +25,17 @@ class InteractionMode(Enum):
 
 
 # ---------------------------------------------------------------------------
-# Sanctum context — the YANA knowledge loaded at mode activation
+# Sanctum context — loaded once at activation, passed to each dispatch
 # ---------------------------------------------------------------------------
 
 
 @dataclass
 class SanctumContext:
-    """
-    The subset of sanctum files relevant to programmer mode dispatch.
-
-    Loaded once at activation; passed into every EngineRequest as context.
-    """
-
-    bond: str  # BOND.md — enduring truths about Fred
-    persona: str  # PERSONA.md — YANA's identity
+    bond: str  # enduring truths about the owner
 
     @classmethod
     def load(cls) -> SanctumContext:
-        """Load BOND and PERSONA from Neo4j."""
+        """Load from Neo4j. Raises FileNotFoundError if sanctum not initialised."""
         import core
         import memory as mem
 
@@ -58,22 +48,7 @@ class SanctumContext:
             raise FileNotFoundError(
                 "Sanctum not initialised — run YANA first to complete First Breath"
             )
-        return cls(
-            bond=fields.get("bond", ""),
-            persona=fields.get("persona", ""),
-        )
-
-    def as_context_string(self, max_tokens: int = 500) -> str:
-        """
-        Produce a condensed context string for EngineRequest.context.
-
-        Uses bond only — episodic memory comes from Graphiti at runtime.
-        persona is YANA's identity, not needed by the engine.
-        Hard-truncates at max_tokens*4 chars as a rough proxy.
-        """
-        combined = f"## BOND\n\n{self.bond}\n" if self.bond else ""
-        char_limit = max_tokens * 4
-        return combined[:char_limit] if len(combined) > char_limit else combined
+        return cls(bond=fields.get("bond", ""))
 
 
 # ---------------------------------------------------------------------------
@@ -283,7 +258,7 @@ def _handle_request(
     """
     Create worktree, inject context, run engine interactively.
 
-    Blocks until the engine session ends — Fred talks to the engine directly.
+    Blocks until the engine session ends.
     Returns DispatchResult (for worktree tracking) or None on failure.
     """
     from programmer.dispatcher import (

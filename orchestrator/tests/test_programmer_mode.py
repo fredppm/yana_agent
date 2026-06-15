@@ -86,40 +86,34 @@ class TestResolveMode:
 
 
 # ---------------------------------------------------------------------------
-# Sanctum context load (from Neo4j via mocked memory)
+# SanctumContext — load from Neo4j
 # ---------------------------------------------------------------------------
 
 
 class TestSanctumContext:
     def _mock_fields(self, fields: dict[str, str]):
-        """Patch memory + core so SanctumContext.load() returns the given fields."""
         return [
             patch("memory.load_sanctum_fields_sync", return_value=fields),
-            patch("core.get_active_profile", return_value="fred::pessoal"),
+            patch("core.get_active_profile", return_value="owner::pessoal"),
         ]
 
-    def test_load_happy_path(self) -> None:
-        fields = {
-            "bond": "Fred is a developer.",
-            "persona": "I am YANA.",
-        }
-        patches = self._mock_fields(fields)
+    def test_happy_path_returns_bond(self) -> None:
+        patches = self._mock_fields({"bond": "Loves speed.", "persona": "I am YANA."})
         for p in patches:
             p.start()
         try:
             ctx = SanctumContext.load()
-            assert "Fred is a developer" in ctx.bond
-            assert "YANA" in ctx.persona
+            assert "Loves speed" in ctx.bond
         finally:
             for p in patches:
                 p.stop()
 
-    def test_load_missing_profile_raises(self) -> None:
+    def test_missing_profile_raises(self) -> None:
         with patch("core.get_active_profile", return_value=""):
             with pytest.raises(FileNotFoundError):
                 SanctumContext.load()
 
-    def test_load_no_persona_raises(self) -> None:
+    def test_no_persona_raises(self) -> None:
         patches = self._mock_fields({"bond": "something"})
         for p in patches:
             p.start()
@@ -130,34 +124,15 @@ class TestSanctumContext:
             for p in patches:
                 p.stop()
 
-    def test_load_partial_sanctum_fills_empty_strings(self) -> None:
-        fields = {"persona": "I am YANA."}
-        patches = self._mock_fields(fields)
+    def test_missing_bond_returns_empty_string(self) -> None:
+        patches = self._mock_fields({"persona": "I am YANA."})
         for p in patches:
             p.start()
         try:
-            ctx = SanctumContext.load()
-            assert ctx.persona == "I am YANA."
-            assert ctx.bond == ""
+            assert SanctumContext.load().bond == ""
         finally:
             for p in patches:
                 p.stop()
-
-    def test_as_context_string_includes_bond(self) -> None:
-        ctx = SanctumContext(bond="Fred values speed.", persona="I am YANA.")
-        result = ctx.as_context_string()
-        assert "Fred values speed" in result
-
-    def test_as_context_string_excludes_persona(self) -> None:
-        ctx = SanctumContext(bond="Fred.", persona="YANA persona info.")
-        result = ctx.as_context_string()
-        assert "YANA persona info" not in result
-
-    def test_as_context_string_truncates_at_max_tokens(self) -> None:
-        long_text = "x" * 10_000
-        ctx = SanctumContext(bond=long_text, persona="")
-        result = ctx.as_context_string(max_tokens=100)
-        assert len(result) <= 100 * 4 + 100  # allow for header text overhead
 
 
 # ---------------------------------------------------------------------------

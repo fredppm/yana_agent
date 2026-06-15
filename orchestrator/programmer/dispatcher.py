@@ -52,7 +52,7 @@ def dispatch_request(
     """
     Create worktree, assemble EngineRequest, run engine interactively.
 
-    Blocks until the engine session ends (Fred exits or task completes).
+    Blocks until the engine session ends.
     Returns DispatchResult on success, DispatchFailed on error.
     """
     if engine is None:
@@ -70,9 +70,10 @@ def dispatch_request(
     except WorktreeError as exc:
         return DispatchFailed(reason=f"Could not create worktree: {exc}")
 
+    context = f"## BOND\n\n{sanctum.bond}\n" if sanctum.bond else ""
     request = EngineRequest(
         prompt=enriched_prompt,
-        context=sanctum.as_context_string(),
+        context=context,
         worktree_path=worktree_path,
         session_id=session_id,
     )
