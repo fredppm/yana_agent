@@ -19,26 +19,8 @@ import errors
 
 
 def _project_root() -> Path:
-    """
-    Resolve project root: two levels up from this file (orchestrator/).
-
-    In a git worktree the working tree is isolated but data/ is gitignored and
-    lives only in the main worktree. Detect this case by reading the .git file
-    and following commondir to the main repo root.
-    """
-    here = Path(__file__).parent.parent
-    git_entry = here / ".git"
-    if git_entry.is_file():
-        # Worktree: .git is a file with "gitdir: <path>"
-        line = git_entry.read_text(encoding="utf-8").strip()
-        if line.startswith("gitdir:"):
-            gitdir = Path(line[7:].strip())
-            common_file = gitdir / "commondir"
-            if common_file.exists():
-                common_rel = common_file.read_text(encoding="utf-8").strip()
-                common_git = (gitdir / common_rel).resolve()
-                return common_git.parent  # main repo root
-    return here
+    """Resolve project root: two levels up from this file (orchestrator/)."""
+    return Path(__file__).parent.parent
 
 
 def _skill_root() -> Path:
