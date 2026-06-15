@@ -72,11 +72,11 @@ def load_system_prompt(
         else:
             fields = _sanctum_fields
         field_order = [
-            ("persona", "PERSONA.md"),
-            ("creed", "CREED.md"),
-            ("bond", "BOND.md"),
-            ("capabilities", "CAPABILITIES.md"),
-            ("pulse", "PULSE.md"),
+            ("persona", "PERSONA"),
+            ("creed", "CREED"),
+            ("bond", "BOND"),
+            ("capabilities", "CAPABILITIES"),
+            ("pulse", "PULSE"),
         ]
         for prop, header in field_order:
             content = fields.get(prop)
@@ -84,7 +84,7 @@ def load_system_prompt(
                 parts.append(f"---\n## {header}\n\n{content}")
         pulse_config = fields.get("pulse_config")
         if pulse_config:
-            parts.append(f"---\n## pulse-config.yaml\n\n```yaml\n{pulse_config}\n```")
+            parts.append(f"---\n## PULSE CONFIG\n\n```yaml\n{pulse_config}\n```")
     else:
         # No active profile — First Breath hasn't happened
         parts.append(f"---\n[{errors.e('SYS-001')}]")
