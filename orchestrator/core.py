@@ -89,19 +89,18 @@ def load_system_prompt(
             fields = mem.load_sanctum_fields_sync(owner_id, active)
         else:
             fields = _sanctum_fields
-        file_order = [
-            "PERSONA.md",
-            "CREED.md",
-            "BOND.md",
-            "MEMORY.md",
-            "CAPABILITIES.md",
-            "PULSE.md",
+        field_order = [
+            ("persona", "PERSONA.md"),
+            ("creed", "CREED.md"),
+            ("bond", "BOND.md"),
+            ("capabilities", "CAPABILITIES.md"),
+            ("pulse", "PULSE.md"),
         ]
-        for fname in file_order:
-            content = fields.get(fname)
+        for prop, header in field_order:
+            content = fields.get(prop)
             if content:
-                parts.append(f"---\n## {fname}\n\n{content}")
-        pulse_config = fields.get("pulse-config.yaml")
+                parts.append(f"---\n## {header}\n\n{content}")
+        pulse_config = fields.get("pulse_config")
         if pulse_config:
             parts.append(f"---\n## pulse-config.yaml\n\n```yaml\n{pulse_config}\n```")
     else:
@@ -175,7 +174,7 @@ def sanctum_exists() -> bool:
         return False
     owner_id = owner_id_from_profile(active)
     fields = mem.load_sanctum_fields_sync(owner_id, active)
-    return bool(fields.get("PERSONA.md"))
+    return bool(fields.get("persona"))
 
 
 # ---------------------------------------------------------------------------
@@ -184,7 +183,7 @@ def sanctum_exists() -> bool:
 
 
 def load_pulse_config() -> dict:
-    """Load pulse config from Neo4j workspace context."""
+    """Load pulse config from Neo4j profile context."""
     import memory as mem
     import yaml
 
@@ -193,7 +192,7 @@ def load_pulse_config() -> dict:
         return {}
     owner_id = owner_id_from_profile(active)
     fields = mem.load_sanctum_fields_sync(owner_id, active)
-    raw = fields.get("pulse-config.yaml", "")
+    raw = fields.get("pulse_config", "")
     if not raw:
         return {}
     try:

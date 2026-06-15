@@ -100,9 +100,8 @@ class TestSanctumContext:
 
     def test_load_happy_path(self) -> None:
         fields = {
-            "BOND.md": "Fred is a developer.",
-            "MEMORY.md": "Working on yana_agent.",
-            "PERSONA.md": "I am YANA.",
+            "bond": "Fred is a developer.",
+            "persona": "I am YANA.",
         }
         patches = self._mock_fields(fields)
         for p in patches:
@@ -110,7 +109,6 @@ class TestSanctumContext:
         try:
             ctx = SanctumContext.load()
             assert "Fred is a developer" in ctx.bond
-            assert "yana_agent" in ctx.memory
             assert "YANA" in ctx.persona
         finally:
             for p in patches:
@@ -122,7 +120,7 @@ class TestSanctumContext:
                 SanctumContext.load()
 
     def test_load_no_persona_raises(self) -> None:
-        patches = self._mock_fields({"BOND.md": "something"})
+        patches = self._mock_fields({"bond": "something"})
         for p in patches:
             p.start()
         try:
@@ -133,7 +131,7 @@ class TestSanctumContext:
                 p.stop()
 
     def test_load_partial_sanctum_fills_empty_strings(self) -> None:
-        fields = {"PERSONA.md": "I am YANA."}
+        fields = {"persona": "I am YANA."}
         patches = self._mock_fields(fields)
         for p in patches:
             p.start()
@@ -141,33 +139,23 @@ class TestSanctumContext:
             ctx = SanctumContext.load()
             assert ctx.persona == "I am YANA."
             assert ctx.bond == ""
-            assert ctx.memory == ""
         finally:
             for p in patches:
                 p.stop()
 
-    def test_as_context_string_includes_bond_and_memory(self) -> None:
-        ctx = SanctumContext(
-            bond="Fred values speed.",
-            memory="Working on story 1.1.",
-            persona="I am YANA.",
-        )
+    def test_as_context_string_includes_bond(self) -> None:
+        ctx = SanctumContext(bond="Fred values speed.", persona="I am YANA.")
         result = ctx.as_context_string()
         assert "Fred values speed" in result
-        assert "story 1.1" in result
 
     def test_as_context_string_excludes_persona(self) -> None:
-        ctx = SanctumContext(
-            bond="Fred.",
-            memory="",
-            persona="YANA persona info.",
-        )
+        ctx = SanctumContext(bond="Fred.", persona="YANA persona info.")
         result = ctx.as_context_string()
         assert "YANA persona info" not in result
 
     def test_as_context_string_truncates_at_max_tokens(self) -> None:
         long_text = "x" * 10_000
-        ctx = SanctumContext(bond=long_text, memory="", persona="")
+        ctx = SanctumContext(bond=long_text, persona="")
         result = ctx.as_context_string(max_tokens=100)
         assert len(result) <= 100 * 4 + 100  # allow for header text overhead
 

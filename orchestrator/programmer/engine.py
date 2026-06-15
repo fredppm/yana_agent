@@ -24,7 +24,7 @@ class EngineRequest:
     """Everything YANA sends to the engine when dispatching a request."""
 
     prompt: str  # Fred's request
-    context: str  # sanctum summary (BOND.md + MEMORY.md)
+    context: str  # sanctum summary (BOND.md — episodic memory from Graphiti)
     worktree_path: Path
     session_id: str
 

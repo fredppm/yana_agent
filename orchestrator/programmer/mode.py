@@ -41,12 +41,11 @@ class SanctumContext:
     """
 
     bond: str  # BOND.md — enduring truths about Fred
-    memory: str  # MEMORY.md — current situations, open threads
     persona: str  # PERSONA.md — YANA's identity
 
     @classmethod
     def load(cls) -> SanctumContext:
-        """Load BOND, MEMORY, PERSONA from Neo4j."""
+        """Load BOND and PERSONA from Neo4j."""
         import core
         import memory as mem
 
@@ -55,28 +54,24 @@ class SanctumContext:
             raise FileNotFoundError("No active profile — sanctum not initialised")
         owner_id = core.owner_id_from_profile(active)
         fields = mem.load_sanctum_fields_sync(owner_id, active)
-        if not fields.get("PERSONA.md"):
+        if not fields.get("persona"):
             raise FileNotFoundError(
                 "Sanctum not initialised — run YANA first to complete First Breath"
             )
         return cls(
-            bond=fields.get("BOND.md", ""),
-            memory=fields.get("MEMORY.md", ""),
-            persona=fields.get("PERSONA.md", ""),
+            bond=fields.get("bond", ""),
+            persona=fields.get("persona", ""),
         )
 
     def as_context_string(self, max_tokens: int = 500) -> str:
         """
         Produce a condensed context string for EngineRequest.context.
 
-        Concatenates bond + memory. persona is YANA's identity, not needed by
-        the engine. Hard-truncates at max_tokens*4 chars as a rough proxy.
+        Uses bond only — episodic memory comes from Graphiti at runtime.
+        persona is YANA's identity, not needed by the engine.
+        Hard-truncates at max_tokens*4 chars as a rough proxy.
         """
-        combined = ""
-        if self.bond:
-            combined += f"## Who Fred is (BOND)\n\n{self.bond}\n\n"
-        if self.memory:
-            combined += f"## Current context (MEMORY)\n\n{self.memory}\n"
+        combined = f"## Who Fred is (BOND)\n\n{self.bond}\n" if self.bond else ""
         char_limit = max_tokens * 4
         return combined[:char_limit] if len(combined) > char_limit else combined
 

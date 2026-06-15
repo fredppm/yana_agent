@@ -49,7 +49,6 @@ class _MockEngine(CodingEngine):
 def sanctum() -> SanctumContext:
     return SanctumContext(
         bond="Fred is a developer.",
-        memory="Working on yana_agent.",
         persona="I am YANA.",
     )
 

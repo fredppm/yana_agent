@@ -29,14 +29,12 @@ FIRST_BREATH_FILES = [
     "PERSONA.md",
     "CREED.md",
     "BOND.md",
-    "MEMORY.md",
     "PULSE.md",
     "pulse-config.yaml",
 ]
 
 REGULAR_SESSION_FILES = [
     "BOND.md",
-    "MEMORY.md",
 ]
 
 SANCTUM_CONTEXT_LIMIT = 20  # max messages sent to LLM for sanctum write
@@ -64,7 +62,6 @@ Files to write:
 Rules:
 - Replace ALL {{...}} placeholders with real content from our conversation. None should remain.
 - BOND.md: who Fred IS (enduring truths). Not what he's going through right now.
-- MEMORY.md: current situations, open threads, tracked items. Things that change.
 - PERSONA.md: your identity as it crystallized through this conversation. Include your first evolution log entry.
 - CREED.md: your mission, values, standing orders — filled in from what you learned about Fred.
 - PULSE.md: autonomous routines configured, quiet hours confirmed, any specific triggers discussed.

@@ -349,7 +349,7 @@ def _register_first_profile() -> None:
     if active:
         candidate = core.owner_id_from_profile(active)
         fields = mem_mod.load_sanctum_fields_sync(candidate, active)
-        persona = fields.get("PERSONA.md", "")
+        persona = fields.get("persona", "")
         if persona:
             m = re.search(
                 r"(?:#|YANA)[^\n\S]*(?:YANA[^\n—]*)?[—\-]\s*([A-Za-záéíóúàèìòùãõâêîôûñç]+)",
@@ -390,7 +390,7 @@ def run_conversation() -> None:
         sanctum_fields = mem.load_sanctum_fields_sync(owner_id, active_profile)
 
     profiles = core.list_profiles()
-    has_sanctum = bool(sanctum_fields.get("PERSONA.md"))
+    has_sanctum = bool(sanctum_fields.get("persona"))
     is_first_breath = not profiles and not has_sanctum
 
     sessions = core.list_sessions() if (profiles or has_sanctum) else []
