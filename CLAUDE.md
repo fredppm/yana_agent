@@ -10,29 +10,99 @@ Read it fully before touching code. Changes that break the contracts below will 
 ```
 yana_agent/
   orchestrator/           # Python entry point + all runtime logic
-    main.py               # CLI: --text (text mode) | --pulse (PULSE run) | default (voice)
-    core.py               # System prompt assembly, session persistence, sanctum state
+    main.py               # CLI: --text | --pulse | --programmer | default (voice)
+    core.py               # System prompt assembly, profile/sanctum helpers
+    store.py              # PostgreSQL storage — profiles, sanctum, sessions, connectors (SQLAlchemy)
+    memory.py             # Graphiti episodic memory — Neo4j only
     providers.py          # Multi-model LLM routing (Anthropic / Bedrock / OpenAI)
     voice.py              # STT (faster-whisper) + TTS (edge-tts)
     sanctum_writer.py     # Post-session sanctum persistence via structured LLM call
+    alembic.ini           # Alembic config (URL read from providers.yaml at runtime)
+    alembic/
+      env.py              # Alembic environment — imports Base and _load_url from store.py
+      versions/           # Migration files — one per schema change, committed to git
     config/
-      providers.yaml      # Model routing config — edit here to change models/providers
+      providers.yaml      # Model routing + DB connection config
     tests/                # Pytest suite for pure logic (no external deps)
   skills/
     agent-yana/           # YANA skill definition
       SKILL.md            # Identity seed (read-only at runtime)
       references/         # first-breath.md, memory-guidance.md, etc.
-      scripts/            # init-sanctum.py (one-time setup)
-  data/
-    agent-yana/           # Sanctum — YANA's persistent memory (gitignored)
-      PERSONA.md
-      CREED.md
-      BOND.md             # Who Fred IS (enduring truths)
-      MEMORY.md           # Current situations, open threads
-      CAPABILITIES.md
-      PULSE.md
-      pulse-config.yaml
-      sessions/           # Per-date session logs
+  docker-compose.yml      # Neo4j + PostgreSQL + LiteLLM
+```
+
+---
+
+## Storage Architecture
+
+Two separate backends, two separate concerns:
+
+| Backend | Used for | Module |
+|---|---|---|
+| **PostgreSQL** | Profiles, owner identity (sanctum fields), sessions, connectors | `store.py` |
+| **Neo4j (Graphiti)** | Episodic memory only — entities, relationships, fact search | `memory.py` |
+
+**Never add operational data (profiles, sessions, config) to Neo4j. Never add episodic memory to PostgreSQL.**
+
+### PostgreSQL models (store.py)
+
+- `Owner` — identity of the owner (persona, creed, bond). One row per person.
+- `Profile` — a context within an owner (`fred::pessoal`, `fred::work`). Stores capabilities, pulse, pulse_config.
+- `Connector` — connector configs per profile.
+- `SessionRecord` — raw message history per session.
+
+### Sanctum fields
+
+Owner-level (same across profiles): `persona`, `creed`, `bond`
+Profile-level (per context): `capabilities`, `pulse`, `pulse_config`
+
+LLM write protocol maps: `PERSONA` → `persona`, `BOND` → `bond`, `PULSE_CONFIG` → `pulse_config`, etc.
+
+---
+
+## Database Migrations (Alembic)
+
+**All schema changes go through Alembic. Never edit the DB directly.**
+
+### Startup
+
+`store.init_schema_sync()` calls `alembic upgrade head` automatically on every startup.
+It is idempotent — if the schema is already up to date, nothing happens.
+
+### Adding or changing a column
+
+```bash
+# 1. Edit the SQLAlchemy model in store.py
+# 2. Generate the migration
+cd orchestrator
+alembic revision --autogenerate -m "describe the change"
+
+# 3. Review the generated file in alembic/versions/
+#    For NOT NULL columns with existing rows, edit the upgrade() to:
+#      a. add column as nullable
+#      b. backfill existing rows
+#      c. alter to NOT NULL
+# Example:
+#   def upgrade():
+#       op.add_column('owners', sa.Column('timezone', sa.String(), nullable=True))
+#       op.execute("UPDATE owners SET timezone = 'UTC'")
+#       op.alter_column('owners', 'timezone', nullable=False)
+
+# 4. Apply
+alembic upgrade head
+
+# 5. Commit the migration file with the model change
+git add alembic/versions/<new_file>.py store.py
+git commit -m "chore: add timezone column to owners"
+```
+
+### Other useful commands
+
+```bash
+alembic history          # list all migrations and their status
+alembic current          # show current DB revision
+alembic downgrade -1     # rollback one migration
+alembic downgrade base   # rollback everything
 ```
 
 ---
@@ -43,11 +113,20 @@ yana_agent/
 
 | Function | Signature | Contract |
 |---|---|---|
-| `sanctum_exists()` | `() -> bool` | True if owner PERSONA is stored in Neo4j for active profile |
+| `sanctum_exists()` | `() -> bool` | True if owner persona is stored in PostgreSQL for active profile |
 | `load_system_prompt()` | `() -> str` | Raises `FileNotFoundError` if SKILL.md missing |
 | `is_quiet_hours(pulse_config?)` | `(dict?) -> bool` | Parses `quiet_hours: "HH:MM-HH:MM"` — handles overnight windows (e.g. 23:00–07:00) |
-| `list_sessions(limit?)` | `(int) -> list[tuple[str, datetime, str]]` | Returns sessions from Neo4j as `(id, datetime, preview)` |
-| `load_session_messages(session_id)` | `(str) -> list[dict]` | Returns messages from Neo4j for the given session |
+| `list_sessions(limit?)` | `(int) -> list[tuple[str, datetime, str]]` | Returns sessions from PostgreSQL as `(id, datetime, preview)` |
+| `load_session_messages(session_id)` | `(str) -> list[dict]` | Returns messages from PostgreSQL for the given session |
+
+### store.py
+
+| Function | Signature | Contract |
+|---|---|---|
+| `init_schema_sync()` | `() -> None` | Runs `alembic upgrade head` — idempotent, safe on every startup |
+| `load_sanctum_fields_sync(owner_id, profile_id)` | `(str, str) -> dict[str, str]` | Returns `{prop: val}` for all non-null sanctum fields |
+| `save_sanctum_fields_sync(owner_id, profile_id, fields)` | `(str, str, dict) -> None` | Upserts owner + profile rows. Keys are LLM protocol names (e.g. `"BOND"`) |
+| `list_profiles_sync()` | `() -> list[dict]` | Returns `[{id, label}]` ordered by id |
 
 ### providers.py
 
@@ -76,18 +155,6 @@ yana_agent/
 
 ---
 
-## Sanctum File Roles
-
-- **BOND.md** — enduring truths about Fred. Things that would still be true tomorrow, next year.
-- **MEMORY.md** — current situations, open threads, tracked items. Changes each session.
-- **PERSONA.md** — YANA's identity as it crystallized through First Breath.
-- **CREED.md** — mission, values, standing orders calibrated to Fred.
-- **PULSE.md** — autonomous routine descriptions.
-- **pulse-config.yaml** — machine-readable PULSE config (quiet hours, scheduled tasks).
-- **sessions/{date}.md** — raw session log, written every session.
-
----
-
 ## LLM Routing
 
 Edit `orchestrator/config/providers.yaml` to change models.
@@ -110,6 +177,15 @@ No network calls. No file system side effects outside tmp. Safe to run anywhere.
 
 ---
 
+## Infrastructure
+
+```bash
+docker compose up -d   # starts Neo4j, PostgreSQL, LiteLLM
+python main.py         # YANA runs store.init_schema_sync() on startup (alembic upgrade head)
+```
+
+---
+
 ## Git Workflow
 
 ### Branch protection
@@ -117,7 +193,7 @@ No network calls. No file system side effects outside tmp. Safe to run anywhere.
 
 ### Creating a PR
 ```bash
-git checkout -b <type>/<short-description>   # e.g. feat/google-calendar-integration
+git checkout -b <type>/<short-description>
 # ... make changes ...
 git push origin <branch>
 gh pr create --title "<type>: <description>"
@@ -138,8 +214,6 @@ Format: `<type>: <short description in imperative mood>`
 | `revert` | Reverting a previous commit |
 | `wip` | Work in progress (avoid merging) |
 
-Examples: `feat: add Garmin stress trigger handler` · `fix: resolve overnight quiet hours window` · `chore: bump anthropic sdk to 0.45`
-
 ### Quality checks (all run on every PR)
 | Check | Blocks merge? |
 |---|---|
@@ -150,104 +224,42 @@ Examples: `feat: add Garmin stress trigger handler` · `fix: resolve overnight q
 | PR title (conventional commits) | Yes |
 | Vulture dead code | No — informational only |
 
-Errors from ruff and mypy appear **inline in the PR diff**. The full table is in the "Summary" tab of the Actions run.
-
 ---
 
 ## Text Layers
-
-All user-facing text is separated into three distinct layers:
 
 ### 1. UI + Communication → `strings.py` (i18n-ready)
 
 Any text the user reads as interface or conversation lives in `orchestrator/strings.py`.
 Access via `t("key")` — never hardcode these strings at call sites.
 
-```python
-from strings import t
-print(t("banner"))           # UI chrome
-input(f"{t('user_label')}: ")  # conversation label
-```
-
-| Category | Examples | Keys |
-|---|---|---|
-| UI | banner, setup messages, output prefixes | `banner`, `sanctum_missing`, `warn_prefix`, `error_prefix` |
-| Communication | greetings, conversational labels | `greeting`, `user_label` |
-
-To add a string: add a key to `_STRINGS["pt_BR"]` in `strings.py`.
-To add a locale: add a new locale dict and change `_LOCALE`. Call sites don't change.
-
 ### 2. Technical errors → `errors.py` (English, coded)
 
 Exceptions and error output use coded messages via `errors.e("CODE", **kwargs)`.
 Format: `{MODULE}-{SEQ}: {message}` — always English.
 
-| Module | File |
-|---|---|
-| `CFG` | config / providers.yaml |
-| `LLM` | providers.py |
-| `SYS` | core.py |
-| `MEM` | sanctum_writer.py |
-| `VOX` | voice.py |
-
 ### 3. Operational logs → English, inline
 
-Debug/status messages that go through `output.debug/status` are English inline strings.
-These are for developers and operators, not end users — no catalog needed.
-
-```python
-output.debug("listening...")
-output.status("saving sanctum...")
-```
+Debug/status messages via `output.debug/status` — for developers, no catalog needed.
 
 ---
 
 ## Connector Authentication
 
-All connectors — MCP-backed or pure Python — must handle their own auth
-flow. The user configures `connectors.yaml` and runs YANA. No external
-setup commands should be required for auth to work.
+All connectors must handle their own auth flow. The user configures `connectors.yaml` and runs YANA.
+No external setup commands required for auth to work.
 
-### Scenario 1 — Username/password credentials (e.g. Garmin)
+- **Credentials (e.g. Garmin)**: reads from `credentials_file` path in `connectors.yaml`. Prompts securely on first run, saves tokens for reuse.
+- **Google OAuth**: one-time browser consent on first run, token auto-refreshed thereafter.
 
-The connector reads a `credentials_file` (JSON with `email`/`password`)
-from a path configured in `connectors.yaml`. That file lives outside the
-repo (e.g. `~/.yana/credentials/garmin_fred.json`) and is never committed.
-
-On first run, if the credentials file is missing or incomplete, the
-connector prompts securely in the terminal (echo suppressed — see
-`_read_password()` in `connectors/garmin.py`). After a successful login,
-tokens are saved to `token_dir` and reused on subsequent runs — no
-password prompt again unless tokens expire.
-
-### Scenario 2 — Google OAuth app credentials (e.g. Calendar, Gmail)
-
-One-time infrastructure step (done once per Google Cloud project, not
-per session):
-1. Create a project in Google Cloud Console
-2. Enable the relevant API (Calendar API, Gmail API, etc.)
-3. Create OAuth 2.0 credentials (Desktop app) and download the JSON
-4. Save to the path set in `connectors.yaml` (e.g. `credentials_file:
-   "~/.yana/google_credentials.json"`)
-
-On first run, the connector opens a browser for OAuth consent and saves
-the token to `token_file`. Subsequent runs use the saved token
-(auto-refreshed when expired) — no browser needed again.
-
-### What NOT to do
-
-- Never instruct the user to run an external auth command
-  (e.g. `uvx some-server auth`) before starting YANA
-- Never hardcode credentials or tokens in `connectors.yaml` or source code
-- Never assume tokens exist — the connector must handle the first-run
-  auth case gracefully
+Never hardcode credentials. Never assume tokens exist.
 
 ---
 
 ## What NOT to change without discussion
 
-1. Sanctum path: `data/agent-yana/` — changing breaks all existing sanctums
-2. Session log filename pattern: `session-{id}.md` — changing breaks `load_recent_sessions()`
-3. Sanctum writer block format: `<<<FILE:name>>>..<<<END>>>` — changing breaks all existing LLM prompts
-4. `_auto_task` thresholds (120 chars, 6 turns) — affects cost/quality tradeoff calibrated for Portuguese conversation
-5. `strip_markdown()` in `voice.py` — called before TTS to clean symbols. YANA writes naturally; the pipeline handles conversion.
+1. Sanctum writer block format: `<<<FILE:name>>>..<<<END>>>` — changing breaks all existing LLM prompts
+2. `_auto_task` thresholds (120 chars, 6 turns) — affects cost/quality tradeoff calibrated for Portuguese conversation
+3. `strip_markdown()` in `voice.py` — called before TTS. YANA writes naturally; pipeline handles conversion.
+4. Alembic migration files once applied — never edit a migration that has been committed and run in any environment. Create a new one instead.
+5. PostgreSQL / Neo4j separation — operational data stays in PostgreSQL, episodic memory stays in Neo4j.

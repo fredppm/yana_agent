@@ -122,11 +122,15 @@ def _get_engine():
 
 
 def init_schema_sync() -> None:
-    """Create all tables if they do not exist. Safe to run on every startup."""
+    """Apply all pending Alembic migrations. Safe to run on every startup."""
     try:
-        Base.metadata.create_all(_get_engine())
+        from alembic import command
+        from alembic.config import Config
+
+        alembic_cfg = Config(Path(__file__).parent / "alembic.ini")
+        command.upgrade(alembic_cfg, "head")
     except Exception as e:
-        log.debug("store: init_schema failed: %s", e)
+        log.debug("store: migration failed: %s", e)
 
 
 # ---------------------------------------------------------------------------
