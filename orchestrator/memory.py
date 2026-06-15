@@ -459,14 +459,14 @@ def save_connector_sync(profile_id: str, instance_id: str, config_json_str: str)
 # ---------------------------------------------------------------------------
 
 _OWNER_FIELDS: dict[str, str] = {
-    "PERSONA.md": "persona",
-    "CREED.md": "creed",
-    "BOND.md": "bond",
+    "PERSONA": "persona",
+    "CREED": "creed",
+    "BOND": "bond",
 }
 _PROFILE_FIELDS: dict[str, str] = {
-    "CAPABILITIES.md": "capabilities",
-    "PULSE.md": "pulse",
-    "pulse-config.yaml": "pulse_config",
+    "CAPABILITIES": "capabilities",
+    "PULSE": "pulse",
+    "PULSE_CONFIG": "pulse_config",
 }
 
 

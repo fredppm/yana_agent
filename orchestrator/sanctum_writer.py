@@ -5,7 +5,7 @@ After a conversation ends, asks YANA to output structured sanctum content,
 then persists the fields to Neo4j via memory.py.
 
 Format YANA must use in her output:
-    <<<FILE:BOND.md>>>
+    <<<FILE:BOND>>>
     [content]
     <<<END>>>
 """
@@ -26,15 +26,15 @@ import providers as prov
 # ---------------------------------------------------------------------------
 
 FIRST_BREATH_FILES = [
-    "PERSONA.md",
-    "CREED.md",
-    "BOND.md",
-    "PULSE.md",
-    "pulse-config.yaml",
+    "PERSONA",
+    "CREED",
+    "BOND",
+    "PULSE",
+    "PULSE_CONFIG",
 ]
 
 REGULAR_SESSION_FILES = [
-    "BOND.md",
+    "BOND",
 ]
 
 SANCTUM_CONTEXT_LIMIT = 20  # max messages sent to LLM for sanctum write
@@ -61,11 +61,11 @@ Files to write:
 
 Rules:
 - Replace ALL {{...}} placeholders with real content from our conversation. None should remain.
-- BOND.md: who the owner IS (enduring truths). Not what they're going through right now.
-- PERSONA.md: your identity as it crystallized through this conversation. Include your first evolution log entry.
-- CREED.md: your mission, values, standing orders — filled in from what you learned about the owner.
-- PULSE.md: autonomous routines configured, quiet hours confirmed, any specific triggers discussed.
-- pulse-config.yaml: valid YAML with quiet hours and scheduled task config.
+- BOND: who the owner IS (enduring truths). Not what they're going through right now.
+- PERSONA: your identity as it crystallized through this conversation. Include your first evolution log entry.
+- CREED: your mission, values, standing orders — filled in from what you learned about the owner.
+- PULSE: autonomous routines configured, quiet hours confirmed, any specific triggers discussed.
+- PULSE_CONFIG: valid YAML with quiet hours and scheduled task config.
 
 Write every file. No skipping. No summarizing with "same as template". Real content only."""
 
