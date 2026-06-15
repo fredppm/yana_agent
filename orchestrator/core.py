@@ -1,7 +1,7 @@
 """
 core.py — system prompt assembly and session persistence.
 
-Reads SKILL.md + sanctum files to build YANA's context.
+Reads SKILL.md + sanctum fields to build YANA's context.
 Saves and loads session logs for continuity.
 """
 
@@ -50,10 +50,10 @@ def load_system_prompt(
     _sanctum_fields: dict[str, str] | None = None,
 ) -> str:
     """
-    Build the system prompt by concatenating SKILL.md + sanctum fields from Neo4j.
+    Build the system prompt by concatenating SKILL.md + sanctum fields from PostgreSQL.
 
-    _sanctum_fields: pre-loaded sanctum fields (avoids a second Neo4j query when the
-    caller already has them). If None, loads from Neo4j.
+    _sanctum_fields: pre-loaded sanctum fields (avoids a second DB query when the
+    caller already has them). If None, loads from PostgreSQL.
     """
     skill_md = _skill_root() / "SKILL.md"
     if not skill_md.exists():
@@ -61,14 +61,14 @@ def load_system_prompt(
 
     parts: list[str] = [f"---\n## SKILL\n\n{skill_md.read_text(encoding='utf-8')}"]
 
-    # Sanctum fields from Neo4j — in order, skip missing
+    # Sanctum fields from PostgreSQL — in order, skip missing
     active = get_active_profile()
     if active:
-        import memory as mem
+        import store
 
         if _sanctum_fields is None:
             owner_id = owner_id_from_profile(active)
-            fields = mem.load_sanctum_fields_sync(owner_id, active)
+            fields = store.load_sanctum_fields_sync(owner_id, active)
         else:
             fields = _sanctum_fields
         field_order = [
@@ -117,19 +117,19 @@ def load_system_prompt(
 
 def list_sessions(limit: int = 20) -> list[tuple[str, datetime, str]]:
     """List recent sessions as (session_id, datetime, preview), newest first."""
-    import memory as mem
+    import store
 
     active = get_active_profile()
     if not active:
         return []
-    return mem.list_sessions_sync(active, limit=limit)
+    return store.list_sessions_sync(active, limit=limit)
 
 
 def load_session_messages(session_id: str) -> list[dict]:
-    """Load messages for a session from Neo4j."""
-    import memory as mem
+    """Load messages for a session from PostgreSQL."""
+    import store
 
-    return mem.load_session_messages_sync(session_id)
+    return store.load_session_messages_sync(session_id)
 
 
 # ---------------------------------------------------------------------------
@@ -148,14 +148,14 @@ def owner_id_from_profile(profile_id: str) -> str:
 
 
 def sanctum_exists() -> bool:
-    """True if owner PERSONA is stored in Neo4j for active profile."""
-    import memory as mem
+    """True if owner PERSONA is stored in PostgreSQL for active profile."""
+    import store
 
     active = get_active_profile()
     if not active:
         return False
     owner_id = owner_id_from_profile(active)
-    fields = mem.load_sanctum_fields_sync(owner_id, active)
+    fields = store.load_sanctum_fields_sync(owner_id, active)
     return bool(fields.get("persona"))
 
 
@@ -165,15 +165,15 @@ def sanctum_exists() -> bool:
 
 
 def load_pulse_config() -> dict:
-    """Load pulse config from Neo4j profile context."""
-    import memory as mem
+    """Load pulse config from PostgreSQL profile context."""
+    import store
     import yaml
 
     active = get_active_profile()
     if not active:
         return {}
     owner_id = owner_id_from_profile(active)
-    fields = mem.load_sanctum_fields_sync(owner_id, active)
+    fields = store.load_sanctum_fields_sync(owner_id, active)
     raw = fields.get("pulse_config", "")
     if not raw:
         return {}
@@ -187,10 +187,10 @@ _PROVIDERS_CFG_PATH = Path(__file__).parent / "config" / "providers.yaml"
 
 
 def list_profiles() -> list[dict]:
-    """Return configured profiles [{id, label}, ...] from Neo4j."""
-    import memory as mem
+    """Return configured profiles [{id, label}, ...] from PostgreSQL."""
+    import store
 
-    return mem.list_profiles_sync()
+    return store.list_profiles_sync()
 
 
 def profiles_exist() -> bool:
@@ -225,18 +225,18 @@ def set_active_profile(profile_id: str) -> None:
 
 
 def add_profile(profile_id: str, label: str) -> None:
-    """Add a profile to Neo4j and set it as active."""
-    import memory as mem
+    """Add a profile to PostgreSQL and set it as active."""
+    import store
 
-    mem.add_profile_sync(profile_id, label)
+    store.add_profile_sync(profile_id, label)
     set_active_profile(profile_id)
 
 
 def delete_profile(profile_id: str) -> None:
-    """Remove a profile from Neo4j and update active_profile if needed."""
-    import memory as mem
+    """Remove a profile from PostgreSQL and update active_profile if needed."""
+    import store
 
-    mem.delete_profile_sync(profile_id)
+    store.delete_profile_sync(profile_id)
     if get_active_profile() == profile_id:
         remaining = list_profiles()
         if remaining:

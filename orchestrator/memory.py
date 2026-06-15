@@ -1,15 +1,14 @@
 """
 memory.py — Graphiti-based episodic memory for YANA.
 
-Replaces sanctum_writer for regular sessions. Stores conversation episodes
-in a Neo4j knowledge graph via Graphiti-core, using LiteLLM as a proxy to
-AWS Bedrock (fully self-hosted, zero managed cost).
+Stores conversation episodes in a Neo4j knowledge graph via Graphiti-core.
+Operational data (profiles, sanctum, sessions, connectors) lives in store.py (PostgreSQL).
 
 Architecture:
   YANA session end  → store_session_background()  → background thread
   YANA session start → load_context()              → injected into system prompt
 
-Setup (see orchestrator/spikes/docker-compose.yml):
+Setup (see docker-compose.yml):
   - Neo4j:   bolt://localhost:7687
   - LiteLLM: http://localhost:4000  →  AWS Bedrock
 
@@ -22,10 +21,8 @@ import asyncio
 import json
 import logging
 import threading
-from collections.abc import Coroutine
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
 
 log = logging.getLogger(__name__)
 
@@ -42,7 +39,7 @@ _DEFAULT_CONFIG: dict = {
     "litellm_url": "http://localhost:4000",
     "model": "bedrock-claude-haiku",
     "embed_model": "bedrock-embed",
-    "active_profile": "",  # owner::context — set by First Breath; falls back to group_id
+    "active_profile": "",  # owner::context — used as Graphiti group_id
     "group_id": "yana-fred",  # legacy key — superseded by active_profile
 }
 
@@ -106,13 +103,13 @@ def _build_client(cfg: dict):  # returns Graphiti
 
 async def store_session(messages: list[dict], session_id: str) -> None:
     """
-    Add session to the Graphiti knowledge graph as a single episode,
-    and persist session node + messages_json in Neo4j.
+    Persist raw session messages in PostgreSQL and add a Graphiti episode.
     """
+    import store
+
     from graphiti_core.nodes import EpisodeType
 
     cfg = _load_config()
-
     profile_id = cfg.get("active_profile") or cfg.get("group_id", "yana-fred")
 
     # Build conversation text for Graphiti episode
@@ -131,11 +128,16 @@ async def store_session(messages: list[dict], session_id: str) -> None:
             preview = m["content"].strip()[:60]
             break
 
-    messages_json_str = json.dumps(messages, ensure_ascii=False)
     created_at = datetime.now(UTC).isoformat()
 
-    # Persist session node in Neo4j
-    await create_session(cfg, session_id, profile_id, created_at, preview, messages_json_str)
+    # Persist session + messages in PostgreSQL
+    store.create_session_sync(
+        session_id,
+        profile_id,
+        created_at,
+        preview,
+        json.dumps(messages, ensure_ascii=False),
+    )
 
     # Add one Graphiti episode for the whole conversation
     if conversation_text:
@@ -235,287 +237,3 @@ def load_context_sync(
     t.start()
     t.join(timeout=timeout)
     return result[0]
-
-
-# ---------------------------------------------------------------------------
-# Neo4j graph operations (direct Cypher — sessions, profiles, connectors)
-# ---------------------------------------------------------------------------
-
-
-async def _neo4j_write(cfg: dict, query: str, params: dict) -> None:
-    from neo4j import AsyncGraphDatabase
-
-    driver = AsyncGraphDatabase.driver(cfg["uri"], auth=None)
-    try:
-        async with driver.session() as session:
-            await session.run(query, params)
-    finally:
-        await driver.close()
-
-
-async def _neo4j_read(cfg: dict, query: str, params: dict) -> list[dict]:
-    from neo4j import AsyncGraphDatabase
-
-    driver = AsyncGraphDatabase.driver(cfg["uri"], auth=None)
-    try:
-        async with driver.session() as session:
-            result = await session.run(query, params)
-            return [record.data() for record in await result.fetch(1000)]
-    finally:
-        await driver.close()
-
-
-async def init_schema(cfg: dict) -> None:
-    constraints = [
-        "CREATE CONSTRAINT yana_owner_id IF NOT EXISTS FOR (n:YANAOwner) REQUIRE n.id IS UNIQUE",
-        "CREATE CONSTRAINT yana_profile_id IF NOT EXISTS FOR (n:YANAProfile) REQUIRE n.id IS UNIQUE",
-        "CREATE CONSTRAINT yana_session_id IF NOT EXISTS FOR (n:YANASession) REQUIRE n.id IS UNIQUE",
-    ]
-    for c in constraints:
-        await _neo4j_write(cfg, c, {})
-
-
-async def add_profile(cfg: dict, profile_id: str, label: str) -> None:
-    owner_id = profile_id.split("::")[0]
-    query = (
-        "MERGE (o:YANAOwner {id: $owner_id}) "
-        "MERGE (w:YANAProfile {id: $profile_id}) "
-        "SET w.label = $label, w.owner_id = $owner_id "
-        "MERGE (o)-[:HAS_WORKSPACE]->(w)"
-    )
-    await _neo4j_write(
-        cfg, query, {"owner_id": owner_id, "profile_id": profile_id, "label": label}
-    )
-
-
-async def list_profiles(cfg: dict) -> list[dict]:
-    query = "MATCH (w:YANAProfile) RETURN w.id AS id, w.label AS label ORDER BY w.id"
-    return await _neo4j_read(cfg, query, {})
-
-
-async def delete_profile(cfg: dict, profile_id: str) -> None:
-    query = (
-        "MATCH (w:YANAProfile {id: $profile_id}) "
-        "OPTIONAL MATCH (w)-[:HAS_SESSION]->(s:YANASession) "
-        "OPTIONAL MATCH (w)-[:HAS_CONNECTOR]->(c:YANAConnector) "
-        "DETACH DELETE w, s, c"
-    )
-    await _neo4j_write(cfg, query, {"profile_id": profile_id})
-
-
-async def save_connector(
-    cfg: dict, profile_id: str, instance_id: str, config_json_str: str
-) -> None:
-    query = (
-        "MERGE (w:YANAProfile {id: $profile_id}) "
-        "MERGE (c:YANAConnector {profile_id: $profile_id, instance_id: $instance_id}) "
-        "SET c.config_json = $config_json "
-        "MERGE (w)-[:HAS_CONNECTOR]->(c)"
-    )
-    await _neo4j_write(
-        cfg,
-        query,
-        {"profile_id": profile_id, "instance_id": instance_id, "config_json": config_json_str},
-    )
-
-
-async def list_connectors(cfg: dict, profile_id: str) -> list[dict]:
-    query = (
-        "MATCH (w:YANAProfile {id: $profile_id})-[:HAS_CONNECTOR]->(c:YANAConnector) "
-        "RETURN c.instance_id AS instance_id, c.config_json AS config_json"
-    )
-    return await _neo4j_read(cfg, query, {"profile_id": profile_id})
-
-
-async def create_session(
-    cfg: dict,
-    session_id: str,
-    profile_id: str,
-    created_at_iso: str,
-    preview: str,
-    messages_json_str: str,
-) -> None:
-    query = (
-        "MERGE (w:YANAProfile {id: $profile_id}) "
-        "MERGE (s:YANASession {id: $session_id}) "
-        "SET s.profile_id = $profile_id, "
-        "    s.created_at = $created_at, "
-        "    s.preview = $preview, "
-        "    s.messages_json = $messages_json "
-        "MERGE (w)-[:HAS_SESSION]->(s)"
-    )
-    await _neo4j_write(
-        cfg,
-        query,
-        {
-            "profile_id": profile_id,
-            "session_id": session_id,
-            "created_at": created_at_iso,
-            "preview": preview,
-            "messages_json": messages_json_str,
-        },
-    )
-
-
-async def list_sessions(
-    cfg: dict, profile_id: str, limit: int = 20
-) -> list[tuple[str, datetime, str]]:
-    query = (
-        "MATCH (w:YANAProfile {id: $profile_id})-[:HAS_SESSION]->(s:YANASession) "
-        "RETURN s.id AS id, s.created_at AS created_at, s.preview AS preview "
-        "ORDER BY s.created_at DESC "
-        "LIMIT $limit"
-    )
-    rows = await _neo4j_read(cfg, query, {"profile_id": profile_id, "limit": limit})
-    result = []
-    for row in rows:
-        sid = row.get("id", "")
-        preview = row.get("preview", "") or ""
-        raw_dt = row.get("created_at", "")
-        try:
-            dt = datetime.fromisoformat(raw_dt)
-        except Exception:
-            try:
-                dt = datetime.strptime(sid, "%Y-%m-%d_%H-%M-%S")
-            except Exception:
-                dt = datetime.now(UTC)
-        result.append((sid, dt, preview))
-    return result
-
-
-async def load_session_messages(cfg: dict, session_id: str) -> list[dict]:
-    query = "MATCH (s:YANASession {id: $session_id}) RETURN s.messages_json AS messages_json"
-    rows = await _neo4j_read(cfg, query, {"session_id": session_id})
-    if not rows or not rows[0].get("messages_json"):
-        return []
-    try:
-        return json.loads(rows[0]["messages_json"])
-    except Exception:
-        return []
-
-
-# ---------------------------------------------------------------------------
-# Public sync wrappers for Neo4j operations
-# ---------------------------------------------------------------------------
-
-
-def _run_async(coro: Coroutine[Any, Any, Any], timeout: float = 10.0) -> Any:
-    """Run an async coroutine in a daemon thread with timeout. Returns result or None."""
-    result: list = [None]
-    exc: list = [None]
-
-    def _run() -> None:
-        try:
-            result[0] = asyncio.run(coro)
-        except Exception as e:
-            exc[0] = e
-
-    t = threading.Thread(target=_run, daemon=True)
-    t.start()
-    t.join(timeout=timeout)
-    if exc[0] is not None:
-        log.debug("memory: async op failed: %s", exc[0])
-    return result[0]
-
-
-def init_schema_sync() -> None:
-    _run_async(init_schema(_load_config()))
-
-
-def list_profiles_sync() -> list[dict]:
-    result = _run_async(list_profiles(_load_config()))
-    return result if isinstance(result, list) else []
-
-
-def add_profile_sync(profile_id: str, label: str) -> None:
-    _run_async(add_profile(_load_config(), profile_id, label))
-
-
-def delete_profile_sync(profile_id: str) -> None:
-    _run_async(delete_profile(_load_config(), profile_id))
-
-
-def list_sessions_sync(profile_id: str, limit: int = 20) -> list[tuple[str, datetime, str]]:
-    result = _run_async(list_sessions(_load_config(), profile_id, limit=limit))
-    return result if isinstance(result, list) else []
-
-
-def load_session_messages_sync(session_id: str) -> list[dict]:
-    result = _run_async(load_session_messages(_load_config(), session_id))
-    return result if isinstance(result, list) else []
-
-
-def list_connectors_sync(profile_id: str) -> list[dict]:
-    result = _run_async(list_connectors(_load_config(), profile_id))
-    return result if isinstance(result, list) else []
-
-
-def save_connector_sync(profile_id: str, instance_id: str, config_json_str: str) -> None:
-    _run_async(save_connector(_load_config(), profile_id, instance_id, config_json_str))
-
-
-# ---------------------------------------------------------------------------
-# Sanctum identity fields — stored on YANAOwner and YANAProfile nodes
-# ---------------------------------------------------------------------------
-
-_OWNER_FIELDS: dict[str, str] = {
-    "PERSONA": "persona",
-    "CREED": "creed",
-    "BOND": "bond",
-}
-_PROFILE_FIELDS: dict[str, str] = {
-    "CAPABILITIES": "capabilities",
-    "PULSE": "pulse",
-    "PULSE_CONFIG": "pulse_config",
-}
-
-
-async def save_sanctum_fields(
-    cfg: dict, owner_id: str, profile_id: str, fields: dict[str, str]
-) -> None:
-    """Write {filename: content} to YANAOwner and YANAProfile node properties."""
-    owner_props = {_OWNER_FIELDS[k]: v for k, v in fields.items() if k in _OWNER_FIELDS}
-    profile_props = {_PROFILE_FIELDS[k]: v for k, v in fields.items() if k in _PROFILE_FIELDS}
-    if owner_props:
-        sets = ", ".join(f"o.{k} = ${k}" for k in owner_props)
-        await _neo4j_write(
-            cfg,
-            f"MERGE (o:YANAOwner {{id: $owner_id}}) SET {sets}",
-            {"owner_id": owner_id, **owner_props},
-        )
-    if profile_props:
-        sets = ", ".join(f"w.{k} = ${k}" for k in profile_props)
-        await _neo4j_write(
-            cfg,
-            f"MERGE (w:YANAProfile {{id: $profile_id}}) SET {sets}",
-            {"profile_id": profile_id, **profile_props},
-        )
-
-
-async def load_sanctum_fields(cfg: dict, owner_id: str, profile_id: str) -> dict[str, str]:
-    """Load all sanctum fields from YANAOwner and YANAProfile, returns {prop_name: content}."""
-    rows = await _neo4j_read(
-        cfg,
-        """
-        OPTIONAL MATCH (o:YANAOwner {id: $owner_id})
-        OPTIONAL MATCH (w:YANAProfile {id: $profile_id})
-        RETURN o.persona AS persona, o.creed AS creed, o.bond AS bond,
-               w.capabilities AS capabilities,
-               w.pulse AS pulse, w.pulse_config AS pulse_config
-        """,
-        {"owner_id": owner_id, "profile_id": profile_id},
-    )
-    if not rows:
-        return {}
-    row = rows[0]
-    all_props = set(_OWNER_FIELDS.values()) | set(_PROFILE_FIELDS.values())
-    return {prop: val for prop, val in row.items() if val and prop in all_props}
-
-
-def save_sanctum_fields_sync(owner_id: str, profile_id: str, fields: dict[str, str]) -> None:
-    _run_async(save_sanctum_fields(_load_config(), owner_id, profile_id, fields))
-
-
-def load_sanctum_fields_sync(owner_id: str, profile_id: str) -> dict[str, str]:
-    result = _run_async(load_sanctum_fields(_load_config(), owner_id, profile_id))
-    return result if isinstance(result, dict) else {}

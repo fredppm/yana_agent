@@ -43,6 +43,9 @@ engines:
     model: claude-sonnet-4-6  # passed to claude --model; remove to use Claude Code's default
     flags: []                 # extra CLI flags (e.g. ["--dangerously-skip-permissions"])
 
+postgres:
+  url: "postgresql://postgres:postgres@localhost:5432/yana"
+
 graphiti:
   uri: "bolt://localhost:7687"
   user: ""

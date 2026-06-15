@@ -122,9 +122,9 @@ def write_sanctum(
     if written:
         active = core.get_active_profile()
         owner_id = core.owner_id_from_profile(active)
-        import memory as mem
+        import store
 
-        mem.save_sanctum_fields_sync(owner_id, active, written)
+        store.save_sanctum_fields_sync(owner_id, active, written)
 
     if not silent:
         if written:

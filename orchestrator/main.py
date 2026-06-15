@@ -46,6 +46,7 @@ import memory as mem  # noqa: E402
 import output  # noqa: E402
 import providers as prov  # noqa: E402
 import sanctum_writer as sw  # noqa: E402
+import store  # noqa: E402
 import voice as v  # noqa: E402
 
 # ---------------------------------------------------------------------------
@@ -342,13 +343,11 @@ def _register_first_profile() -> None:
 
     import re
 
-    import memory as mem_mod
-
     active = core.get_active_profile()
     owner_id: str | None = None
     if active:
         candidate = core.owner_id_from_profile(active)
-        fields = mem_mod.load_sanctum_fields_sync(candidate, active)
+        fields = store.load_sanctum_fields_sync(candidate, active)
         persona = fields.get("persona", "")
         if persona:
             m = re.search(
@@ -372,8 +371,8 @@ def _register_first_profile() -> None:
 
 def run_conversation() -> None:
     providers_config = prov.load_providers()
-    # Initialize Neo4j schema (idempotent — safe to run on every startup)
-    mem.init_schema_sync()
+    # Initialize PostgreSQL schema (idempotent — safe to run on every startup)
+    store.init_schema_sync()
     voice_cfg = v.load_voice_config(providers_config)
 
     registry = connectors_setup.build_registry()
@@ -387,7 +386,7 @@ def run_conversation() -> None:
     sanctum_fields: dict = {}
     if active_profile:
         owner_id = core.owner_id_from_profile(active_profile)
-        sanctum_fields = mem.load_sanctum_fields_sync(owner_id, active_profile)
+        sanctum_fields = store.load_sanctum_fields_sync(owner_id, active_profile)
 
     profiles = core.list_profiles()
     has_sanctum = bool(sanctum_fields.get("persona"))

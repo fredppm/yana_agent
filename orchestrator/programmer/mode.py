@@ -35,15 +35,15 @@ class SanctumContext:
 
     @classmethod
     def load(cls) -> SanctumContext:
-        """Load from Neo4j. Raises FileNotFoundError if sanctum not initialised."""
+        """Load from PostgreSQL. Raises FileNotFoundError if sanctum not initialised."""
         import core
-        import memory as mem
+        import store
 
         active = core.get_active_profile()
         if not active:
             raise FileNotFoundError("No active profile — sanctum not initialised")
         owner_id = core.owner_id_from_profile(active)
-        fields = mem.load_sanctum_fields_sync(owner_id, active)
+        fields = store.load_sanctum_fields_sync(owner_id, active)
         if not fields.get("persona"):
             raise FileNotFoundError(
                 "Sanctum not initialised — run YANA first to complete First Breath"

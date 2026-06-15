@@ -9,6 +9,17 @@ services:
     volumes:
       - neo4j_data:/data
 
+  postgres:
+    image: postgres:16-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=yana
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
   litellm:
     image: ghcr.io/berriai/litellm:main-latest
     ports:
@@ -25,3 +36,4 @@ services:
 
 volumes:
   neo4j_data:
+  postgres_data:

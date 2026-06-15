@@ -93,7 +93,7 @@ class TestResolveMode:
 class TestSanctumContext:
     def _mock_fields(self, fields: dict[str, str]):
         return [
-            patch("memory.load_sanctum_fields_sync", return_value=fields),
+            patch("store.load_sanctum_fields_sync", return_value=fields),
             patch("core.get_active_profile", return_value="owner::pessoal"),
         ]
 
