@@ -338,39 +338,6 @@ def _run_tui_conversation(
     )
 
 
-def _auto_migrate_profile_if_needed() -> None:
-    """
-    One-time migration: if a sanctum exists but no profiles are registered,
-    auto-create a profile based on the existing sanctum (PERSONA.md).
-    This handles upgrades from pre-profile YANA installations.
-    """
-    if core.profiles_exist() or not core.sanctum_exists():
-        return
-
-    import getpass
-
-    persona_path = core.sanctum_path() / "PERSONA.md"
-    owner: str | None = None
-    if persona_path.exists():
-        import re
-
-        text = persona_path.read_text(encoding="utf-8")
-        m = re.search(
-            r"(?:#|YANA)[^\n\S]*(?:YANA[^\n—]*)?[—\-]\s*([A-Za-záéíóúàèìòùãõâêîôûñç]+)", text
-        )
-        if m:
-            owner = m.group(1).lower().strip()
-    if not owner:
-        try:
-            owner = getpass.getuser().lower()
-        except Exception:
-            owner = "user"
-
-    profile_id = f"{owner}::pessoal"
-    label = f"{owner.capitalize()} — Pessoal"
-    core.add_profile(profile_id, label)
-
-
 def _register_first_profile() -> None:
     """
     After a successful First Breath, register the owner profile in providers.yaml.
@@ -413,7 +380,6 @@ def run_conversation() -> None:
     output.configure(voice_mode=False)
 
     # State detection (CAP-6): route based on identity state, not CLI flags.
-    _auto_migrate_profile_if_needed()  # one-time upgrade for existing sanctums
     profiles = core.list_profiles()
     active_profile = core.get_active_profile()
     is_first_breath = not profiles and not core.sanctum_exists()

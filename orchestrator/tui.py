@@ -397,13 +397,14 @@ class YANAApp(App[TuiResult]):
             yield Label("", id="thinking")
 
     def on_mount(self) -> None:
-        if self._profiles:
+        if self._profiles or self._sessions:
+            # Has profiles or existing sessions — show the unified browser screen
             self.push_screen(
                 ProfileSessionScreen(self._profiles, self._active_profile_id, self._sessions),
                 self._on_session_chosen,
             )
         else:
-            self._start_chat()  # First Breath — no profiles configured yet
+            self._start_chat()  # Fresh install — First Breath
 
     # ------------------------------------------------------------------
     # Session selection
