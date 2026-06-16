@@ -155,7 +155,7 @@ async def test_enter_in_modal_does_not_start_chat():
         created.append(pid)
         return pid
 
-    with patch.object(core, "add_profile", side_effect=_fake_add):
+    with patch.object(_profiles, "add_profile", side_effect=_fake_add):
         app = _app(
             profiles=[{"id": "some-uuid", "label": "Fred"}],
             active="some-uuid",
@@ -187,7 +187,7 @@ async def test_modal_text_does_not_leak_into_new_profile_chat():
     def _fake_add(label: str) -> str:
         return f"uuid-{label}"
 
-    with patch.object(core, "add_profile", side_effect=_fake_add):
+    with patch.object(_profiles, "add_profile", side_effect=_fake_add):
         app = _app(
             profiles=[{"id": "some-uuid", "label": "Fred"}],
             active="some-uuid",
