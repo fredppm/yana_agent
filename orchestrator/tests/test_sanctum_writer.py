@@ -7,8 +7,11 @@ _parse_and_write returns {field_name: content} without writing to disk.
 import sys
 from pathlib import Path
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+import core
 import sanctum_writer
 
 # ---------------------------------------------------------------------------
@@ -24,9 +27,7 @@ class TestParseAndWrite:
         assert written["BOND"] == "some content"
 
     def test_multiple_fields_parsed(self):
-        response = (
-            "<<<FILE:BOND>>>\ncontent A\n<<<END>>>\n<<<FILE:PERSONA>>>\ncontent B\n<<<END>>>"
-        )
+        response = "<<<FILE:BOND>>>\ncontent A\n<<<END>>>\n<<<FILE:PERSONA>>>\ncontent B\n<<<END>>>"
         written = sanctum_writer._parse_and_write(response)
         assert set(written.keys()) == {"BOND", "PERSONA"}
 
@@ -104,16 +105,6 @@ class TestBuildSanctumPrompt:
 # ---------------------------------------------------------------------------
 
 
-import pytest
-import sys
-from pathlib import Path
-from unittest.mock import patch
-
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
-import core
-
-
 def _first_breath_llm_response(owner_name: str) -> str:
     """Minimal valid First Breath LLM output with the given OWNER_NAME."""
     return (
@@ -122,7 +113,7 @@ def _first_breath_llm_response(owner_name: str) -> str:
         "<<<FILE:CREED>>>\nTo help the owner.\n<<<END>>>\n"
         "<<<FILE:BOND>>>\nThe owner is an engineer.\n<<<END>>>\n"
         "<<<FILE:PULSE>>>\nDaily check-ins.\n<<<END>>>\n"
-        "<<<FILE:PULSE_CONFIG>>>\nquiet_hours: \"23:00-07:00\"\n<<<END>>>"
+        '<<<FILE:PULSE_CONFIG>>>\nquiet_hours: "23:00-07:00"\n<<<END>>>'
     )
 
 
@@ -153,10 +144,7 @@ def test_first_breath_pipeline_full_name_from_llm(db):
 @pytest.mark.tui_integration
 def test_first_breath_pipeline_missing_owner_name(db):
     """LLM omits OWNER_NAME entirely → falls back to 'User'."""
-    response = (
-        "<<<FILE:PERSONA>>>\nYANA.\n<<<END>>>\n"
-        "<<<FILE:BOND>>>\nThe owner.\n<<<END>>>"
-    )
+    response = "<<<FILE:PERSONA>>>\nYANA.\n<<<END>>>\n<<<FILE:BOND>>>\nThe owner.\n<<<END>>>"
     written = sanctum_writer._parse_and_write(response)
     assert "OWNER_NAME" not in written
     owner_id, _ = core.create_first_owner_and_profile(written)

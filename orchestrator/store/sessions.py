@@ -24,9 +24,7 @@ def create_session_sync(
         with Session(_get_engine()) as db:
             record = db.get(SessionRecord, session_id)
             if record is None:
-                record = SessionRecord(
-                    id=session_id, profile_id=profile_id, started_at=started_at
-                )
+                record = SessionRecord(id=session_id, profile_id=profile_id, started_at=started_at)
                 db.add(record)
             record.preview = preview
             record.messages_json = messages_json

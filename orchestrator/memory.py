@@ -20,9 +20,15 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import threading
 from datetime import UTC, datetime
 from pathlib import Path
+
+from dotenv import load_dotenv
+from strings import t as _t
+
+load_dotenv(Path(__file__).parent / ".env")
 
 log = logging.getLogger(__name__)
 
@@ -30,19 +36,10 @@ log = logging.getLogger(__name__)
 # Config
 # ---------------------------------------------------------------------------
 
-import os
-
-from dotenv import load_dotenv
-
-load_dotenv(Path(__file__).parent / ".env")
-
 
 def _to_group_id(profile_id: str) -> str:
     """Profile UUID is used directly as Graphiti group_id — stable and immutable."""
     return profile_id
-
-
-from strings import t as _t
 
 
 def _context_query() -> str:
@@ -58,16 +55,16 @@ def _load_config() -> dict:
     """
     model = os.environ.get("YANA_MODEL_MEMORY")
     if not model:
-        raise EnvironmentError("YANA_MODEL_MEMORY env var is not set")
+        raise OSError("YANA_MODEL_MEMORY env var is not set")
     embed_model = os.environ.get("YANA_MODEL_EMBED")
     if not embed_model:
-        raise EnvironmentError("YANA_MODEL_EMBED env var is not set")
+        raise OSError("YANA_MODEL_EMBED env var is not set")
     return {
-        "uri":         os.environ.get("NEO4J_URI", "bolt://127.0.0.1:7687"),
-        "user":        os.environ.get("NEO4J_USER", ""),
-        "password":    os.environ.get("NEO4J_PASSWORD", ""),
+        "uri": os.environ.get("NEO4J_URI", "bolt://127.0.0.1:7687"),
+        "user": os.environ.get("NEO4J_USER", ""),
+        "password": os.environ.get("NEO4J_PASSWORD", ""),
         "litellm_url": os.environ.get("LITELLM_URL", "http://127.0.0.1:4000"),
-        "model":       model,
+        "model": model,
         "embed_model": embed_model,
     }
 

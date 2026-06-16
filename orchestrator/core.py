@@ -52,9 +52,7 @@ def save_session_log(messages: list[dict], session_id: str) -> Path:
     profile_id = get_active_profile()
     if profile_id:
         now = datetime.now().isoformat()
-        preview = next(
-            (m["content"][:80] for m in messages if m.get("role") == "assistant"), ""
-        )
+        preview = next((m["content"][:80] for m in messages if m.get("role") == "assistant"), "")
         store.create_session_sync(
             session_id, profile_id, now, preview, _json.dumps(messages, ensure_ascii=False)
         )

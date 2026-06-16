@@ -8,6 +8,8 @@ from datetime import time as dtime
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import core
@@ -78,17 +80,15 @@ class TestIsQuietHours:
 # ---------------------------------------------------------------------------
 
 
-import pytest
-
-
 @pytest.mark.tui_integration
 def test_create_first_owner_and_profile_simple_name(db):
     """create_first_owner_and_profile with a plain first name creates owner + profile correctly."""
-    owner_id, profile_id = core.create_first_owner_and_profile({"OWNER_NAME": "Fred"})
+    owner_id, _profile_id = core.create_first_owner_and_profile({"OWNER_NAME": "Fred"})
     profiles = db.list_profiles_sync()
     assert len(profiles) == 1
     assert profiles[0]["label"] == "Fred — Default"
     from sqlalchemy.orm import Session
+
     with Session(db._get_engine()) as s:
         owner = s.get(db.Owner, owner_id)
     assert owner is not None
@@ -98,8 +98,9 @@ def test_create_first_owner_and_profile_simple_name(db):
 @pytest.mark.tui_integration
 def test_create_first_owner_and_profile_full_name_preserved(db):
     """When LLM writes full name, it is stored as-is."""
-    owner_id, profile_id = core.create_first_owner_and_profile({"OWNER_NAME": "Fred Mourao"})
+    owner_id, _profile_id = core.create_first_owner_and_profile({"OWNER_NAME": "Fred Mourao"})
     from sqlalchemy.orm import Session
+
     with Session(db._get_engine()) as s:
         owner = s.get(db.Owner, owner_id)
     assert owner.name == "Fred Mourao"
@@ -110,8 +111,9 @@ def test_create_first_owner_and_profile_full_name_preserved(db):
 @pytest.mark.tui_integration
 def test_create_first_owner_and_profile_empty_name_fallback(db):
     """Empty OWNER_NAME falls back to 'User'."""
-    owner_id, profile_id = core.create_first_owner_and_profile({})
+    owner_id, _profile_id = core.create_first_owner_and_profile({})
     from sqlalchemy.orm import Session
+
     with Session(db._get_engine()) as s:
         owner = s.get(db.Owner, owner_id)
     assert owner.name == "User"

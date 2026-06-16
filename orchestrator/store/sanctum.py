@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 from sqlalchemy.orm import Session
 
 from .engine import _get_engine
-from .models import Owner, Profile, _OWNER_FIELDS, _PROFILE_FIELDS
+from .models import _OWNER_FIELDS, _PROFILE_FIELDS, Owner, Profile
 
 log = logging.getLogger(__name__)
 

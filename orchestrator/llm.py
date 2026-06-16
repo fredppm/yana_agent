@@ -32,12 +32,12 @@ load_dotenv(Path(__file__).parent / ".env")
 # ---------------------------------------------------------------------------
 
 _TASK_ENV: dict[str, str] = {
-    "conversation":      "YANA_MODEL_CONVERSATION",
+    "conversation": "YANA_MODEL_CONVERSATION",
     "conversation_fast": "YANA_MODEL_CONVERSATION_FAST",
-    "first_breath":      "YANA_MODEL_FIRST_BREATH",
-    "sanctum_write":     "YANA_MODEL_SANCTUM_WRITE",
-    "pulse_scheduled":   "YANA_MODEL_PULSE_SCHEDULED",
-    "pulse_triggered":   "YANA_MODEL_PULSE_TRIGGERED",
+    "first_breath": "YANA_MODEL_FIRST_BREATH",
+    "sanctum_write": "YANA_MODEL_SANCTUM_WRITE",
+    "pulse_scheduled": "YANA_MODEL_PULSE_SCHEDULED",
+    "pulse_triggered": "YANA_MODEL_PULSE_TRIGGERED",
 }
 
 # ---------------------------------------------------------------------------
@@ -49,10 +49,7 @@ def load_providers() -> dict:
     """Return config dict built from environment variables."""
     return {
         "litellm_url": os.environ.get("LITELLM_URL", "http://127.0.0.1:4000"),
-        "models": {
-            task: os.environ.get(env)
-            for task, env in _TASK_ENV.items()
-        },
+        "models": {task: os.environ.get(env) for task, env in _TASK_ENV.items()},
     }
 
 
@@ -184,7 +181,7 @@ def call_llm(
             model=model,
             max_tokens=4096,
             system=system_prompt,
-            messages=messages,  # type: ignore[arg-type]
+            messages=messages,
             timeout=httpx.Timeout(timeout, connect=10.0),
         ) as s:
             for text in s.text_stream:
@@ -196,7 +193,7 @@ def call_llm(
             model=model,
             max_tokens=4096,
             system=system_prompt,
-            messages=messages,  # type: ignore[arg-type]
+            messages=messages,
             timeout=httpx.Timeout(timeout, connect=10.0),
         )
         block = response.content[0]

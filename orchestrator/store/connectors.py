@@ -31,8 +31,7 @@ def list_connectors_sync(profile_id: str) -> list[dict]:
                 select(Connector).where(Connector.profile_id == profile_id)
             ).all()
             return [
-                {"instance_id": c.instance_id, "config_json": c.config_json}
-                for c in connectors
+                {"instance_id": c.instance_id, "config_json": c.config_json} for c in connectors
             ]
     except Exception as e:
         log.debug("store: list_connectors failed: %s", e)

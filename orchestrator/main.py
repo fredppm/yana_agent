@@ -41,10 +41,10 @@ sys.path.insert(0, str(_HERE))
 
 import connectors_setup  # noqa: E402
 import core  # noqa: E402
+import llm as prov  # noqa: E402
 import log  # noqa: E402
 import memory as mem  # noqa: E402
 import output  # noqa: E402
-import llm as prov  # noqa: E402
 import sanctum_writer as sw  # noqa: E402
 import store  # noqa: E402
 import voice as v  # noqa: E402

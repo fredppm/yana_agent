@@ -145,7 +145,12 @@ class TestLoadVoiceConfig:
     def test_optional_env_vars(self):
         with patch.dict(
             "os.environ",
-            {**_REQUIRED_VOICE_ENV, "STT_PROVIDER": "faster-whisper", "STT_MODEL": "tiny", "TTS_RATE": "+10%"},
+            {
+                **_REQUIRED_VOICE_ENV,
+                "STT_PROVIDER": "faster-whisper",
+                "STT_MODEL": "tiny",
+                "TTS_RATE": "+10%",
+            },
         ):
             cfg = voice.load_voice_config()
         assert cfg["stt_provider"] == "faster-whisper"

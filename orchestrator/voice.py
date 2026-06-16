@@ -13,12 +13,11 @@ import re
 import tempfile
 from pathlib import Path
 
+import errors
+import output
 from dotenv import load_dotenv
 
 load_dotenv(Path(__file__).parent / ".env")
-
-import errors
-import output
 
 # ---------------------------------------------------------------------------
 # Markdown stripper — LLMs add markdown even in voice mode
@@ -238,11 +237,11 @@ def load_voice_config() -> dict:
     """
     language = os.environ.get("STT_LANGUAGE")
     if not language:
-        raise EnvironmentError("STT_LANGUAGE env var is not set (e.g. 'en', 'pt')")
+        raise OSError("STT_LANGUAGE env var is not set (e.g. 'en', 'pt')")
 
     voice = os.environ.get("TTS_VOICE")
     if not voice:
-        raise EnvironmentError("TTS_VOICE env var is not set (e.g. 'en-US-JennyNeural')")
+        raise OSError("TTS_VOICE env var is not set (e.g. 'en-US-JennyNeural')")
 
     return {
         "stt_provider": os.environ.get("STT_PROVIDER", "faster-whisper"),

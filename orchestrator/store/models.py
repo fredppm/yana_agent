@@ -23,8 +23,10 @@ class Base(DeclarativeBase):
 class Owner(Base):
     __tablename__ = "owners"
 
-    id: MappedColumn[str] = mapped_column(String, primary_key=True)           # UUID
-    name: MappedColumn[str | None] = mapped_column(String, nullable=True)      # apelido — mutable free text
+    id: MappedColumn[str] = mapped_column(String, primary_key=True)  # UUID
+    name: MappedColumn[str | None] = mapped_column(
+        String, nullable=True
+    )  # apelido — mutable free text
     persona: MappedColumn[str | None] = mapped_column(Text, nullable=True)
     creed: MappedColumn[str | None] = mapped_column(Text, nullable=True)
     bond: MappedColumn[str | None] = mapped_column(Text, nullable=True)

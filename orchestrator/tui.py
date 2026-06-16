@@ -30,7 +30,6 @@ from textual import work
 from textual.app import App, ComposeResult
 from textual.binding import Binding, BindingType
 from textual.containers import Container, Horizontal
-from textual.events import Key
 from textual.screen import ModalScreen, Screen
 from textual.timer import Timer
 from textual.widgets import Input, Label, RichLog
@@ -342,7 +341,7 @@ class ProfileSessionScreen(Screen[str | None]):
         self._update_hint()
 
     def _flash_hint(self, msg: str, ticks: int = 15) -> None:
-        """Show a temporary message in the hint bar for ~1.8s (15 × 0.12s ticks)."""
+        """Show a temporary message in the hint bar for ~1.8s (15 x 0.12s ticks)."""
         self._flash_ticks = ticks
         self._flash_msg = msg
         self._update_hint()
@@ -354,7 +353,13 @@ class ProfileSessionScreen(Screen[str | None]):
             return
         multi = len(self._profiles) > 1
         nav = t("profiles_hint_nav") if multi else t("sessions_hint_nav")
-        parts = [nav, t("sessions_hint_select"), t("profiles_hint_new"), t("profiles_hint_rename"), t("sessions_hint_quit")]
+        parts = [
+            nav,
+            t("sessions_hint_select"),
+            t("profiles_hint_new"),
+            t("profiles_hint_rename"),
+            t("sessions_hint_quit"),
+        ]
         if multi:
             parts.append(t("profiles_hint_delete"))
         self.query_one("#session-hint", Label).update(f"  {frame}  {'   '.join(parts)}")
@@ -445,7 +450,9 @@ class ProfileSessionScreen(Screen[str | None]):
         if not self._profiles:
             return
         current = self._profiles[self._profile_idx]
-        self.app.push_screen(RenameProfileScreen(current.get("label", current["id"])), self._on_rename)
+        self.app.push_screen(
+            RenameProfileScreen(current.get("label", current["id"])), self._on_rename
+        )
 
     def _on_rename(self, new_label: str | None) -> None:
         if not new_label:
@@ -581,7 +588,9 @@ class YANAApp(App[TuiResult]):
         self._auto_greet = auto_greet
         self._listening: bool = False
         self._voice_gen: int = 0  # incremented each activation; invalidates old loops
-        self._chat_started: bool = False  # True once _start_chat() completes — guards on_input_submitted
+        self._chat_started: bool = (
+            False  # True once _start_chat() completes — guards on_input_submitted
+        )
 
     # ------------------------------------------------------------------
     # Layout
@@ -1037,7 +1046,9 @@ class YANAApp(App[TuiResult]):
         if visible:
             thinking.display = True
             self._spinner_idx = 0
-            thinking.update(f"  {self._SPINNER[0]} {t('thinking')}")  # immediate — no wait for first tick
+            thinking.update(
+                f"  {self._SPINNER[0]} {t('thinking')}"
+            )  # immediate — no wait for first tick
             if self._spinner_timer is None:
                 self._spinner_timer = self.set_interval(0.1, self._tick_spinner)
         else:
