@@ -33,3 +33,6 @@ psycopg2-binary>=2.9.0
 # Gmail / Google Calendar connectors — OAuth2 auth in parent process
 google-auth>=2.0.0
 google-auth-oauthlib>=1.0.0
+
+# Test infrastructure
+testcontainers[postgres]>=4.0  # spin up real PostgreSQL for TUI integration tests

@@ -169,7 +169,7 @@ def _resolve_mode(text_flag: bool, voice_flag: bool) -> InteractionMode:
             return InteractionMode.VOICE
         if choice in ("t", "text"):
             return InteractionMode.TEXT
-        print("Please type 'v' for voice or 't' for text.")
+        print(t("programmer_mode_invalid"))
 
 
 def _session_loop(
@@ -223,7 +223,7 @@ def _session_loop(
                         output.configure(voice_mode=True, speak_fn=speak_fn)
                     else:
                         output.configure(voice_mode=False)
-                    print(f"Mode switched to {current_mode.value}.", flush=True)
+                    print(t("programmer_mode_switched", mode=current_mode.value), flush=True)
                 continue
 
             # Session end — cleanup any active worktree then exit

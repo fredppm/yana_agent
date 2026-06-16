@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import logging
+import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -48,8 +49,9 @@ class Base(DeclarativeBase):
 class Owner(Base):
     __tablename__ = "owners"
 
-    id: MappedColumn[str] = mapped_column(String, primary_key=True)
-    name: MappedColumn[str] = mapped_column(String, nullable=False, default="")
+    id: MappedColumn[str] = mapped_column(String, primary_key=True)           # UUID
+    username: MappedColumn[str] = mapped_column(String, nullable=False)        # "fred" — immutable, unique
+    name: MappedColumn[str | None] = mapped_column(String, nullable=True)      # apelido — mutable free text
     persona: MappedColumn[str | None] = mapped_column(Text, nullable=True)
     creed: MappedColumn[str | None] = mapped_column(Text, nullable=True)
     bond: MappedColumn[str | None] = mapped_column(Text, nullable=True)
@@ -121,16 +123,44 @@ def _get_engine():
 # ---------------------------------------------------------------------------
 
 
+_MIGRATION_STAMP = Path(__file__).parent / "config" / ".db-revision"
+
+
+def _code_head() -> str:
+    """Return the HEAD revision from the migration scripts (no DB needed)."""
+    try:
+        from alembic.config import Config
+        from alembic.script import ScriptDirectory
+
+        cfg = Config(Path(__file__).parent / "alembic.ini")
+        return ScriptDirectory.from_config(cfg).get_current_head() or ""
+    except Exception:
+        return ""
+
+
 def init_schema_sync() -> None:
-    """Apply all pending Alembic migrations. Safe to run on every startup."""
+    """Apply all pending Alembic migrations. Safe to run on every startup.
+
+    Skips the Alembic DB round-trip when the local stamp file matches the
+    code HEAD — saving ~2s on every startup when no migrations are pending.
+    On any mismatch (new migration deployed, fresh install, stamp missing),
+    runs the full upgrade and writes the new stamp.
+    """
+    head = _code_head()
+    if head and _MIGRATION_STAMP.exists() and _MIGRATION_STAMP.read_text().strip() == head:
+        log.debug("store: schema up to date (%s) — skipping alembic", head)
+        return
+
     try:
         from alembic import command
         from alembic.config import Config
 
         alembic_cfg = Config(Path(__file__).parent / "alembic.ini")
         command.upgrade(alembic_cfg, "head")
+        if head:
+            _MIGRATION_STAMP.write_text(head)
     except Exception as e:
-        log.debug("store: migration failed: %s", e)
+        log.error("store: migration failed — check PostgreSQL connection: %s", e)
 
 
 # ---------------------------------------------------------------------------
@@ -138,37 +168,70 @@ def init_schema_sync() -> None:
 # ---------------------------------------------------------------------------
 
 
-def add_profile_sync(profile_id: str, label: str) -> None:
-    owner_id = profile_id.split("::")[0]
+def add_owner_sync(username: str, name: str = "") -> str:
+    """Create a new owner. Returns owner UUID."""
+    owner_id = str(uuid.uuid4())
     try:
         with Session(_get_engine()) as session:
-            if session.get(Owner, owner_id) is None:
-                session.add(Owner(id=owner_id))
-            profile = session.get(Profile, profile_id)
-            if profile is None:
-                session.add(
-                    Profile(
-                        id=profile_id,
-                        owner_id=owner_id,
-                        label=label,
-                        created_at=datetime.now(UTC).isoformat(),
-                    )
+            existing = session.scalars(select(Owner).where(Owner.username == username)).first()
+            if existing:
+                return existing.id
+            session.add(Owner(id=owner_id, username=username, name=name or None))
+            session.commit()
+    except Exception as e:
+        log.debug("store: add_owner failed: %s", e)
+    return owner_id
+
+
+def add_profile_sync(owner_id: str, label: str) -> str:
+    """Create a new profile under owner_id. Returns new profile UUID."""
+    profile_id = str(uuid.uuid4())
+    try:
+        with Session(_get_engine()) as session:
+            session.add(
+                Profile(
+                    id=profile_id,
+                    owner_id=owner_id,
+                    label=label,
+                    created_at=datetime.now(UTC).isoformat(),
                 )
-            else:
-                profile.label = label
+            )
             session.commit()
     except Exception as e:
         log.debug("store: add_profile failed: %s", e)
+    return profile_id
+
+
+def get_owner_id_for_profile_sync(profile_id: str) -> str | None:
+    """Return the owner UUID for a given profile UUID."""
+    try:
+        with Session(_get_engine()) as session:
+            profile = session.get(Profile, profile_id)
+            return profile.owner_id if profile else None
+    except Exception as e:
+        log.debug("store: get_owner_id_for_profile failed: %s", e)
+        return None
 
 
 def list_profiles_sync() -> list[dict]:
     try:
         with Session(_get_engine()) as session:
-            profiles = session.scalars(select(Profile).order_by(Profile.id)).all()
+            profiles = session.scalars(select(Profile).order_by(Profile.created_at)).all()
             return [{"id": p.id, "label": p.label} for p in profiles]
     except Exception as e:
-        log.debug("store: list_profiles failed: %s", e)
+        log.error("store: list_profiles failed — check PostgreSQL connection: %s", e)
         return []
+
+
+def update_profile_label_sync(profile_id: str, new_label: str) -> None:
+    try:
+        with Session(_get_engine()) as session:
+            profile = session.get(Profile, profile_id)
+            if profile:
+                profile.label = new_label
+                session.commit()
+    except Exception as e:
+        log.debug("store: update_profile_label failed: %s", e)
 
 
 def delete_profile_sync(profile_id: str) -> None:
@@ -202,24 +265,15 @@ def save_sanctum_fields_sync(owner_id: str, profile_id: str, fields: dict[str, s
         with Session(_get_engine()) as session:
             if owner_props:
                 owner = session.get(Owner, owner_id)
-                if owner is None:
-                    owner = Owner(id=owner_id)
-                    session.add(owner)
-                for attr, val in owner_props.items():
-                    setattr(owner, attr, val)
-                owner.updated_at = datetime.now(UTC).isoformat()
+                if owner:
+                    for attr, val in owner_props.items():
+                        setattr(owner, attr, val)
+                    owner.updated_at = datetime.now(UTC).isoformat()
             if profile_props:
                 profile = session.get(Profile, profile_id)
-                if profile is None:
-                    profile = Profile(
-                        id=profile_id,
-                        owner_id=owner_id,
-                        label=profile_id,  # placeholder; overwritten by add_profile_sync
-                        created_at=datetime.now(UTC).isoformat(),
-                    )
-                    session.add(profile)
-                for attr, val in profile_props.items():
-                    setattr(profile, attr, val)
+                if profile:
+                    for attr, val in profile_props.items():
+                        setattr(profile, attr, val)
             session.commit()
     except Exception as e:
         log.debug("store: save_sanctum_fields failed: %s", e)
@@ -272,6 +326,18 @@ def create_session_sync(
             db.commit()
     except Exception as e:
         log.debug("store: create_session failed: %s", e)
+
+
+def update_session_preview_sync(session_id: str, preview: str) -> None:
+    """Update the preview/title of an existing session."""
+    try:
+        with Session(_get_engine()) as db:
+            record = db.get(SessionRecord, session_id)
+            if record:
+                record.preview = preview[:80]
+                db.commit()
+    except Exception as e:
+        log.debug("store: update_session_preview failed: %s", e)
 
 
 def list_sessions_sync(profile_id: str, limit: int = 20) -> list[tuple[str, datetime, str]]:

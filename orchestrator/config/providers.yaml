@@ -44,13 +44,13 @@ engines:
     flags: []                 # extra CLI flags (e.g. ["--dangerously-skip-permissions"])
 
 postgres:
-  url: "postgresql://postgres:postgres@localhost:5432/yana"
+  url: "postgresql://postgres:postgres@127.0.0.1:5432/yana"
 
 graphiti:
-  uri: "bolt://localhost:7687"
+  uri: "bolt://127.0.0.1:7687"
   user: ""
   password: ""
-  litellm_url: "http://localhost:4000"
+  litellm_url: "http://127.0.0.1:4000"
   model: "bedrock-claude-haiku"
   embed_model: "bedrock-embed"
 

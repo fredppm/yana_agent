@@ -33,6 +33,39 @@ yana_agent/
 
 ---
 
+## TUI Screens
+
+Use these names when reporting bugs or writing tests — they map 1-to-1 to Textual classes in `tui.py`.
+
+| Screen name | Textual class | When shown |
+|---|---|---|
+| **Session Browser** | `ProfileSessionScreen` | On startup when ≥1 profile exists. Left/right navigate profiles; up/down navigate sessions. |
+| **Chat** | `YANAApp` (main screen) | After selecting a session from the browser, or immediately on first run (First Breath). |
+| **New Profile modal** | `NewProfileScreen` | Pushed on top of Session Browser when user presses `n`. |
+| **Rename Profile modal** | `RenameProfileScreen` | Pushed on top of Session Browser when user presses `r`. |
+
+**Chat sub-elements** (not screens, but commonly referenced):
+
+| Element name | CSS id | Description |
+|---|---|---|
+| **Thinking row** | `#thinking` | Row above the input bar; shows spinner while YANA is processing. Hidden when idle. |
+| **Input bar** | `#input-bar` | Bottom bar with prompt label (`❯`) and text input. |
+| **Chat hint bar** | `#chat-hint` | Row below the input bar; shows keyboard shortcuts. |
+| **Chat log** | `#chat` | Main scrolling area where messages appear. |
+
+**First Breath** is not a separate screen — it is the Chat opening directly (skipping the Session Browser) with `auto_greet=True` because no profiles exist yet.
+
+**Keyboard shortcuts in Chat:**
+
+| Key | Action |
+|---|---|
+| `ctrl+d` | End session (triggers memory save + exit) |
+| `ctrl+o` | Toggle history expand/collapse |
+| `ctrl+t` | Toggle voice mode |
+| `ctrl+c` | Force-quit (skips memory save) |
+
+---
+
 ## Storage Architecture
 
 Two separate backends, two separate concerns:

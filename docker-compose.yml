@@ -3,7 +3,7 @@ services:
     image: neo4j:5-community
     ports:
       - "7687:7687"   # Bolt protocol — used by graphiti-core
-      - "7474:7474"   # Neo4j browser (optional, useful for debugging)
+      # - "7474:7474"   # Neo4j browser (optional — comment out if port already in use)
     environment:
       - NEO4J_AUTH=none   # no auth for local dev
     volumes:

@@ -22,9 +22,10 @@ def run_migrations_offline() -> None:
 
 
 def run_migrations_online() -> None:
-    from sqlalchemy import create_engine
+    from store import _get_engine
 
-    connectable = create_engine(_load_url())
+    # Reuse the shared engine so we don't open a second cold TCP connection.
+    connectable = _get_engine()
     with connectable.connect() as connection:
         context.configure(connection=connection, target_metadata=target_metadata)
         with context.begin_transaction():

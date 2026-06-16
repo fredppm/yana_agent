@@ -97,3 +97,71 @@ class TestBuildSanctumPrompt:
         assert len(sanctum_writer.FIRST_BREATH_FILES) > len(sanctum_writer.REGULAR_SESSION_FILES)
         # Regular session should NOT request CREED (first-breath-only field)
         assert fb_prompt.count("CREED") > reg_prompt.count("CREED")
+
+
+# ---------------------------------------------------------------------------
+# First Breath pipeline: LLM output → parse → create owner in DB
+# ---------------------------------------------------------------------------
+
+
+import pytest
+import sys
+from pathlib import Path
+from unittest.mock import patch
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+import core
+
+
+def _first_breath_llm_response(owner_name: str) -> str:
+    """Minimal valid First Breath LLM output with the given OWNER_NAME."""
+    return (
+        f"<<<FILE:OWNER_NAME>>>\n{owner_name}\n<<<END>>>\n"
+        "<<<FILE:PERSONA>>>\nYANA, a personal life partner.\n<<<END>>>\n"
+        "<<<FILE:CREED>>>\nTo help the owner.\n<<<END>>>\n"
+        "<<<FILE:BOND>>>\nThe owner is an engineer.\n<<<END>>>\n"
+        "<<<FILE:PULSE>>>\nDaily check-ins.\n<<<END>>>\n"
+        "<<<FILE:PULSE_CONFIG>>>\nquiet_hours: \"23:00-07:00\"\n<<<END>>>"
+    )
+
+
+@pytest.mark.tui_integration
+def test_first_breath_pipeline_simple_name(db):
+    """parse → create_first_owner_and_profile: plain first name ends up in DB correctly."""
+    written = sanctum_writer._parse_and_write(_first_breath_llm_response("Fred"))
+    assert written.get("OWNER_NAME") == "Fred"
+    owner_id, _ = core.create_first_owner_and_profile(written)
+    with db.Session(db._get_engine()) as s:
+        owner = s.get(db.Owner, owner_id)
+    assert owner.username == "fred"
+    assert owner.name == "Fred"
+    assert db.list_profiles_sync()[0]["label"] == "Fred — Default"
+
+
+@pytest.mark.tui_integration
+def test_first_breath_pipeline_full_name_from_llm(db):
+    """LLM writes full name → only first token becomes username, not OS fallback."""
+    written = sanctum_writer._parse_and_write(_first_breath_llm_response("Fred Mourao"))
+    assert written.get("OWNER_NAME") == "Fred Mourao"
+    owner_id, _ = core.create_first_owner_and_profile(written)
+    with db.Session(db._get_engine()) as s:
+        owner = s.get(db.Owner, owner_id)
+    assert owner.username == "fred"   # not "mourao" (old bug)
+    assert owner.name == "Fred"
+    assert db.list_profiles_sync()[0]["label"] == "Fred — Default"
+
+
+@pytest.mark.tui_integration
+def test_first_breath_pipeline_missing_owner_name(db):
+    """LLM omits OWNER_NAME entirely → falls back to 'user', not OS username."""
+    response = (
+        "<<<FILE:PERSONA>>>\nYANA.\n<<<END>>>\n"
+        "<<<FILE:BOND>>>\nThe owner.\n<<<END>>>"
+    )
+    written = sanctum_writer._parse_and_write(response)
+    assert "OWNER_NAME" not in written
+    owner_id, _ = core.create_first_owner_and_profile(written)
+    with db.Session(db._get_engine()) as s:
+        owner = s.get(db.Owner, owner_id)
+    assert owner.username == "user"   # not OS username

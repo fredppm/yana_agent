@@ -104,13 +104,6 @@ def load_system_prompt(
         else:
             parts.append(f"---\n[{errors.e('SYS-001')}]")
 
-    # Episodic memory from Graphiti — injected when available
-    import memory as mem
-
-    graphiti_ctx = mem.load_context_sync()
-    if graphiti_ctx:
-        parts.append(graphiti_ctx)
-
     # Connector manifest — lightweight, always injected when registry is present
     if registry is not None:
         manifest_section = build_connector_manifest(registry)
@@ -153,8 +146,10 @@ def load_session_messages(session_id: str) -> list[dict]:
 
 
 def owner_id_from_profile(profile_id: str) -> str:
-    """Extract owner from a profile id. 'fred::pessoal' → 'fred'."""
-    return profile_id.split("::")[0]
+    """Return the owner UUID for a given profile UUID."""
+    import store
+
+    return store.get_owner_id_for_profile_sync(profile_id) or ""
 
 
 # ---------------------------------------------------------------------------
@@ -221,12 +216,67 @@ def set_runtime_profile(profile_id: str) -> None:
     _active_profile = profile_id
 
 
-def add_profile(profile_id: str, label: str) -> None:
-    """Add a profile to PostgreSQL and activate it in this process."""
+def _parse_owner_name(raw: str) -> tuple[str, str]:
+    """Return (slug, display) from a raw OWNER_NAME string.
+
+    Takes the first whitespace-delimited token, strips non-letter chars for the
+    slug, preserves original capitalisation for the display name.
+    Falls back to ("user", "User") when the result would be shorter than 2 chars.
+
+    Examples:
+        "Nelson"        → ("nelson",  "Nelson")
+        "Nelson Mourao" → ("nelson",  "Nelson")
+        "José"          → ("josé",    "José")
+        ""              → ("user",    "User")
+        "A"             → ("user",    "User")
+    """
+    import re
+
+    first_token = raw.strip().split()[0] if raw.strip() else ""
+    slug = re.sub(r"[^a-záéíóúàèìòùãõâêîôûñç]", "", first_token.lower())
+    if len(slug) < 2:
+        return "user", "User"
+    return slug, first_token.capitalize()
+
+
+def create_first_owner_and_profile(written: dict[str, str]) -> tuple[str, str]:
+    """First Breath: parse owner name from sanctum output, create Owner + Profile.
+
+    Returns (owner_id, profile_id).
+    """
     import store
 
-    store.add_profile_sync(profile_id, label)
+    slug, display = _parse_owner_name(written.get("OWNER_NAME", ""))
+    owner_id = store.add_owner_sync(slug, display)
+    profile_id = store.add_profile_sync(owner_id, f"{display} — Default")
+    return owner_id, profile_id
+
+
+def add_owner(username: str, name: str = "") -> str:
+    """Create a new owner. Returns owner UUID."""
+    import store
+
+    return store.add_owner_sync(username, name)
+
+
+_PROFILE_LIMIT = 5
+
+
+def add_profile(label: str) -> str:
+    """Create a new profile under the active owner. Returns new profile UUID.
+    Raises ValueError if the owner already has _PROFILE_LIMIT profiles.
+    """
+    import store
+
+    existing = store.list_profiles_sync()
+    if len(existing) >= _PROFILE_LIMIT:
+        raise ValueError(f"Profile limit reached ({_PROFILE_LIMIT} max)")
+
+    active = get_active_profile()
+    owner_id = owner_id_from_profile(active) if active else ""
+    profile_id = store.add_profile_sync(owner_id, label)
     set_runtime_profile(profile_id)
+    return profile_id
 
 
 def delete_profile(profile_id: str) -> None:
@@ -237,6 +287,13 @@ def delete_profile(profile_id: str) -> None:
     if get_active_profile() == profile_id:
         remaining = list_profiles()
         set_runtime_profile(remaining[0]["id"] if remaining else "")
+
+
+def rename_profile_label(profile_id: str, new_label: str) -> None:
+    """Update the display label for a profile in PostgreSQL."""
+    import store
+
+    store.update_profile_label_sync(profile_id, new_label)
 
 
 def is_quiet_hours(pulse_config: dict | None = None) -> bool:

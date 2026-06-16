@@ -26,6 +26,7 @@ import providers as prov
 # ---------------------------------------------------------------------------
 
 FIRST_BREATH_FILES = [
+    "OWNER_NAME",
     "PERSONA",
     "CREED",
     "BOND",
@@ -61,6 +62,7 @@ Files to write:
 
 Rules:
 - Replace ALL {{...}} placeholders with real content from our conversation. None should remain.
+- OWNER_NAME: a single word — the owner's first name, exactly as they said it. Nothing else.
 - BOND: who the owner IS (enduring truths). Not what they're going through right now.
 - PERSONA: your identity as it crystallized through this conversation. Include your first evolution log entry.
 - CREED: your mission, values, standing orders — filled in from what you learned about the owner.
@@ -82,6 +84,7 @@ def write_sanctum(
     config: dict | None = None,
     session_date: str | None = None,
     silent: bool = False,
+    save: bool = True,
 ) -> dict[str, str]:
     """
     Call YANA with conversation history + sanctum write prompt.
@@ -119,7 +122,7 @@ def write_sanctum(
 
     written = _parse_and_write(response)
 
-    if written:
+    if written and save:
         active = core.get_active_profile()
         owner_id = core.owner_id_from_profile(active)
         import store

@@ -270,21 +270,45 @@ def _run_tui_conversation(
     voice_mode: bool = False,
     listen_fn: Callable[[], str] | None = None,
     speak_fn: Callable[[str], None] | None = None,
-    greeting: str | None = None,
+    auto_greet: bool = False,
     profiles: list[dict] | None = None,
     active_profile: str = "",
     sessions: list | None = None,
 ) -> None:
     """Run the Textual TUI conversation loop (text or voice mode)."""
+    import threading
+
     from tui import run_tui
 
     _sessions = sessions if sessions is not None else []
     task_ref = [initial_task]
 
+    # Graphiti context loads in the background — doesn't block TUI startup.
+    # Injected into the system prompt on the FIRST turn where context is available.
+    # _graphiti_injected is only set True when context was actually used — this way
+    # early turns that fire before Graphiti finishes will retry on subsequent turns.
+    _graphiti_ctx: list[str] = [""]
+    _graphiti_injected = [False]
+
+    if active_profile:
+
+        def _load_graphiti() -> None:
+            _graphiti_ctx[0] = mem.load_context_sync(timeout=30.0)
+
+        threading.Thread(target=_load_graphiti, daemon=True, name="graphiti-ctx").start()
+
     def on_turn(msgs: list[dict]) -> str:
+        # Inject Graphiti context once — on the first turn where it is available.
+        # If Graphiti hasn't finished loading yet, skip silently and retry next turn.
+        _sp = system_prompt
+        if not _graphiti_injected[0] and active_profile:
+            ctx = _graphiti_ctx[0]
+            if ctx:
+                _graphiti_injected[0] = True  # only mark injected when ctx is actually used
+                _sp = system_prompt + "\n\n" + ctx
         reply = _call_with_tool_loop(
             msgs,
-            system_prompt,
+            _sp,
             tools,
             registry,
             providers_config,
@@ -299,12 +323,13 @@ def _run_tui_conversation(
         session_id = chosen_session or datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         session_date = session_id[:10]
 
-        is_first_breath = not core.sanctum_exists()
-
-        if is_first_breath:
-            # First Breath: write sanctum files synchronously, then register profile
+        # Use the startup-time value — not sanctum_exists() which can falsely
+        # trigger if PERSONA wasn't saved, causing duplicate profile creation.
+        if initial_task == "first_breath":
+            # First Breath: write sanctum first to extract the owner name from
+            # OWNER_NAME, then register the owner + profile, then persist.
             try:
-                sw.write_sanctum(
+                written = sw.write_sanctum(
                     final_messages,
                     system_prompt,
                     is_first_breath=True,
@@ -313,9 +338,13 @@ def _run_tui_conversation(
                     silent=True,
                 )
             except KeyboardInterrupt:
-                pass
-            # Register the new profile in providers.yaml (CAP-4)
-            _register_first_profile()
+                written = {}
+            owner_id, profile_id = core.create_first_owner_and_profile(written)
+            core.set_runtime_profile(profile_id)
+            if written:
+                store.save_sanctum_fields_sync(owner_id, profile_id, written)
+            # Store the First Breath conversation — makes it visible in session browser
+            mem.store_session_background(final_messages, session_id)
         else:
             # Regular session: store in Graphiti in background — TUI closes immediately
             mem.store_session_background(final_messages, session_id)
@@ -327,46 +356,10 @@ def _run_tui_conversation(
         voice_mode=voice_mode,
         listen_fn=listen_fn,
         speak_fn=speak_fn,
-        greeting=greeting,
+        auto_greet=auto_greet,
         profiles=profiles,
         active_profile_id=active_profile,
     )
-
-
-def _register_first_profile() -> None:
-    """
-    After a successful First Breath, register the owner profile in providers.yaml.
-    Called from on_exit when is_first_breath is True and no profiles existed.
-    """
-    if core.profiles_exist():
-        return  # Already registered
-
-    import re
-
-    active = core.get_active_profile()
-    owner_id: str | None = None
-    if active:
-        candidate = core.owner_id_from_profile(active)
-        fields = store.load_sanctum_fields_sync(candidate, active)
-        persona = fields.get("persona", "")
-        if persona:
-            m = re.search(
-                r"(?:#|YANA)[^\n\S]*(?:YANA[^\n—]*)?[—\-]\s*([A-Za-záéíóúàèìòùãõâêîôûñç]+)",
-                persona,
-            )
-            if m:
-                owner_id = m.group(1).lower().strip()
-    if not owner_id:
-        import getpass
-
-        try:
-            owner_id = getpass.getuser().lower()
-        except Exception:
-            owner_id = "user"
-
-    profile_id = f"{owner_id}::pessoal"
-    label = f"{owner_id.capitalize()} — Pessoal"
-    core.add_profile(profile_id, label)
 
 
 def run_conversation() -> None:
@@ -400,20 +393,6 @@ def run_conversation() -> None:
     system_prompt = core.load_system_prompt(registry=registry, _sanctum_fields=sanctum_fields)
     task = "first_breath" if is_first_breath else "conversation"
 
-    # First Breath: pre-generate YANA's opening line so TUI doesn't open blank
-    greeting: str | None = None
-    if is_first_breath:
-        try:
-            greeting = prov.call_llm(
-                [{"role": "user", "content": "..."}],
-                system_prompt,
-                task="first_breath",
-                stream=False,
-                config=providers_config,
-            )
-        except Exception:
-            pass
-
     # Voice closures — passed to TUI so ctrl+v can activate them at any time
     _cfg = voice_cfg
 
@@ -441,7 +420,7 @@ def run_conversation() -> None:
         voice_mode=False,  # TUI starts in text mode; user toggles with ctrl+v
         listen_fn=_listen,
         speak_fn=_speak,
-        greeting=greeting,
+        auto_greet=is_first_breath,
         profiles=profiles,
         active_profile=active_profile,
         sessions=sessions,
@@ -480,10 +459,41 @@ def main() -> None:
         level=logging.DEBUG if args.verbose else logging.WARNING,
         format="[%(levelname)s] %(name)s: %(message)s",
     )
-    # Neo4j emits schema warnings for properties that don't exist yet (empty graph).
-    # These are expected on first run and add no signal — suppress unless verbose.
+
+    # Always write DEBUG-level logs to yana-debug.log beside this script.
+    # This captures Textual errors, exceptions, and TUI lifecycle events
+    # even when the terminal clears them before they can be read.
+    _log_path = _HERE / "yana-debug.log"
+    try:
+        from logging.handlers import RotatingFileHandler
+
+        _fh = RotatingFileHandler(
+            _log_path,
+            maxBytes=2 * 1024 * 1024,  # 2 MB
+            backupCount=2,
+            encoding="utf-8",
+        )
+        _fh.setLevel(logging.DEBUG)
+        _fh.setFormatter(
+            logging.Formatter(
+                "%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+                datefmt="%Y-%m-%d %H:%M:%S",
+            )
+        )
+        logging.getLogger().addHandler(_fh)
+    except Exception:
+        pass  # Never block startup over a log file
+
+    # Suppress known shutdown-race noise on the console (still captured in yana-debug.log).
+    # - neo4j.notifications: schema warnings for properties that don't exist yet (empty graph)
+    # - graphiti_core: asyncio teardown tasks that fail after the event loop closes
+    # - asyncio: 'Task exception was never retrieved' / 'Event loop is closed' from
+    #   httpx connection-pool cleanup tasks spawned by Graphiti's client.close() —
+    #   both variants are expected and carry no actionable signal for the user.
     if not args.verbose:
         logging.getLogger("neo4j.notifications").setLevel(logging.ERROR)
+        logging.getLogger("graphiti_core").setLevel(logging.CRITICAL)
+        logging.getLogger("asyncio").setLevel(logging.CRITICAL)
 
     if args.init:
         run_init()
