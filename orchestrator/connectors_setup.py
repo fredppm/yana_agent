@@ -46,17 +46,20 @@ def build_registry() -> ConnectorRegistry:
         return registry
 
     db_rows = store.list_connectors_sync(profile_id)
+    db_ids = {row["instance_id"] for row in db_rows}
+
+    # Sync YAML → DB: persist any entries not yet in the database
+    manifest = _HERE / "config" / "connectors.yaml"
+    if manifest.exists():
+        data = yaml.safe_load(manifest.read_text(encoding="utf-8")) or {}
+        for c in data.get("connectors", []):
+            if c["id"] not in db_ids:
+                store.save_connector_sync(profile_id, c["id"], json.dumps(c, ensure_ascii=False))
+                db_rows.append({"instance_id": c["id"], "config_json": json.dumps(c, ensure_ascii=False)})
 
     if db_rows:
-        # PostgreSQL is source of truth — load from DB
         registry.load_from_db(db_rows)
     else:
-        # First run: import YAML into PostgreSQL, then load
-        manifest = _HERE / "config" / "connectors.yaml"
-        if manifest.exists():
-            data = yaml.safe_load(manifest.read_text(encoding="utf-8")) or {}
-            for c in data.get("connectors", []):
-                store.save_connector_sync(profile_id, c["id"], json.dumps(c, ensure_ascii=False))
-            registry.load_manifest(manifest)
+        registry.load_manifest(manifest)
 
     return registry
