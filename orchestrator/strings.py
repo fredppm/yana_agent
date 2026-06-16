@@ -56,6 +56,8 @@ _STRINGS: dict[str, dict[str, str]] = {
         "chat_history_expand": "ctrl+o expand",
         "chat_history_collapse": "ctrl+o collapse",
         "saving_memory_skip": "ctrl+c skip",
+        # -- Memory --
+        "memory_context_query": "who is the user, what is happening in their life right now",
         # -- Programmer mode --
         "programmer_ready": "Programmer mode active — {mode}. Ready for your request.",
         "programmer_sanctum_missing": "Programmer mode requires a sanctum. Run: python main.py --init",
@@ -102,6 +104,8 @@ _STRINGS: dict[str, dict[str, str]] = {
         "chat_history_expand": "ctrl+o expandir",
         "chat_history_collapse": "ctrl+o recolher",
         "saving_memory_skip": "ctrl+c pular",
+        # -- Memory --
+        "memory_context_query": "quem é o usuário, o que está acontecendo na vida dele agora",
         # -- Programmer mode --
         "programmer_ready": "Programmer mode active — {mode}. Ready for your request.",
         "programmer_sanctum_missing": "Programmer mode requires a sanctum. Run: python main.py --init",
