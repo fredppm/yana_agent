@@ -105,7 +105,7 @@ def parse_args() -> argparse.Namespace:
 def run_init() -> None:
     script = _HERE.parent / "skills" / "agent-yana" / "scripts" / "init-sanctum.py"
     if not script.exists():
-        print(f"[erro] Script não encontrado: {script}")
+        print(f"[error] Script not found: {script}")
         sys.exit(1)
     result = subprocess.run([sys.executable, str(script), "--json"], capture_output=False)
     sys.exit(result.returncode)
