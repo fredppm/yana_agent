@@ -26,3 +26,6 @@ _bmad/custom/*.user.toml
 # OS
 .DS_Store
 Thumbs.db
+
+# Logs
+*.log
