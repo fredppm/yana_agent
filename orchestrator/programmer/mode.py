@@ -2,9 +2,6 @@
 mode.py — YANA programmer mode activation and session loop.
 
 Entry point: run_programmer_mode(). Called from main.py when --programmer is passed.
-
-Story 1.1 scope: activation, mode selection, sanctum load, readiness signal.
-Stories 1.2-1.4 will extend _handle_request() with clarification, routing, and filtering.
 """
 
 from __future__ import annotations
@@ -13,7 +10,6 @@ import sys
 from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
-from pathlib import Path
 
 # ---------------------------------------------------------------------------
 # Interaction mode
@@ -29,58 +25,30 @@ class InteractionMode(Enum):
 
 
 # ---------------------------------------------------------------------------
-# Sanctum context — the YANA knowledge loaded at mode activation
+# Sanctum context — loaded once at activation, passed to each dispatch
 # ---------------------------------------------------------------------------
 
 
 @dataclass
 class SanctumContext:
-    """
-    The subset of sanctum files relevant to programmer mode dispatch.
-
-    Loaded once at activation; passed into every EngineRequest as context.
-    """
-
-    bond: str  # BOND.md — enduring truths about Fred
-    memory: str  # MEMORY.md — current situations, open threads
-    persona: str  # PERSONA.md — YANA's identity
+    bond: str  # enduring truths about the owner
 
     @classmethod
-    def load(cls, sanctum_path: Path) -> SanctumContext:
-        """
-        Load BOND.md, MEMORY.md, PERSONA.md from the sanctum.
+    def load(cls) -> SanctumContext:
+        """Load from PostgreSQL. Raises FileNotFoundError if sanctum not initialised."""
+        import profiles
+        import store
 
-        Raises FileNotFoundError if sanctum_path does not exist.
-        Missing individual files are replaced with empty strings
-        (sanctum may be partially initialised).
-        """
-        if not sanctum_path.exists():
-            raise FileNotFoundError(f"Sanctum not found at {sanctum_path}")
-
-        def _read(fname: str) -> str:
-            p = sanctum_path / fname
-            return p.read_text(encoding="utf-8") if p.exists() else ""
-
-        return cls(
-            bond=_read("BOND.md"),
-            memory=_read("MEMORY.md"),
-            persona=_read("PERSONA.md"),
-        )
-
-    def as_context_string(self, max_tokens: int = 500) -> str:
-        """
-        Produce a condensed context string for EngineRequest.context.
-
-        Concatenates bond + memory. persona is YANA's identity, not needed by
-        the engine. Hard-truncates at max_tokens*4 chars as a rough proxy.
-        """
-        combined = ""
-        if self.bond:
-            combined += f"## Who Fred is (BOND)\n\n{self.bond}\n\n"
-        if self.memory:
-            combined += f"## Current context (MEMORY)\n\n{self.memory}\n"
-        char_limit = max_tokens * 4
-        return combined[:char_limit] if len(combined) > char_limit else combined
+        active = profiles.get_active_profile()
+        if not active:
+            raise FileNotFoundError("No active profile — sanctum not initialised")
+        owner_id = profiles.owner_id_from_profile(active)
+        fields = store.load_sanctum_fields_sync(owner_id, active)
+        if not fields.get("persona"):
+            raise FileNotFoundError(
+                "Sanctum not initialised — run YANA first to complete First Breath"
+            )
+        return cls(bond=fields.get("bond", ""))
 
 
 # ---------------------------------------------------------------------------
@@ -133,7 +101,6 @@ def parse_mode_switch(text: str) -> InteractionMode | None:
 def run_programmer_mode(
     text_flag: bool,
     voice_flag: bool,
-    sanctum_path: Path,
     speak_fn: Callable[[str], None] | None = None,
     providers_config: dict | None = None,
 ) -> None:
@@ -142,7 +109,6 @@ def run_programmer_mode(
 
     text_flag:        True if --text was passed
     voice_flag:       True if --voice was passed
-    sanctum_path:     path to the sanctum directory (from core.sanctum_path())
     speak_fn:         TTS callable for voice mode (None = text only)
     providers_config: providers.yaml dict (loaded from file if None)
 
@@ -156,13 +122,10 @@ def run_programmer_mode(
     output.configure(voice_mode=False)  # text output during setup; reconfigured after mode chosen
 
     # --- Sanctum load (hard stop if missing) ---
-    if not sanctum_path.exists():
-        print(f"  [{t('programmer_sanctum_missing')}]", file=sys.stderr)
-        sys.exit(1)
-
     try:
-        sanctum = SanctumContext.load(sanctum_path)
+        sanctum = SanctumContext.load()
     except FileNotFoundError as exc:
+        print(f"  [{t('programmer_sanctum_missing')}]", file=sys.stderr)
         print(f"  [erro: {exc}]", file=sys.stderr)
         sys.exit(1)
 
@@ -206,7 +169,7 @@ def _resolve_mode(text_flag: bool, voice_flag: bool) -> InteractionMode:
             return InteractionMode.VOICE
         if choice in ("t", "text"):
             return InteractionMode.TEXT
-        print("Please type 'v' for voice or 't' for text.")
+        print(t("programmer_mode_invalid"))
 
 
 def _session_loop(
@@ -260,7 +223,7 @@ def _session_loop(
                         output.configure(voice_mode=True, speak_fn=speak_fn)
                     else:
                         output.configure(voice_mode=False)
-                    print(f"Mode switched to {current_mode.value}.", flush=True)
+                    print(t("programmer_mode_switched", mode=current_mode.value), flush=True)
                 continue
 
             # Session end — cleanup any active worktree then exit
@@ -295,7 +258,7 @@ def _handle_request(
     """
     Create worktree, inject context, run engine interactively.
 
-    Blocks until the engine session ends — Fred talks to the engine directly.
+    Blocks until the engine session ends.
     Returns DispatchResult (for worktree tracking) or None on failure.
     """
     from programmer.dispatcher import (

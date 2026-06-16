@@ -8,6 +8,7 @@ openai>=1.50.0
 
 # Config
 PyYAML>=6.0
+python-dotenv>=1.0.0
 
 # STT — choose one (or both); default config uses faster-whisper
 # openai-whisper>=20231117   # uncomment if using openai-whisper provider
@@ -25,9 +26,18 @@ numpy>=1.24.0
 # pydub>=0.25.1
 # Install ffmpeg separately if using pydub: https://ffmpeg.org/download.html
 
+# PostgreSQL — operational storage (profiles, sanctum, sessions, connectors)
+SQLAlchemy>=2.0
+alembic>=1.13
+psycopg2-binary>=2.9.0
+
 # Gmail / Google Calendar connectors — OAuth2 auth in parent process
 google-auth>=2.0.0
 google-auth-oauthlib>=1.0.0
+
+# Test infrastructure
+testcontainers[postgres]>=4.0  # spin up real PostgreSQL for TUI integration tests
+pytest-asyncio>=0.23            # needed for @pytest.mark.asyncio in test_tui.py
 
 # Pulse — task scheduling
 apscheduler>=3.10.0,<4

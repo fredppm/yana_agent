@@ -24,7 +24,7 @@ class EngineRequest:
     """Everything YANA sends to the engine when dispatching a request."""
 
     prompt: str  # Fred's request
-    context: str  # sanctum summary (BOND.md + MEMORY.md)
+    context: str  # sanctum summary (BOND.md — episodic memory from Graphiti)
     worktree_path: Path
     session_id: str
 
@@ -59,7 +59,7 @@ def load_engine(config: dict | None = None) -> CodingEngine:
             flags: []                  # optional extra CLI flags
     """
     if config is None:
-        import providers as prov
+        import llm as prov
 
         config = prov.load_providers()
 

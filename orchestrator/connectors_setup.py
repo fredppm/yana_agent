@@ -25,16 +25,38 @@ def build_registry() -> ConnectorRegistry:
     """Build and return a populated ConnectorRegistry.
 
     Types are discovered by scanning the project-level connectors/ folder.
-    Instances are loaded from orchestrator/config/connectors.yaml.
+    Instances are loaded from PostgreSQL (source of truth).
+    On first run (no connectors in DB), imports from connectors.yaml and persists.
     """
+    import json
+
+    import profiles
+    import store
+    import yaml
+
     registry = ConnectorRegistry()
 
     folder = _PROJECT_ROOT / "connectors"
     if folder.exists():
         load_connectors(folder, registry)
 
-    manifest = _HERE / "config" / "connectors.yaml"
-    if manifest.exists():
-        registry.load_manifest(manifest)
+    profile_id = profiles.get_active_profile()
+    if not profile_id:
+        # No profile yet (First Breath) — nothing to load
+        return registry
+
+    db_rows = store.list_connectors_sync(profile_id)
+
+    if db_rows:
+        # PostgreSQL is source of truth — load from DB
+        registry.load_from_db(db_rows)
+    else:
+        # First run: import YAML into PostgreSQL, then load
+        manifest = _HERE / "config" / "connectors.yaml"
+        if manifest.exists():
+            data = yaml.safe_load(manifest.read_text(encoding="utf-8")) or {}
+            for c in data.get("connectors", []):
+                store.save_connector_sync(profile_id, c["id"], json.dumps(c, ensure_ascii=False))
+            registry.load_manifest(manifest)
 
     return registry

@@ -11,9 +11,13 @@ import asyncio
 import os
 import re
 import tempfile
+from pathlib import Path
 
 import errors
 import output
+from dotenv import load_dotenv
+
+load_dotenv(Path(__file__).parent / ".env")
 
 # ---------------------------------------------------------------------------
 # Markdown stripper — LLMs add markdown even in voice mode
@@ -226,15 +230,24 @@ def ts() -> str:
 # ---------------------------------------------------------------------------
 
 
-def load_voice_config(providers_config: dict) -> dict:
-    """Extract STT/TTS config from providers.yaml content."""
-    stt = providers_config.get("stt", {})
-    tts = providers_config.get("tts", {})
+def load_voice_config() -> dict:
+    """Load STT/TTS config from environment variables.
+
+    STT_LANGUAGE and TTS_VOICE are required — raises EnvironmentError if unset.
+    """
+    language = os.environ.get("STT_LANGUAGE")
+    if not language:
+        raise OSError("STT_LANGUAGE env var is not set (e.g. 'en', 'pt')")
+
+    voice = os.environ.get("TTS_VOICE")
+    if not voice:
+        raise OSError("TTS_VOICE env var is not set (e.g. 'en-US-JennyNeural')")
+
     return {
-        "stt_provider": stt.get("provider", "openai-whisper"),
-        "stt_model": stt.get("model", "base"),
-        "stt_language": stt.get("language", "pt"),
-        "tts_voice": tts.get("voice", "pt-BR-FranciscaNeural"),
-        "tts_rate": tts.get("rate", "+0%"),
-        "tts_volume": tts.get("volume", "+0%"),
+        "stt_provider": os.environ.get("STT_PROVIDER", "faster-whisper"),
+        "stt_model": os.environ.get("STT_MODEL", "tiny"),
+        "stt_language": language,
+        "tts_voice": voice,
+        "tts_rate": os.environ.get("TTS_RATE", "+0%"),
+        "tts_volume": os.environ.get("TTS_VOLUME", "+0%"),
     }

@@ -17,7 +17,7 @@ from typing import Any
 
 import errors
 import output
-from providers import call_llm
+from llm import call_llm
 
 from .config_loader import PulseTask
 from .session_writer import write_result

@@ -1,5 +1,7 @@
 """
 tests/test_core.py — unit tests for core.py pure logic.
+
+Profile identity tests live in test_profiles.py.
 """
 
 import sys

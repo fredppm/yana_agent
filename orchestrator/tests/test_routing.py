@@ -46,11 +46,8 @@ class _MockEngine(CodingEngine):
 
 
 @pytest.fixture
-def sanctum(tmp_path: Path) -> SanctumContext:
-    (tmp_path / "BOND.md").write_text("Fred is a developer.", encoding="utf-8")
-    (tmp_path / "MEMORY.md").write_text("Working on yana_agent.", encoding="utf-8")
-    (tmp_path / "PERSONA.md").write_text("I am YANA.", encoding="utf-8")
-    return SanctumContext.load(tmp_path)
+def sanctum() -> SanctumContext:
+    return SanctumContext(bond="Owner is a developer.")
 
 
 @pytest.fixture
@@ -181,7 +178,7 @@ class TestEngineRequestAssembly:
         req = mock_engine.dispatched[0]
         assert req.prompt == "add hello()"
         assert req.session_id == "s1"
-        assert "Fred is a developer" in req.context
+        assert "Owner is a developer" in req.context
         assert "programmer-s1" in str(req.worktree_path)
 
     def test_context_includes_sanctum(
@@ -199,7 +196,7 @@ class TestEngineRequestAssembly:
                 )
 
         req = mock_engine.dispatched[0]
-        assert "Fred is a developer" in req.context or "yana_agent" in req.context
+        assert "Owner is a developer" in req.context
 
     def test_prompt_passed_verbatim(
         self, sanctum: SanctumContext, mock_engine: _MockEngine, tmp_path: Path

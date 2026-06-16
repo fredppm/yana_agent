@@ -29,9 +29,8 @@ from strings import t
 from textual import work
 from textual.app import App, ComposeResult
 from textual.binding import Binding, BindingType
-from textual.containers import Horizontal
-from textual.events import Key
-from textual.screen import Screen
+from textual.containers import Container, Horizontal
+from textual.screen import ModalScreen, Screen
 from textual.timer import Timer
 from textual.widgets import Input, Label, RichLog
 
@@ -51,21 +50,190 @@ Screen {
 
 
 # ---------------------------------------------------------------------------
-# Session browser screen
+# New-profile modal
 # ---------------------------------------------------------------------------
 
 
-class SessionScreen(Screen[str | None]):
-    """Arrow-key session selector — same visual as the chat screen."""
+class NewProfileScreen(ModalScreen[str | None]):
+    """
+    Overlay modal to name a new profile.
+    Dismisses with the new label string on Enter, or None on Escape.
+    """
 
-    # textual 8.x: Screen._render() must return a renderable, not None.
+    BINDINGS: ClassVar[list[BindingType]] = [
+        Binding("escape", "cancel", "Cancel"),
+    ]
+
+    CSS = """
+    NewProfileScreen {
+        align: center middle;
+    }
+    #new-profile-box {
+        width: 44;
+        height: 11;
+        border: solid #505050;
+        background: #111111;
+        padding: 1 2;
+    }
+    #new-profile-label {
+        height: 1;
+        color: #c0c0c0;
+    }
+    #new-profile-input {
+        background: #1a1a1a;
+        border: solid #383838;
+        color: #e0e0e0;
+        height: 3;
+    }
+    #new-profile-input:focus {
+        border: solid #787878;
+    }
+    #new-profile-hint {
+        height: 1;
+        color: #505050;
+    }
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+
+    def compose(self) -> ComposeResult:
+        with Container(id="new-profile-box"):
+            yield Label(t("new_profile_prompt"), id="new-profile-label")
+            yield Input(
+                placeholder=t("new_profile_placeholder"),
+                id="new-profile-input",
+            )
+            yield Label(t("new_profile_hint"), id="new-profile-hint")
+
+    def on_mount(self) -> None:
+        self.query_one("#new-profile-input", Input).focus()
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        label = event.value.strip()
+        if len(label) >= 2:
+            self.dismiss(label)
+        else:
+            event.input.clear()  # Too short — clear and let user try again
+
+    def action_cancel(self) -> None:
+        self.dismiss(None)
+
+
+class RenameProfileScreen(ModalScreen[str | None]):
+    """
+    Overlay modal to rename the display label of the active profile.
+
+    Dismisses with the new label string on Enter, or None on Escape.
+    The profile id (e.g. 'fred::trabalho') is unchanged — only the
+    human-readable label shown in the profile bar is updated.
+    """
+
+    BINDINGS: ClassVar[list[BindingType]] = [
+        Binding("escape", "cancel", "Cancel"),
+    ]
+
+    CSS = """
+    RenameProfileScreen {
+        align: center middle;
+    }
+    #rename-profile-box {
+        width: 44;
+        height: 9;
+        border: solid #505050;
+        background: #111111;
+        padding: 1 2;
+    }
+    #rename-profile-label {
+        height: 1;
+        color: #c0c0c0;
+    }
+    #rename-profile-input {
+        background: #1a1a1a;
+        border: solid #383838;
+        color: #e0e0e0;
+        height: 3;
+    }
+    #rename-profile-input:focus {
+        border: solid #787878;
+    }
+    """
+
+    def __init__(self, current_label: str) -> None:
+        super().__init__()
+        self._current_label = current_label
+
+    def compose(self) -> ComposeResult:
+        with Container(id="rename-profile-box"):
+            yield Label(t("rename_profile_prompt"), id="rename-profile-label")
+            yield Input(value=self._current_label, id="rename-profile-input")
+
+    def on_mount(self) -> None:
+        inp = self.query_one("#rename-profile-input", Input)
+        inp.focus()
+        inp.cursor_position = len(self._current_label)
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        name = event.value.strip()
+        if len(name) >= 2:
+            self.dismiss(name)
+        else:
+            event.input.clear()
+
+    def action_cancel(self) -> None:
+        self.dismiss(None)
+
+
+# ---------------------------------------------------------------------------
+# Session browser screen — unified profile + session view (CAP-1, CAP-7)
+# ---------------------------------------------------------------------------
+
+
+def _build_session_entries(
+    sessions: list[tuple[str, datetime, str]],
+) -> list[tuple[str, str]]:
+    """Convert session tuples to (id, label) list, prepending a 'new session' entry."""
+    today = datetime.now().date()
+    entries: list[tuple[str, str]] = [(_NEW, t("sessions_new"))]
+    _DATE_COL = 9  # "yesterday" and "há N dias" are both ≤9 chars
+    for sid, dt, preview in sessions:
+        delta = (today - dt.date()).days
+        if delta == 0:
+            date_label = t("session_today")
+        elif delta == 1:
+            date_label = t("session_yesterday")
+        elif delta < 7:
+            date_label = t("session_days_ago", n=delta)
+        else:
+            date_label = dt.strftime("%d/%m")
+        label = f"{date_label:<{_DATE_COL}}  {dt.strftime('%H:%M')}"
+        if preview:
+            label += f"  ·  {preview}"
+        entries.append((sid, label))
+    return entries
+
+
+class ProfileSessionScreen(Screen[str | None]):
+    """
+    Unified profile + session browser.
+
+    Left/right arrows switch between profiles (updates active_profile immediately).
+    Up/down arrows navigate the session list for the active profile.
+    Enter opens the selected session. 'd' deletes the current profile (CAP-7).
+    """
+
     def render(self) -> str:
         return ""
 
     BINDINGS: ClassVar[list[BindingType]] = [
-        Binding("up", "cursor_up", show=False),
-        Binding("down", "cursor_down", show=False),
-        Binding("enter", "confirm", "Select"),
+        Binding("left", "prev_profile", show=False, priority=True),
+        Binding("right", "next_profile", show=False, priority=True),
+        Binding("up", "cursor_up", show=False, priority=True),
+        Binding("down", "cursor_down", show=False, priority=True),
+        Binding("enter", "confirm", "Open", priority=True),
+        Binding("n", "new_profile", show=False),
+        Binding("r", "rename_profile", show=False),
+        Binding("d", "delete_profile", show=False),
         Binding("escape", "cancel", "Quit"),
         Binding("q", "cancel", show=False),
     ]
@@ -75,9 +243,14 @@ class SessionScreen(Screen[str | None]):
     CSS = (
         _SHARED_CSS
         + """
+    #profile-bar {
+        height: 1;
+        padding: 0 3;
+        color: #e0e0e0;
+    }
     #session-list {
         height: 1fr;
-        padding: 1 3;
+        padding: 0 3;
         background: transparent;
         scrollbar-color: #787878;
         scrollbar-background: transparent;
@@ -91,73 +264,131 @@ class SessionScreen(Screen[str | None]):
     """
     )
 
-    def __init__(self, sessions: list[tuple[str, datetime, str]]) -> None:
+    def __init__(
+        self,
+        profiles: list[dict],
+        active_profile_id: str,
+        sessions: list[tuple[str, datetime, str]],
+    ) -> None:
         super().__init__()
-        today = datetime.now().date()
-        self._entries: list[tuple[str, str]] = [(_NEW, t("sessions_new"))]
-        # Pre-compute max date label width for alignment
-        _DATE_COL = 9  # "yesterday" and "há N dias" are both 9 chars max
-        for sid, dt, preview in sessions:
-            delta = (today - dt.date()).days
-            if delta == 0:
-                date_label = t("session_today")
-            elif delta == 1:
-                date_label = t("session_yesterday")
-            elif delta < 7:
-                date_label = t("session_days_ago", n=delta)
-            else:
-                date_label = dt.strftime("%d/%m")
-            label = f"{date_label:<{_DATE_COL}}  {dt.strftime('%H:%M')}"
-            if preview:
-                label += f"  ·  {preview}"
-            self._entries.append((sid, label))
+        self._profiles = list(profiles)
+        self._profile_idx = next(
+            (i for i, p in enumerate(profiles) if p["id"] == active_profile_id),
+            0,
+        )
+        self._entries = _build_session_entries(sessions)
         self._cursor = 0
         self._spinner_idx = 0
+        self._flash_ticks: int = 0  # countdown for temporary hint messages
+        self._flash_msg: str = ""
 
     def compose(self) -> ComposeResult:
+        yield Label("", id="profile-bar")
         yield RichLog(id="session-list", highlight=False, markup=True)
         yield Label("", id="session-hint")
 
     def on_mount(self) -> None:
+        self._render_profile_bar()
         self._render_list()
         self._update_hint()
         self.set_interval(0.12, self._tick_spinner)
 
-    def on_key(self, event: Key) -> None:
-        if event.key == "up":
-            self.action_cursor_up()
-        elif event.key == "down":
-            self.action_cursor_down()
-        elif event.key == "enter":
-            self.action_confirm()
-        elif event.key in ("escape", "q"):
-            self.action_cancel()
+    # ------------------------------------------------------------------
+    # Profile bar
 
-    def _tick_spinner(self) -> None:
-        self._spinner_idx = (self._spinner_idx + 1) % len(self._SPINNER)
-        self._update_hint()
+    def _render_profile_bar(self) -> None:
+        bar = self.query_one("#profile-bar", Label)
+        if not self._profiles:
+            bar.update("")
+            return
+        parts = []
+        for i, p in enumerate(self._profiles):
+            label = escape(p.get("label") or p["id"])
+            if i == self._profile_idx:
+                parts.append(f"[bold white]{label}[/bold white]")
+            else:
+                parts.append(f"[dim]{label}[/dim]")
+        sep = "  [dim]│[/dim]  "
+        left = "◄  " if self._profile_idx > 0 else "   "
+        right = "  ►" if self._profile_idx < len(self._profiles) - 1 else ""
+        bar.update(f"  {left}{sep.join(parts)}{right}")
 
-    def _update_hint(self) -> None:
-        frame = self._SPINNER[self._spinner_idx]
-        hint = f"{t('sessions_hint_nav')}   {t('sessions_hint_select')}   {t('sessions_hint_quit')}"
-        self.query_one("#session-hint", Label).update(f"  {frame}  {hint}")
+    # ------------------------------------------------------------------
+    # Session list
 
     def _render_list(self) -> None:
         lst = self.query_one("#session-list", RichLog)
         lst.clear()
         lst.write("")
         for i, (_, label) in enumerate(self._entries):
-            # Blank line gap between "new session" and history
             if i == 1:
                 lst.write("")
             if i == self._cursor:
                 lst.write(f"  [bold]❯  {escape(label)}[/bold]")  # noqa: RUF001
             elif i == 0:
-                # "new session" — always plain, never dim
                 lst.write(f"     {escape(label)}")
             else:
                 lst.write(f"     [dim]{escape(label)}[/dim]")
         lst.write("")
+
+    # ------------------------------------------------------------------
+    # Hint bar
+
+    def _tick_spinner(self) -> None:
+        self._spinner_idx = (self._spinner_idx + 1) % len(self._SPINNER)
+        if self._flash_ticks > 0:
+            self._flash_ticks -= 1
+        self._update_hint()
+
+    def _flash_hint(self, msg: str, ticks: int = 15) -> None:
+        """Show a temporary message in the hint bar for ~1.8s (15 x 0.12s ticks)."""
+        self._flash_ticks = ticks
+        self._flash_msg = msg
+        self._update_hint()
+
+    def _update_hint(self) -> None:
+        frame = self._SPINNER[self._spinner_idx]
+        if self._flash_ticks > 0:
+            self.query_one("#session-hint", Label).update(f"  {frame}  {self._flash_msg}")
+            return
+        multi = len(self._profiles) > 1
+        nav = t("profiles_hint_nav") if multi else t("sessions_hint_nav")
+        parts = [
+            nav,
+            t("sessions_hint_select"),
+            t("profiles_hint_new"),
+            t("profiles_hint_rename"),
+            t("sessions_hint_quit"),
+        ]
+        if multi:
+            parts.append(t("profiles_hint_delete"))
+        self.query_one("#session-hint", Label).update(f"  {frame}  {'   '.join(parts)}")
+
+    # ------------------------------------------------------------------
+    # Actions
+
+    def action_prev_profile(self) -> None:
+        if self._profile_idx > 0:
+            self._profile_idx -= 1
+            self._on_profile_changed()
+
+    def action_next_profile(self) -> None:
+        if self._profile_idx < len(self._profiles) - 1:
+            self._profile_idx += 1
+            self._on_profile_changed()
+
+    def _on_profile_changed(self) -> None:
+        import core
+        import profiles
+
+        profile = self._profiles[self._profile_idx] if self._profiles else {}
+        if profile:
+            profiles.set_runtime_profile(profile["id"])
+            new_sessions = core.list_sessions()
+            self._entries = _build_session_entries(new_sessions)
+            self._cursor = 0
+            self._render_list()
+        self._render_profile_bar()
 
     def action_cursor_up(self) -> None:
         self._cursor = max(0, self._cursor - 1)
@@ -169,6 +400,71 @@ class SessionScreen(Screen[str | None]):
 
     def action_confirm(self) -> None:
         self.dismiss(self._entries[self._cursor][0])
+
+    def action_delete_profile(self) -> None:
+        if len(self._profiles) <= 1:
+            return  # Refuse to delete the last profile
+        import core
+        import profiles
+
+        profile = self._profiles[self._profile_idx]
+        profiles.delete_profile(profile["id"])
+        self._profiles.pop(self._profile_idx)
+        self._profile_idx = min(self._profile_idx, len(self._profiles) - 1)
+        if self._profiles:
+            profiles.set_runtime_profile(self._profiles[self._profile_idx]["id"])
+            new_sessions = core.list_sessions()
+            self._entries = _build_session_entries(new_sessions)
+        else:
+            self._entries = _build_session_entries([])
+        self._cursor = 0
+        self._render_profile_bar()
+        self._render_list()
+        self._update_hint()
+
+    _PROFILE_LIMIT = 5
+
+    def action_new_profile(self) -> None:
+        if len(self._profiles) >= self._PROFILE_LIMIT:
+            self._flash_hint(t("profiles_limit_reached"))
+            return
+        self.app.push_screen(NewProfileScreen(), self._on_new_profile)
+
+    def _on_new_profile(self, label: str | None) -> None:
+        if not label:
+            return
+        import profiles
+
+        try:
+            profile_id = profiles.add_profile(label)
+        except ValueError as exc:
+            self._flash_hint(str(exc))
+            return
+        self._profiles.append({"id": profile_id, "label": label})
+        self._profile_idx = len(self._profiles) - 1
+        self._entries = _build_session_entries([])  # new profile has no sessions
+        self._cursor = 0
+        self._render_profile_bar()
+        self._render_list()
+        self._update_hint()
+
+    def action_rename_profile(self) -> None:
+        if not self._profiles:
+            return
+        current = self._profiles[self._profile_idx]
+        self.app.push_screen(
+            RenameProfileScreen(current.get("label", current["id"])), self._on_rename
+        )
+
+    def _on_rename(self, new_label: str | None) -> None:
+        if not new_label:
+            return
+        import profiles
+
+        profile = self._profiles[self._profile_idx]
+        profiles.rename_profile_label(profile["id"], new_label)
+        profile["label"] = new_label
+        self._render_profile_bar()
 
     def action_cancel(self) -> None:
         self.dismiss(None)
@@ -226,24 +522,32 @@ class YANAApp(App[TuiResult]):
         border: none;
     }
 
-    /* ── Thinking / listening indicator (inside input-bar) ─ */
+    /* ── Thinking / listening indicator (row above input-bar) ─ */
 
     #thinking {
-        width: 1fr;
-        height: 100%;
-        padding: 0 1;
+        height: 1;
+        padding: 0 3;
         color: #909090;
         content-align: left middle;
         display: none;
+    }
+
+    /* ── Keyboard shortcut hints (below input-bar) ──────────── */
+
+    #chat-hint {
+        height: 1;
+        padding: 0 3;
+        color: #505050;
     }
     """
     )
 
     BINDINGS: ClassVar[list[BindingType]] = [
-        Binding("ctrl+c", "quit_app", "Quit"),
-        Binding("ctrl+d", "quit_app", "End session", show=True),
+        Binding("ctrl+c", "quit_app", "Quit", priority=True),
+        Binding("ctrl+d", "quit_app", "End session", show=True, priority=True),
         Binding("ctrl+o", "toggle_history", "History", show=False),
         Binding("ctrl+t", "toggle_voice", "Voice", show=True),
+        Binding("ctrl+b", "switch_session", "Sessions", show=False),
     ]
 
     _SPINNER = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
@@ -258,9 +562,14 @@ class YANAApp(App[TuiResult]):
         listen_fn: VoiceListenFn | None = None,
         speak_fn: VoiceSpeakFn | None = None,
         greeting: str | None = None,
+        auto_greet: bool = False,
+        profiles: list[dict] | None = None,
+        active_profile_id: str = "",
     ) -> None:
         super().__init__()
         self._sessions = sessions
+        self._profiles = profiles or []
+        self._active_profile_id = active_profile_id
         self._on_turn = on_turn
         self._on_exit = on_exit
         self._messages: list[dict] = []
@@ -278,25 +587,33 @@ class YANAApp(App[TuiResult]):
         self._listen_fn = listen_fn
         self._speak_fn = speak_fn
         self._greeting = greeting
+        self._auto_greet = auto_greet
         self._listening: bool = False
         self._voice_gen: int = 0  # incremented each activation; invalidates old loops
+        self._chat_started: bool = (
+            False  # True once _start_chat() completes — guards on_input_submitted
+        )
 
     # ------------------------------------------------------------------
     # Layout
 
     def compose(self) -> ComposeResult:
         yield RichLog(id="chat", highlight=False, markup=True, wrap=True)
+        yield Label("", id="thinking")
         with Horizontal(id="input-bar"):
             yield Label("❯", id="prompt-label")  # noqa: RUF001
-            placeholder = t("voice_hint") if self._listen_fn else ""
-            yield Input(id="input", placeholder=placeholder)
-            yield Label("", id="thinking")
+            yield Input(id="input")
+        yield Label("", id="chat-hint")
 
     def on_mount(self) -> None:
-        if self._sessions:
-            self.push_screen(SessionScreen(self._sessions), self._on_session_chosen)
+        if self._profiles or self._sessions:
+            # Has profiles or existing sessions — show the unified browser screen
+            self.push_screen(
+                ProfileSessionScreen(self._profiles, self._active_profile_id, self._sessions),
+                self._on_session_chosen,
+            )
         else:
-            self._start_chat()
+            self._start_chat()  # Fresh install — First Breath
 
     # ------------------------------------------------------------------
     # Session selection
@@ -317,7 +634,7 @@ class YANAApp(App[TuiResult]):
     # Chat init + history toggle
 
     def _write_continuing_rule(self, chat: RichLog) -> None:
-        hint = "ctrl+o collapse" if self._history_expanded else "ctrl+o expand"
+        hint = t("chat_history_collapse") if self._history_expanded else t("chat_history_expand")
         label = f"◷  {t('sessions_continuing')}  ·  {hint}"
         chat.write(f"[dim]{escape(label)}[/dim]")
         chat.write(RichMarkdown("---"))
@@ -444,6 +761,15 @@ class YANAApp(App[TuiResult]):
 
     def _start_chat(self) -> None:
         chat = self.query_one("#chat", RichLog)
+        self.query_one(Input).value = ""  # flush any text buffered during screen transitions
+        self._chat_started = True  # gate: discard any Input.Submitted events before this point
+        # Hint bar
+        hints = [t("chat_hint_end"), t("chat_hint_history")]
+        if self._listen_fn:
+            hints.append(t("chat_hint_voice"))
+        if self._profiles:
+            hints.append(t("chat_hint_sessions"))
+        self.query_one("#chat-hint", Label).update(f"  {'   '.join(hints)}")
         if self._session_history:
             self._write_history(chat)
         if self._voice_mode:
@@ -455,7 +781,16 @@ class YANAApp(App[TuiResult]):
                 self._write_yana(chat, self._greeting, ts)
             self._voice_start(self._voice_gen)
         else:
-            self.query_one(Input).focus()
+            if self._greeting:
+                ts = datetime.now().strftime("%H:%M:%S")
+                self._write_yana(chat, self._greeting, ts)
+                self.query_one(Input).focus()
+            elif self._auto_greet:
+                self._busy = True
+                self._show_thinking(True)
+                self._do_auto_greet()
+            else:
+                self.query_one(Input).focus()
         self._inbox_timer = self.set_interval(2.0, self._check_pulse_inbox)
 
     def _check_pulse_inbox(self) -> None:
@@ -493,6 +828,31 @@ class YANAApp(App[TuiResult]):
             except (ValueError, TypeError):
                 ts_str = datetime.now().strftime("%H:%M:%S")
             self._write_yana(chat, entry["content"], ts_str)
+
+    @work(thread=True)
+    def _do_auto_greet(self) -> None:
+        """Trigger YANA's opening message from inside the TUI — no pre-generation blocking startup."""
+        chat = self.query_one("#chat", RichLog)
+
+        # Hidden trigger — starts the conversation without showing a user bubble
+        trigger = {"role": "user", "content": "..."}
+        try:
+            reply = self._on_turn([trigger])
+        except Exception as exc:
+            reply = f"[error: {exc}]"
+
+        reply_ts = datetime.now().strftime("%H:%M:%S")
+
+        # Both trigger and reply go into history so subsequent turns have valid [user, assistant, user...] structure
+        self._messages.append(trigger)
+        self._messages.append({"role": "assistant", "content": reply})
+        self._new_messages.append((reply_ts, {"role": "assistant", "content": reply}))
+
+        self.call_from_thread(self._show_thinking, False)
+        if reply:
+            self.call_from_thread(self._write_yana, chat, reply, reply_ts)
+
+        self._busy = False
 
     @work(thread=True)
     def _voice_start(self, gen: int) -> None:
@@ -561,6 +921,8 @@ class YANAApp(App[TuiResult]):
     def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
         if action == "toggle_voice":
             return self._listen_fn is not None
+        if action == "switch_session":
+            return bool(self._profiles)
         return True
 
     def action_toggle_voice(self) -> None:
@@ -592,11 +954,61 @@ class YANAApp(App[TuiResult]):
             else:
                 self._write_yana(chat, m["content"], ts)
 
+    def action_switch_session(self) -> None:
+        """Return to the session browser mid-conversation (ctrl+b)."""
+        if self._busy:
+            return
+        # Save current session in the background before returning to browser
+        if self._messages and self._on_exit:
+            import threading as _threading
+
+            _session_id = self._chosen_session or datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+            _msgs = list(self._messages)
+            _on_exit = self._on_exit
+            _threading.Thread(
+                target=lambda: _on_exit(_msgs, _session_id),
+                daemon=False,
+                name="session-switch-save",
+            ).start()
+        import core as _core
+
+        fresh_sessions = _core.list_sessions()
+        self.push_screen(
+            ProfileSessionScreen(self._profiles, self._active_profile_id, fresh_sessions),
+            self._on_switch_session_chosen,
+        )
+
+    def _on_switch_session_chosen(self, choice: str | None) -> None:
+        if choice is None:
+            return  # dismissed — stay in current session
+        import core as _core
+        import profiles as _profiles
+
+        # Update active profile (user may have navigated to a different profile in the browser)
+        self._active_profile_id = _profiles.get_active_profile() or self._active_profile_id
+        # Reset all chat state — including _busy which may be stale from the previous session
+        self._messages = []
+        self._session_history = []
+        self._new_messages = []
+        self._chosen_session = None
+        self._history_expanded = False
+        self._busy = False
+        if choice != _NEW:
+            self._messages = _core.load_session_messages(choice)
+            self._session_history = list(self._messages)
+            self._chosen_session = choice
+        self.query_one("#chat", RichLog).clear()
+        self._chat_started = False
+        self._start_chat()
+
     # ------------------------------------------------------------------
     # Input
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
         if self._voice_mode:
+            return
+        if not self._chat_started:  # discard events that leaked before _start_chat()
+            event.input.clear()
             return
         text = event.value.strip()
         if not text or self._busy:
@@ -637,6 +1049,9 @@ class YANAApp(App[TuiResult]):
         if visible:
             thinking.display = True
             self._spinner_idx = 0
+            thinking.update(
+                f"  {self._SPINNER[0]} {t('thinking')}"
+            )  # immediate — no wait for first tick
             if self._spinner_timer is None:
                 self._spinner_timer = self.set_interval(0.1, self._tick_spinner)
         else:
@@ -646,12 +1061,14 @@ class YANAApp(App[TuiResult]):
                 self._spinner_timer.stop()
                 self._spinner_timer = None
             thinking.display = False
+            if not self._saving_mode:
+                self.query_one(Input).focus()
 
     def _tick_spinner(self) -> None:
         self._spinner_idx = (self._spinner_idx + 1) % len(self._SPINNER)
         frame = self._SPINNER[self._spinner_idx]
         if self._saving_mode:
-            msg = f"{t('saving_memory')}  ·  ctrl+c skip"
+            msg = f"{t('saving_memory')}  ·  {t('saving_memory_skip')}"
         elif self._listening:
             msg = t("listening")
         else:
@@ -698,11 +1115,17 @@ def run_tui(
     listen_fn: VoiceListenFn | None = None,
     speak_fn: VoiceSpeakFn | None = None,
     greeting: str | None = None,
+    auto_greet: bool = False,
+    profiles: list[dict] | None = None,
+    active_profile_id: str = "",
 ) -> TuiResult:
     """
     Launch the YANA TUI. Blocks until the user exits (and on_exit completes).
     Returns (final_messages, chosen_session_id).
     chosen_session_id is None for new sessions.
+
+    profiles: list of {id, label} dicts — if provided, shows profile switcher (CAP-1).
+    active_profile_id: the currently active profile id.
     """
     app = YANAApp(
         sessions=sessions,
@@ -712,6 +1135,9 @@ def run_tui(
         listen_fn=listen_fn,
         speak_fn=speak_fn,
         greeting=greeting,
+        auto_greet=auto_greet,
+        profiles=profiles,
+        active_profile_id=active_profile_id,
     )
     try:
         result = app.run(mouse=False)

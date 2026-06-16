@@ -25,8 +25,8 @@ def _collect_used_keys() -> set[str]:
     pattern = re.compile(r"""t\(\s*["']([\w_]+)["']""")
     used: set[str] = set()
     for py_file in _SRC_ROOT.rglob("*.py"):
-        # Skip worktrees and hidden dirs
-        if any(part.startswith(".") for part in py_file.parts):
+        # Skip hidden dirs relative to the scan root (e.g. .venv, __pycache__)
+        if any(part.startswith(".") for part in py_file.relative_to(_SRC_ROOT).parts):
             continue
         try:
             src = py_file.read_text(encoding="utf-8")

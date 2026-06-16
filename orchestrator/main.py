@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import argparse
 import io
-import json
 import logging
 import subprocess
 import sys
@@ -39,14 +38,17 @@ sys.path.insert(0, str(_HERE))
 # Imports (after path fix)
 # ---------------------------------------------------------------------------
 
+import agent  # noqa: E402
 import connectors_setup  # noqa: E402
 import core  # noqa: E402
+import llm as prov  # noqa: E402
 import log  # noqa: E402
+import memory as mem  # noqa: E402
 import output  # noqa: E402
-import providers as prov  # noqa: E402
+import profiles  # noqa: E402
 import sanctum_writer as sw  # noqa: E402
+import store  # noqa: E402
 import voice as v  # noqa: E402
-from strings import t  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # CLI
@@ -104,7 +106,7 @@ def parse_args() -> argparse.Namespace:
 def run_init() -> None:
     script = _HERE.parent / "skills" / "agent-yana" / "scripts" / "init-sanctum.py"
     if not script.exists():
-        print(f"[erro] Script não encontrado: {script}")
+        print(f"[error] Script not found: {script}")
         sys.exit(1)
     result = subprocess.run([sys.executable, str(script), "--json"], capture_output=False)
     sys.exit(result.returncode)
@@ -144,122 +146,11 @@ def run_pulse(task: str = "full", source: str = "", event: str = "", payload: st
     print()  # newline after stream
     messages.append({"role": "assistant", "content": reply})
     session_id = f"pulse-{task}-{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}"
-    core.save_session_log(messages, session_id=session_id)
-    output.status(f"PULSE done — log: {session_id}")
+    mem.store_session_background(messages, session_id)
+    output.status(f"PULSE done — session: {session_id}")
 
 
-# ---------------------------------------------------------------------------
-# Connector tool execution
-# ---------------------------------------------------------------------------
-
-
-def _execute_tool(tool_call: dict, registry) -> str:
-    """Execute a single connector tool call and return the result as a JSON string."""
-    name = tool_call["name"]
-    inp = tool_call["input"]
-
-    if name == "call_connector":
-        result = registry.call(
-            inp["instance_id"],
-            inp["operation"],
-            inp.get("params") or {},
-        )
-        if result.ok:
-            return json.dumps({"ok": True, "data": result.data})
-        payload: dict = {"ok": False, "error": result.error}
-        if result.detail:
-            payload["detail"] = result.detail
-        return json.dumps(payload)
-
-    if name == "get_connector_contract":
-        try:
-            contract = registry.load_contract(inp["instance_id"])
-            return json.dumps(contract)
-        except KeyError as exc:
-            return json.dumps({"error": str(exc)})
-
-    return json.dumps({"error": f"unknown tool: {name}"})
-
-
-def _call_with_tool_loop(
-    messages: list[dict],
-    system_prompt: str,
-    tools: list[dict],
-    registry,
-    providers_config: dict,
-    task: str,
-    text_mode: bool = True,
-    clear_line: bool = False,
-    silent: bool = False,
-) -> str:
-    """
-    Run one conversation turn handling any connector tool calls.
-
-    *messages* must already include the latest user message.
-    Returns the final text reply after all tool calls are resolved.
-
-    silent=True: skip all terminal output (used by TUI mode — the caller
-    renders the reply itself).
-    """
-    work = list(messages)
-    _text_mode = text_mode
-
-    while True:
-        text, tool_uses, raw_content = prov.call_llm_with_tools(
-            work, system_prompt, tools, task=task, config=providers_config
-        )
-
-        if not tool_uses:
-            if not silent:
-                # Final text response — optionally clear a pending "thinking" line
-                if clear_line:
-                    log.console.print(" " * 60, end="\r")
-                    clear_line = False  # only clear once
-                log.yana_prefix(v.ts())
-                if text:
-                    log.yana_response(text, markdown=_text_mode)
-            return text or ""
-
-        # Print any thinking text that preceded the tool calls
-        if text and not silent:
-            log.console.print(text, end="")
-
-        # Add assistant message (with tool_use blocks) to working history
-        work.append({"role": "assistant", "content": raw_content})
-
-        # Execute each tool and collect results
-        tool_results = []
-        for tc in tool_uses:
-            inp = tc["input"]
-            if isinstance(inp, str):
-                try:
-                    inp = json.loads(inp)
-                except (json.JSONDecodeError, ValueError):
-                    inp = {}
-                tc = {**tc, "input": inp}
-            result_str = _execute_tool(tc, registry)
-            instance = inp.get("instance_id", "")
-            op = inp.get("operation", tc["name"])
-            try:
-                _r = json.loads(result_str)
-                _err = _r.get("error") if not _r.get("ok", True) else None
-            except Exception:
-                _err = None
-            if not silent:
-                if _err:
-                    log.connector_err(v.ts(), instance, op, _err)
-                else:
-                    log.connector_ok(v.ts(), instance, op)
-            tool_results.append(
-                {
-                    "type": "tool_result",
-                    "tool_use_id": tc["id"],
-                    "content": result_str,
-                }
-            )
-
-        # Feed results back as a user message and loop
-        work.append({"role": "user", "content": tool_results})
+# _execute_tool and _call_with_tool_loop live in agent.py
 
 
 # ---------------------------------------------------------------------------
@@ -276,18 +167,45 @@ def _run_tui_conversation(
     voice_mode: bool = False,
     listen_fn: Callable[[], str] | None = None,
     speak_fn: Callable[[str], None] | None = None,
-    greeting: str | None = None,
+    auto_greet: bool = False,
+    profile_list: list[dict] | None = None,
+    active_profile: str = "",
+    sessions: list | None = None,
 ) -> None:
     """Run the Textual TUI conversation loop (text or voice mode)."""
+    import threading
+
     from tui import run_tui
 
-    sessions = core.list_sessions() if core.sanctum_exists() else []
+    _sessions = sessions if sessions is not None else []
     task_ref = [initial_task]
 
+    # Graphiti context loads in the background — doesn't block TUI startup.
+    # Injected into the system prompt on the FIRST turn where context is available.
+    # _graphiti_injected is only set True when context was actually used — this way
+    # early turns that fire before Graphiti finishes will retry on subsequent turns.
+    _graphiti_ctx: list[str] = [""]
+    _graphiti_injected = [False]
+
+    if active_profile:
+
+        def _load_graphiti() -> None:
+            _graphiti_ctx[0] = mem.load_context_sync(timeout=30.0)
+
+        threading.Thread(target=_load_graphiti, daemon=True, name="graphiti-ctx").start()
+
     def on_turn(msgs: list[dict]) -> str:
-        reply = _call_with_tool_loop(
+        # Inject Graphiti context once — on the first turn where it is available.
+        # If Graphiti hasn't finished loading yet, skip silently and retry next turn.
+        _sp = system_prompt
+        if not _graphiti_injected[0] and active_profile:
+            ctx = _graphiti_ctx[0]
+            if ctx:
+                _graphiti_injected[0] = True  # only mark injected when ctx is actually used
+                _sp = system_prompt + "\n\n" + ctx
+        reply = agent.call_with_tool_loop(
             msgs,
-            system_prompt,
+            _sp,
             tools,
             registry,
             providers_config,
@@ -301,51 +219,76 @@ def _run_tui_conversation(
     def on_exit(final_messages: list[dict], chosen_session: str | None) -> None:
         session_id = chosen_session or datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         session_date = session_id[:10]
-        core.save_session_log(final_messages, session_id)
-        bond = core.sanctum_path() / "BOND.md"
-        is_first_breath = not core.sanctum_exists() or (
-            bond.exists() and "{" in bond.read_text(encoding="utf-8")
-        )
-        try:
-            sw.write_sanctum(
-                final_messages,
-                system_prompt,
-                is_first_breath=is_first_breath,
-                config=providers_config,
-                session_date=session_date,
-                silent=True,
-            )
-        except KeyboardInterrupt:
-            pass
+
+        # Use the startup-time value — not sanctum_exists() which can falsely
+        # trigger if PERSONA wasn't saved, causing duplicate profile creation.
+        if initial_task == "first_breath":
+            # First Breath: write sanctum first to extract the owner name from
+            # OWNER_NAME, then register the owner + profile, then persist.
+            try:
+                written = sw.write_sanctum(
+                    final_messages,
+                    system_prompt,
+                    is_first_breath=True,
+                    config=providers_config,
+                    session_date=session_date,
+                    silent=True,
+                )
+            except KeyboardInterrupt:
+                written = {}
+            owner_id, profile_id = profiles.create_first_owner_and_profile(written)
+            profiles.set_runtime_profile(profile_id)
+            if written:
+                store.save_sanctum_fields_sync(owner_id, profile_id, written)
+            # Store the First Breath conversation — makes it visible in session browser
+            mem.store_session_background(final_messages, session_id)
+        else:
+            # Regular session: store in Graphiti in background — TUI closes immediately
+            mem.store_session_background(final_messages, session_id)
 
     run_tui(
-        sessions,
+        _sessions,
         on_turn=on_turn,
         on_exit=on_exit,
         voice_mode=voice_mode,
         listen_fn=listen_fn,
         speak_fn=speak_fn,
-        greeting=greeting,
+        auto_greet=auto_greet,
+        profiles=profile_list,
+        active_profile_id=active_profile,
     )
 
 
 def run_conversation() -> None:
     providers_config = prov.load_providers()
-    voice_cfg = v.load_voice_config(providers_config)
-
-    registry = connectors_setup.build_registry()
+    voice_cfg = v.load_voice_config()
     tools = prov.CONNECTOR_TOOLS
 
     output.configure(voice_mode=False)
 
-    if not core.sanctum_exists():
-        output.setup_warning(
-            t("sanctum_missing"),
-            hint="Execute: python main.py --init",
-        )
+    # Profile selection — runtime, not persisted.
+    # 0 profiles → First Breath. 1 profile → auto-select. N → pick first (future: selection UI).
+    profile_list = profiles.list_profiles()
+    if profile_list:
+        profiles.set_runtime_profile(profile_list[0]["id"])
 
-    system_prompt = core.load_system_prompt(registry=registry)
-    task = "first_breath" if not core.sanctum_exists() else "conversation"
+    # Build registry after profile is set — connectors are profile-scoped
+    registry = connectors_setup.build_registry()
+
+    # State detection: route based on identity state, not CLI flags.
+    active_profile = profiles.get_active_profile()
+    sanctum_fields: dict = {}
+    if active_profile:
+        owner_id = profiles.owner_id_from_profile(active_profile)
+        sanctum_fields = store.load_sanctum_fields_sync(owner_id, active_profile)
+
+    has_sanctum = bool(sanctum_fields.get("persona"))
+    is_first_breath = not profile_list and not has_sanctum
+
+    sessions = core.list_sessions() if (profile_list or has_sanctum) else []
+
+    system_prompt = core.load_system_prompt(registry=registry, _sanctum_fields=sanctum_fields)
+    task = "first_breath" if is_first_breath else "conversation"
 
     # Voice closures — passed to TUI so ctrl+v can activate them at any time
     _cfg = voice_cfg
@@ -374,6 +317,10 @@ def run_conversation() -> None:
         voice_mode=False,  # TUI starts in text mode; user toggles with ctrl+v
         listen_fn=_listen,
         speak_fn=_speak,
+        auto_greet=is_first_breath,
+        profile_list=profile_list,
+        active_profile=active_profile,
+        sessions=sessions,
     )
 
 
@@ -385,7 +332,7 @@ def run_single_shot(message: str) -> None:
     system_prompt = core.load_system_prompt(voice_mode=False, registry=registry)
 
     messages = [{"role": "user", "content": message}]
-    _call_with_tool_loop(
+    agent.call_with_tool_loop(
         messages,
         system_prompt,
         tools,
@@ -410,16 +357,50 @@ def main() -> None:
         format="[%(levelname)s] %(name)s: %(message)s",
     )
 
+    # Always write DEBUG-level logs to yana-debug.log beside this script.
+    # This captures Textual errors, exceptions, and TUI lifecycle events
+    # even when the terminal clears them before they can be read.
+    _log_path = _HERE / "yana-debug.log"
+    try:
+        from logging.handlers import RotatingFileHandler
+
+        _fh = RotatingFileHandler(
+            _log_path,
+            maxBytes=2 * 1024 * 1024,  # 2 MB
+            backupCount=2,
+            encoding="utf-8",
+        )
+        _fh.setLevel(logging.DEBUG)
+        _fh.setFormatter(
+            logging.Formatter(
+                "%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+                datefmt="%Y-%m-%d %H:%M:%S",
+            )
+        )
+        logging.getLogger().addHandler(_fh)
+    except Exception:
+        pass  # Never block startup over a log file
+
+    # Suppress known shutdown-race noise on the console (still captured in yana-debug.log).
+    # - neo4j.notifications: schema warnings for properties that don't exist yet (empty graph)
+    # - graphiti_core: asyncio teardown tasks that fail after the event loop closes
+    # - asyncio: 'Task exception was never retrieved' / 'Event loop is closed' from
+    #   httpx connection-pool cleanup tasks spawned by Graphiti's client.close() —
+    #   both variants are expected and carry no actionable signal for the user.
+    if not args.verbose:
+        logging.getLogger("neo4j.notifications").setLevel(logging.ERROR)
+        logging.getLogger("graphiti_core").setLevel(logging.CRITICAL)
+        logging.getLogger("asyncio").setLevel(logging.CRITICAL)
+
     if args.init:
         run_init()
         return
 
     if args.programmer:
-        import core
         from programmer.mode import run_programmer_mode
 
         providers_config = prov.load_providers()
-        voice_cfg = v.load_voice_config(providers_config)
+        voice_cfg = v.load_voice_config()
 
         speak_fn = None
         if args.voice:
@@ -435,7 +416,6 @@ def main() -> None:
         run_programmer_mode(
             text_flag=bool(args.text),
             voice_flag=args.voice,
-            sanctum_path=core.sanctum_path(),
             speak_fn=speak_fn,
             providers_config=providers_config,
         )

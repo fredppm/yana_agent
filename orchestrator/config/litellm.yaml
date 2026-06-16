@@ -1,0 +1,24 @@
+# LiteLLM proxy config — routes OpenAI-compatible calls to AWS Bedrock.
+# graphiti-core connects here instead of OpenAI directly.
+#
+# AWS credentials are read from the environment (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY,
+# AWS_DEFAULT_REGION) — never hardcode here.
+
+model_list:
+  - model_name: bedrock-claude          # sonnet — used for complex operations
+    litellm_params:
+      model: bedrock/us.anthropic.claude-sonnet-4-5-20250929-v1:0
+      aws_region_name: us-east-1
+
+  - model_name: bedrock-claude-haiku    # haiku — entity extraction (cheap)
+    litellm_params:
+      model: bedrock/us.anthropic.claude-haiku-4-5-20251001-v1:0
+      aws_region_name: us-east-1
+
+  - model_name: bedrock-embed           # embeddings via Amazon Titan
+    litellm_params:
+      model: bedrock/amazon.titan-embed-text-v2:0
+      aws_region_name: us-east-1
+
+litellm_settings:
+  drop_params: true   # ignore params Bedrock does not support (e.g. logprobs)

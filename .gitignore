@@ -17,6 +17,7 @@ build/
 # Environment / secrets
 .env
 .env.*
+!.env.example
 
 # User-specific BMad config
 _bmad/config.user.toml
@@ -25,3 +26,6 @@ _bmad/custom/*.user.toml
 # OS
 .DS_Store
 Thumbs.db
+
+# Logs
+*.log
