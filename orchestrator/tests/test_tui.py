@@ -41,6 +41,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import core
+import profiles as _profiles
 from strings import t
 from textual.widgets import Input, Label
 from tui import (
@@ -493,7 +494,7 @@ async def test_profile_session_screen_shows_new_entry(db):
     """After loading a real profile from DB, _NEW is the first entry."""
     owner_id = db.add_owner_sync("Fred")
     profile_id = db.add_profile_sync(owner_id, "Fred — Default")
-    core.set_runtime_profile(profile_id)
+    _profiles.set_runtime_profile(profile_id)
 
     profiles = db.list_profiles_sync()
     app = YANAApp(sessions=[], profiles=profiles, active_profile_id=profile_id, on_turn=_NO_OP_TURN)
@@ -510,7 +511,7 @@ async def test_single_profile_no_sessions_entry_count(db):
     """With one DB profile and zero sessions, the browser shows exactly one entry (_NEW)."""
     owner_id = db.add_owner_sync("Fred")
     profile_id = db.add_profile_sync(owner_id, "Fred — Default")
-    core.set_runtime_profile(profile_id)
+    _profiles.set_runtime_profile(profile_id)
 
     profiles = db.list_profiles_sync()
     sessions = db.list_sessions_sync(profile_id)
@@ -530,7 +531,7 @@ async def test_select_new_session_starts_chat(db):
     """Pressing Enter on _NEW (loaded from real profile) dismisses browser and enters chat."""
     owner_id = db.add_owner_sync("Fred")
     profile_id = db.add_profile_sync(owner_id, "Fred — Default")
-    core.set_runtime_profile(profile_id)
+    _profiles.set_runtime_profile(profile_id)
 
     profiles = db.list_profiles_sync()
     sessions = db.list_sessions_sync(profile_id)
@@ -560,7 +561,7 @@ async def test_hint_bar_shows_new_profile_shortcut(db):
     """
     owner_id = db.add_owner_sync("Fred")
     profile_id = db.add_profile_sync(owner_id, "Fred — Default")
-    core.set_runtime_profile(profile_id)
+    _profiles.set_runtime_profile(profile_id)
 
     profiles = db.list_profiles_sync()
     app = YANAApp(sessions=[], profiles=profiles, active_profile_id=profile_id, on_turn=_NO_OP_TURN)
@@ -584,7 +585,7 @@ async def test_hint_bar_multiple_profiles_shows_delete_and_nav(db):
     owner_id = db.add_owner_sync("Fred")
     profile_id = db.add_profile_sync(owner_id, "Fred — Default")
     db.add_profile_sync(owner_id, "Fred — Trabalho")
-    core.set_runtime_profile(profile_id)
+    _profiles.set_runtime_profile(profile_id)
 
     profiles = db.list_profiles_sync()
     app = YANAApp(sessions=[], profiles=profiles, active_profile_id=profile_id, on_turn=_NO_OP_TURN)
@@ -609,7 +610,7 @@ async def test_hint_bar_updates_after_profile_delete(db):
     owner_id = db.add_owner_sync("Fred")
     profile_id = db.add_profile_sync(owner_id, "Fred — Default")
     db.add_profile_sync(owner_id, "Fred — Trabalho")
-    core.set_runtime_profile(profile_id)
+    _profiles.set_runtime_profile(profile_id)
 
     profiles = db.list_profiles_sync()
     app = YANAApp(sessions=[], profiles=profiles, active_profile_id=profile_id, on_turn=_NO_OP_TURN)
@@ -637,7 +638,7 @@ async def test_cursor_moves_up_and_down(db):
     """Up/down arrows navigate DB-loaded sessions; cursor stops at both boundaries."""
     owner_id = db.add_owner_sync("Fred")
     profile_id = db.add_profile_sync(owner_id, "Fred — Default")
-    core.set_runtime_profile(profile_id)
+    _profiles.set_runtime_profile(profile_id)
     _seed_session(db, profile_id, "first")
     _seed_session(db, profile_id, "second")
 
@@ -690,7 +691,7 @@ async def test_profile_navigation_right_changes_active(db):
     profiles = db.list_profiles_sync()
     first_id = profiles[0]["id"]
     second_id = profiles[1]["id"]
-    core.set_runtime_profile(first_id)
+    _profiles.set_runtime_profile(first_id)
 
     app = YANAApp(sessions=[], profiles=profiles, active_profile_id=first_id, on_turn=_NO_OP_TURN)
     async with app.run_test(size=(80, 24)) as pilot:
@@ -702,7 +703,7 @@ async def test_profile_navigation_right_changes_active(db):
         await pilot.press("right")
         await pilot.pause()
         assert screen._profile_idx == 1
-        assert core.get_active_profile() == second_id
+        assert _profiles.get_active_profile() == second_id
 
         # Right boundary — already at last profile
         await pilot.press("right")
@@ -721,7 +722,7 @@ async def test_left_arrow_profile_navigation(db):
     profiles = db.list_profiles_sync()
     first_id = profiles[0]["id"]
     second_id = profiles[1]["id"]
-    core.set_runtime_profile(second_id)
+    _profiles.set_runtime_profile(second_id)
 
     app = YANAApp(sessions=[], profiles=profiles, active_profile_id=second_id, on_turn=_NO_OP_TURN)
     async with app.run_test(size=(80, 24)) as pilot:
@@ -733,7 +734,7 @@ async def test_left_arrow_profile_navigation(db):
         await pilot.press("left")
         await pilot.pause()
         assert screen._profile_idx == 0
-        assert core.get_active_profile() == first_id
+        assert _profiles.get_active_profile() == first_id
 
         # Left boundary — stays at 0
         await pilot.press("left")
@@ -755,7 +756,7 @@ async def test_three_profile_navigation_reaches_middle(db):
     profiles = db.list_profiles_sync()
     assert len(profiles) == 3
     first_id = profiles[0]["id"]
-    core.set_runtime_profile(first_id)
+    _profiles.set_runtime_profile(first_id)
 
     app = YANAApp(sessions=[], profiles=profiles, active_profile_id=first_id, on_turn=_NO_OP_TURN)
     async with app.run_test(size=(80, 24)) as pilot:
@@ -814,7 +815,7 @@ async def test_profile_switch_reloads_session_list(db):
     p1_idx = next(i for i, p in enumerate(profiles) if p["id"] == profile_id_1)
     other_idx = 1 - p1_idx
     nav_key = "right" if p1_idx == 0 else "left"
-    core.set_runtime_profile(profile_id_1)
+    _profiles.set_runtime_profile(profile_id_1)
 
     app = YANAApp(
         sessions=sessions, profiles=profiles, active_profile_id=profile_id_1, on_turn=_NO_OP_TURN
@@ -841,7 +842,7 @@ async def test_select_existing_session_loads_messages(db):
     """
     owner_id = db.add_owner_sync("Fred")
     profile_id = db.add_profile_sync(owner_id, "Fred — Default")
-    core.set_runtime_profile(profile_id)
+    _profiles.set_runtime_profile(profile_id)
 
     messages = [
         {"role": "user", "content": "hello"},
@@ -892,7 +893,7 @@ async def test_delete_blocked_when_only_one_profile(db):
     """Pressing 'd' with a single DB profile does not remove it from TUI or DB."""
     owner_id = db.add_owner_sync("Fred")
     profile_id = db.add_profile_sync(owner_id, "Fred — Default")
-    core.set_runtime_profile(profile_id)
+    _profiles.set_runtime_profile(profile_id)
 
     profiles = db.list_profiles_sync()
     app = YANAApp(sessions=[], profiles=profiles, active_profile_id=profile_id, on_turn=_NO_OP_TURN)
@@ -915,7 +916,7 @@ async def test_delete_removes_profile_from_tui_and_db(db):
     owner_id = db.add_owner_sync("Fred")
     profile_id_1 = db.add_profile_sync(owner_id, "Fred — Default")
     profile_id_2 = db.add_profile_sync(owner_id, "Fred — Trabalho")
-    core.set_runtime_profile(profile_id_1)
+    _profiles.set_runtime_profile(profile_id_1)
 
     profiles = db.list_profiles_sync()
     app = YANAApp(
@@ -948,7 +949,7 @@ async def test_rename_profile_updates_label_in_tui_and_db(db):
     """
     owner_id = db.add_owner_sync("Fred")
     profile_id = db.add_profile_sync(owner_id, "Fred — Default")
-    core.set_runtime_profile(profile_id)
+    _profiles.set_runtime_profile(profile_id)
 
     profiles = db.list_profiles_sync()
     app = YANAApp(sessions=[], profiles=profiles, active_profile_id=profile_id, on_turn=_NO_OP_TURN)
@@ -986,7 +987,7 @@ async def test_renamed_profile_label_persists_after_reopen(db):
     """
     owner_id = db.add_owner_sync("Fred")
     profile_id = db.add_profile_sync(owner_id, "Fred — Default")
-    core.set_runtime_profile(profile_id)
+    _profiles.set_runtime_profile(profile_id)
 
     # First run — rename the profile
     profiles = db.list_profiles_sync()
@@ -1020,7 +1021,7 @@ async def test_hint_bar_shows_rename_shortcut(db):
     """The 'r rename' shortcut is visible in the hint bar (always, regardless of profile count)."""
     owner_id = db.add_owner_sync("Fred")
     profile_id = db.add_profile_sync(owner_id, "Fred — Default")
-    core.set_runtime_profile(profile_id)
+    _profiles.set_runtime_profile(profile_id)
 
     profiles = db.list_profiles_sync()
     app = YANAApp(sessions=[], profiles=profiles, active_profile_id=profile_id, on_turn=_NO_OP_TURN)
@@ -1042,7 +1043,7 @@ async def test_new_profile_appears_in_bar_and_db(db):
     """After creating a profile via TUI it appears in the profile bar AND is in DB."""
     owner_id = db.add_owner_sync("Fred")
     profile_id = db.add_profile_sync(owner_id, "Fred — Default")
-    core.set_runtime_profile(profile_id)
+    _profiles.set_runtime_profile(profile_id)
 
     profiles = db.list_profiles_sync()
     app = YANAApp(sessions=[], profiles=profiles, active_profile_id=profile_id, on_turn=_NO_OP_TURN)
@@ -1079,7 +1080,7 @@ async def test_new_profile_with_three_existing_profiles(db):
     p1 = db.add_profile_sync(owner_id, "Fred — Work")
     db.add_profile_sync(owner_id, "Fred — Personal")
     db.add_profile_sync(owner_id, "Fred — Study")
-    core.set_runtime_profile(p1)
+    _profiles.set_runtime_profile(p1)
 
     profiles = db.list_profiles_sync()
     assert len(profiles) == 3
@@ -1131,7 +1132,7 @@ async def test_new_profile_from_navigated_profile(db):
     profiles = db.list_profiles_sync()
     first_id = profiles[0]["id"]
     second_id = profiles[1]["id"]
-    core.set_runtime_profile(first_id)
+    _profiles.set_runtime_profile(first_id)
 
     app = YANAApp(sessions=[], profiles=profiles, active_profile_id=first_id, on_turn=_NO_OP_TURN)
     async with app.run_test(size=(80, 24)) as pilot:
@@ -1143,7 +1144,7 @@ async def test_new_profile_from_navigated_profile(db):
         await pilot.press("right")
         await pilot.pause()
         assert screen._profile_idx == 1
-        assert core.get_active_profile() == second_id
+        assert _profiles.get_active_profile() == second_id
 
         # Now press 'n' — owner lookup must use second_id's owner, same owner UUID
         await pilot.press("n")
@@ -1176,13 +1177,13 @@ async def test_create_profile_and_session_persisted_in_db(db):
     """
     owner_id = db.add_owner_sync("Fred")
     profile_id = db.add_profile_sync(owner_id, "Fred — Default")
-    core.set_runtime_profile(profile_id)
+    _profiles.set_runtime_profile(profile_id)
 
     saved: list[tuple[str, str]] = []  # (session_id, profile_id)
 
     def on_exit(messages: list[dict], session_id: str | None) -> None:
         sid = session_id or f"test-{uuid.uuid4().hex[:8]}"
-        active = core.get_active_profile() or profile_id
+        active = _profiles.get_active_profile() or profile_id
         db.create_session_sync(
             sid,
             active,
@@ -1254,7 +1255,7 @@ async def test_session_visible_in_browser_after_reopen(db):
     """
     owner_id = db.add_owner_sync("Fred")
     profile_id = db.add_profile_sync(owner_id, "Fred — Default")
-    core.set_runtime_profile(profile_id)
+    _profiles.set_runtime_profile(profile_id)
 
     session_id = _seed_session(db, profile_id, "hello world")
 
@@ -1285,7 +1286,7 @@ async def test_delete_profile_purges_sessions_no_data_recovery(db):
     owner_id = db.add_owner_sync("Fred")
     profile_id_1 = db.add_profile_sync(owner_id, "Fred — Default")
     profile_id_2 = db.add_profile_sync(owner_id, "Fred — Trabalho")
-    core.set_runtime_profile(profile_id_1)
+    _profiles.set_runtime_profile(profile_id_1)
 
     _seed_session(db, profile_id_2, "old session")
     assert len(db.list_sessions_sync(profile_id_2)) == 1

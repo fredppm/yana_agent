@@ -19,9 +19,5 @@ def save_connector_sync(profile_id: str, instance_id: str, config_json_str: str)
 
 def list_connectors_sync(profile_id: str) -> list[dict]:
     with Session(_get_engine()) as db:
-        connectors = db.scalars(
-            select(Connector).where(Connector.profile_id == profile_id)
-        ).all()
-        return [
-            {"instance_id": c.instance_id, "config_json": c.config_json} for c in connectors
-        ]
+        connectors = db.scalars(select(Connector).where(Connector.profile_id == profile_id)).all()
+        return [{"instance_id": c.instance_id, "config_json": c.config_json} for c in connectors]
