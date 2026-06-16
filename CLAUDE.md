@@ -150,7 +150,6 @@ alembic downgrade base   # rollback everything
 
 | Function | Signature | Contract |
 |---|---|---|
-| `sanctum_exists()` | `() -> bool` | True if owner persona is stored in PostgreSQL for active profile |
 | `load_system_prompt()` | `() -> str` | Raises `FileNotFoundError` if SKILL.md missing |
 | `is_quiet_hours(pulse_config?)` | `(dict?) -> bool` | Parses `quiet_hours: "HH:MM-HH:MM"` — handles overnight windows (e.g. 23:00–07:00) |
 | `list_sessions(limit?)` | `(int) -> list[tuple[str, datetime, str]]` | Returns sessions from PostgreSQL as `(id, datetime, preview)` |

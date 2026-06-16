@@ -153,23 +153,6 @@ def owner_id_from_profile(profile_id: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Sanctum state check
-# ---------------------------------------------------------------------------
-
-
-def sanctum_exists() -> bool:
-    """True if owner PERSONA is stored in PostgreSQL for active profile."""
-    import store
-
-    active = get_active_profile()
-    if not active:
-        return False
-    owner_id = owner_id_from_profile(active)
-    fields = store.load_sanctum_fields_sync(owner_id, active)
-    return bool(fields.get("persona"))
-
-
-# ---------------------------------------------------------------------------
 # Pulse-config helpers
 # ---------------------------------------------------------------------------
 
@@ -200,11 +183,6 @@ def list_profiles() -> list[dict]:
     return store.list_profiles_sync()
 
 
-def profiles_exist() -> bool:
-    """True if at least one profile is configured."""
-    return bool(list_profiles())
-
-
 def get_active_profile() -> str:
     """Return the runtime-selected profile id (set at startup via set_runtime_profile)."""
     return _active_profile
@@ -227,13 +205,6 @@ def create_first_owner_and_profile(written: dict[str, str]) -> tuple[str, str]:
     owner_id = store.add_owner_sync(name)
     profile_id = store.add_profile_sync(owner_id, f"{name} — Default")
     return owner_id, profile_id
-
-
-def add_owner(name: str = "") -> str:
-    """Create a new owner. Returns owner UUID."""
-    import store
-
-    return store.add_owner_sync(name)
 
 
 _PROFILE_LIMIT = 5
