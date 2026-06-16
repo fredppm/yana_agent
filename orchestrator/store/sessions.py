@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import UTC, datetime
+from datetime import datetime
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -48,29 +48,15 @@ def update_session_preview_sync(session_id: str, preview: str) -> None:
 
 
 def list_sessions_sync(profile_id: str, limit: int = 20) -> list[tuple[str, datetime, str]]:
-    try:
-        with Session(_get_engine()) as db:
-            records = db.scalars(
-                select(SessionRecord)
-                .where(SessionRecord.profile_id == profile_id)
-                .order_by(SessionRecord.started_at.desc())
-                .limit(limit)
-            ).all()
-        result = []
-        for r in records:
-            preview = r.preview or ""
-            try:
-                dt = datetime.fromisoformat(r.started_at)
-            except Exception:
-                try:
-                    dt = datetime.strptime(r.id, "%Y-%m-%d_%H-%M-%S")
-                except Exception:
-                    dt = datetime.now(UTC)
-            result.append((r.id, dt, preview))
-        return result
-    except Exception as e:
-        log.debug("store: list_sessions failed: %s", e)
-        return []
+    """List sessions for a profile. Raises on DB failure — empty return would hide existing sessions."""
+    with Session(_get_engine()) as db:
+        records = db.scalars(
+            select(SessionRecord)
+            .where(SessionRecord.profile_id == profile_id)
+            .order_by(SessionRecord.started_at.desc())
+            .limit(limit)
+        ).all()
+    return [(r.id, datetime.fromisoformat(r.started_at), r.preview or "") for r in records]
 
 
 def load_session_messages_sync(session_id: str) -> list[dict]:

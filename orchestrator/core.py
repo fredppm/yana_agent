@@ -154,10 +154,6 @@ def load_system_prompt(
         else:
             parts.append(f"---\n[{errors.e('SYS-001')}]")
 
-    # Current datetime — injected so LLM can compute relative times (e.g. "daqui 1 minuto")
-    from datetime import datetime
-
-    now = datetime.now()
     parts.append(
         f"---\n## Current datetime\n\n"
         f"{now.strftime('%Y-%m-%dT%H:%M:%S')} (local time, use this to compute `at` for Pulse once tasks)"
