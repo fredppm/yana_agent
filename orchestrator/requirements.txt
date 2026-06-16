@@ -37,6 +37,7 @@ google-auth-oauthlib>=1.0.0
 
 # Test infrastructure
 testcontainers[postgres]>=4.0  # spin up real PostgreSQL for TUI integration tests
+pytest-asyncio>=0.23            # needed for @pytest.mark.asyncio in test_tui.py
 
 # Pulse — task scheduling
 apscheduler>=3.10.0,<4

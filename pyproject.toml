@@ -29,6 +29,7 @@ warn_unused_ignores = false
 [tool.pytest.ini_options]
 addopts = "--color=yes --tb=short -m 'not integration'"
 testpaths = ["orchestrator/tests"]
+asyncio_mode = "auto"
 markers = [
     "integration: tests that hit real external services (run with -m integration)",
 ]
