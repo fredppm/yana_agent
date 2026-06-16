@@ -1,5 +1,5 @@
 """
-tests/test_providers.py — unit tests for providers.py pure logic.
+tests/test_llm.py — unit tests for llm.py pure logic.
 
 No network, no API keys. Config is built from env vars via monkeypatch.
 """
@@ -14,7 +14,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import providers
+import llm as providers
 
 
 def _env(**kwargs):

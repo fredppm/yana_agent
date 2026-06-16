@@ -19,7 +19,7 @@ class ClaudeCodeEngine(CodingEngine):
     """
     Coding engine backed by the Claude Code CLI.
 
-    Config keys (from providers.yaml engines.claude_code):
+    Config keys (from providers.yaml engines section):
       model: model ID to pass via --model (optional)
       flags: list of extra CLI flags (optional)
     """

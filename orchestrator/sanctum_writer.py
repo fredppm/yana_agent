@@ -19,7 +19,7 @@ from pathlib import Path
 import core
 import errors
 import output
-import providers as prov
+import llm as prov
 
 # ---------------------------------------------------------------------------
 # Files YANA should write after First Breath

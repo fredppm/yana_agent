@@ -59,7 +59,7 @@ def load_engine(config: dict | None = None) -> CodingEngine:
             flags: []                  # optional extra CLI flags
     """
     if config is None:
-        import providers as prov
+        import llm as prov
 
         config = prov.load_providers()
 

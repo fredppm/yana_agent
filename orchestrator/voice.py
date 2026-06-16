@@ -227,7 +227,7 @@ def ts() -> str:
 
 
 def load_voice_config(providers_config: dict) -> dict:
-    """Extract STT/TTS config from providers.yaml content."""
+    """Extract STT/TTS config from llm.load_providers() dict."""
     stt = providers_config.get("stt", {})
     tts = providers_config.get("tts", {})
     return {
