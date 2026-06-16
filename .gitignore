@@ -17,6 +17,7 @@ build/
 # Environment / secrets
 .env
 .env.*
+!.env.example
 
 # User-specific BMad config
 _bmad/config.user.toml
