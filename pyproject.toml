@@ -17,11 +17,13 @@ ignore_missing_imports = true
 strict_optional = true
 warn_unused_ignores = true
 warn_return_any = false   # too noisy for LLM-calling code
+# Alembic migration files use runtime-injected op/context objects — skip them.
+exclude = ["orchestrator/alembic/"]
 
 [[tool.mypy.overrides]]
-# providers.py has type: ignore comments for SDK-specific errors (anthropic, openai).
+# llm.py has type: ignore comments for SDK-specific errors (anthropic, openai).
 # These are valid when the SDK is installed but appear "unused" in envs without it.
-module = ["providers"]
+module = ["llm"]
 warn_unused_ignores = false
 
 [tool.pytest.ini_options]

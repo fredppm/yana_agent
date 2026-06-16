@@ -187,7 +187,8 @@ async def _generate_session_title(conversation_text: str, cfg: dict) -> str:
             ),
             timeout=15.0,
         )
-        title = resp.choices[0].message.content.strip().strip('"').strip("'")
+        raw = resp.choices[0].message.content or ""
+        title = raw.strip().strip('"').strip("'")
         return title[:80] if title else ""
     except Exception as exc:
         log.debug("memory: title generation skipped (%s: %s)", type(exc).__name__, exc)

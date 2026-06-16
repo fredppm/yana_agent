@@ -108,7 +108,7 @@ def db(pg_url):
     # Reset module-level engine cache and point at test container
     store._engine_cache = None
     _orig_load_url = store._load_url
-    store._load_url = lambda: pg_url  # type: ignore[method-assign]
+    store._load_url = lambda: pg_url
 
     store.Base.metadata.create_all(store._get_engine())
 
@@ -122,5 +122,5 @@ def db(pg_url):
             session.execute(text(f"TRUNCATE {tbl} CASCADE"))
         session.commit()
 
-    store._load_url = _orig_load_url  # type: ignore[method-assign]
+    store._load_url = _orig_load_url
     store._engine_cache = None
