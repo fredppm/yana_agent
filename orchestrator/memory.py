@@ -38,6 +38,10 @@ def _to_group_id(profile_id: str) -> str:
     return profile_id
 
 
+# Semantic search query used to retrieve contextually relevant memories at session start.
+# Written in Portuguese to match the primary conversation language.
+_CONTEXT_QUERY = "quem e o usuario, o que esta acontecendo na vida dele agora"
+
 _DEFAULT_CONFIG: dict = {
     "uri": "bolt://localhost:7687",
     "user": "",
@@ -257,9 +261,7 @@ async def store_session(messages: list[dict], session_id: str) -> None:
             log.debug("memory: session title set -> %r", title)
 
 
-async def load_context(
-    query: str = "quem e o usuario, o que esta acontecendo na vida dele agora",
-) -> str:
+async def load_context(query: str = _CONTEXT_QUERY) -> str:
     """
     Retrieve relevant memory from Graphiti to inject into the system prompt.
 
@@ -363,10 +365,7 @@ def store_session_background(messages: list[dict], session_id: str) -> None:
     threading.Thread(target=_run, daemon=False, name="graphiti-store").start()
 
 
-def load_context_sync(
-    query: str = "quem e o usuario, o que esta acontecendo na vida dele agora",
-    timeout: float = 5.0,
-) -> str:
+def load_context_sync(query: str = _CONTEXT_QUERY, timeout: float = 5.0) -> str:
     """
     Synchronous wrapper for load_context with a timeout.
 

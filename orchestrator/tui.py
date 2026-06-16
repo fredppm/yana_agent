@@ -406,7 +406,13 @@ class ProfileSessionScreen(Screen[str | None]):
         self._profile_idx = min(self._profile_idx, len(self._profiles) - 1)
         if self._profiles:
             core.set_runtime_profile(self._profiles[self._profile_idx]["id"])
+            new_sessions = core.list_sessions()
+            self._entries = _build_session_entries(new_sessions)
+        else:
+            self._entries = _build_session_entries([])
+        self._cursor = 0
         self._render_profile_bar()
+        self._render_list()
         self._update_hint()
 
     _PROFILE_LIMIT = 5
@@ -422,7 +428,11 @@ class ProfileSessionScreen(Screen[str | None]):
             return
         import core
 
-        profile_id = core.add_profile(label)
+        try:
+            profile_id = core.add_profile(label)
+        except ValueError as exc:
+            self._flash_hint(str(exc))
+            return
         self._profiles.append({"id": profile_id, "label": label})
         self._profile_idx = len(self._profiles) - 1
         self._entries = _build_session_entries([])  # new profile has no sessions
@@ -908,7 +918,7 @@ class YANAApp(App[TuiResult]):
             _on_exit = self._on_exit
             _threading.Thread(
                 target=lambda: _on_exit(_msgs, _session_id),
-                daemon=True,
+                daemon=False,
                 name="session-switch-save",
             ).start()
         import core as _core
@@ -926,12 +936,13 @@ class YANAApp(App[TuiResult]):
 
         # Update active profile (user may have navigated to a different profile in the browser)
         self._active_profile_id = _core.get_active_profile() or self._active_profile_id
-        # Load the chosen session (or start fresh if _NEW)
+        # Reset all chat state — including _busy which may be stale from the previous session
         self._messages = []
         self._session_history = []
         self._new_messages = []
         self._chosen_session = None
         self._history_expanded = False
+        self._busy = False
         if choice != _NEW:
             self._messages = _core.load_session_messages(choice)
             self._session_history = list(self._messages)

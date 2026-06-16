@@ -159,7 +159,7 @@ alembic downgrade base   # rollback everything
 | `init_schema_sync()` | `() -> None` | Runs `alembic upgrade head` — idempotent, safe on every startup |
 | `load_sanctum_fields_sync(owner_id, profile_id)` | `(str, str) -> dict[str, str]` | Returns `{prop: val}` for all non-null sanctum fields |
 | `save_sanctum_fields_sync(owner_id, profile_id, fields)` | `(str, str, dict) -> None` | Upserts owner + profile rows. Keys are LLM protocol names (e.g. `"BOND"`) |
-| `list_profiles_sync()` | `() -> list[dict]` | Returns `[{id, label}]` ordered by id |
+| `list_profiles_sync()` | `() -> list[dict]` | Returns `[{id, label}]` ordered by `created_at` (creation time) |
 
 ### providers.py
 
