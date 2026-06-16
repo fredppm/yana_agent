@@ -11,7 +11,9 @@ Read it fully before touching code. Changes that break the contracts below will 
 yana_agent/
   orchestrator/           # Python entry point + all runtime logic
     main.py               # CLI: --text | --pulse | --programmer | default (voice)
-    core.py               # System prompt assembly, profile/sanctum helpers
+    core.py               # System prompt assembly, session helpers, pulse config, path helpers
+    profiles.py           # Profile identity + runtime state (active profile, CRUD)
+    agent.py              # LLM agent tool loop (_execute_tool, call_with_tool_loop)
     store.py              # PostgreSQL storage — profiles, sanctum, sessions, connectors (SQLAlchemy)
     memory.py             # Graphiti episodic memory — Neo4j only
     providers.py          # Multi-model LLM routing (Anthropic / Bedrock / OpenAI)
@@ -154,6 +156,14 @@ alembic downgrade base   # rollback everything
 | `is_quiet_hours(pulse_config?)` | `(dict?) -> bool` | Parses `quiet_hours: "HH:MM-HH:MM"` — handles overnight windows (e.g. 23:00–07:00) |
 | `list_sessions(limit?)` | `(int) -> list[tuple[str, datetime, str]]` | Returns sessions from PostgreSQL as `(id, datetime, preview)` |
 | `load_session_messages(session_id)` | `(str) -> list[dict]` | Returns messages from PostgreSQL for the given session |
+
+### profiles.py
+
+| Function | Signature | Contract |
+|---|---|---|
+| `get_active_profile()` | `() -> str` | Returns runtime-selected profile id; empty string before `set_runtime_profile` is called |
+| `set_runtime_profile(profile_id)` | `(str) -> None` | Sets the active profile for this process — called once at startup |
+| `create_first_owner_and_profile(written)` | `(dict[str,str]) -> tuple[str,str]` | First Breath: creates Owner + Profile from sanctum output; returns `(owner_id, profile_id)` |
 
 ### store.py
 

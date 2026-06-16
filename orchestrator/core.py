@@ -3,6 +3,8 @@ core.py — system prompt assembly and session persistence.
 
 Reads SKILL.md + sanctum fields to build YANA's context.
 Saves and loads session logs for continuity.
+
+Profile identity and runtime state live in profiles.py.
 """
 
 from __future__ import annotations
@@ -11,12 +13,7 @@ from datetime import datetime
 from pathlib import Path
 
 import errors
-
-# ---------------------------------------------------------------------------
-# Runtime state — set once at startup via set_runtime_profile()
-# ---------------------------------------------------------------------------
-
-_active_profile: str = ""
+import profiles
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -49,7 +46,7 @@ def save_session_log(messages: list[dict], session_id: str) -> Path:
 
     import store
 
-    profile_id = get_active_profile()
+    profile_id = profiles.get_active_profile()
     if profile_id:
         now = datetime.now().isoformat()
         preview = next((m["content"][:80] for m in messages if m.get("role") == "assistant"), "")
@@ -121,12 +118,12 @@ def load_system_prompt(
     ]
 
     # Sanctum fields from PostgreSQL — in order, skip missing
-    active = get_active_profile()
+    active = profiles.get_active_profile()
     if active:
         import store
 
         if _sanctum_fields is None:
-            owner_id = owner_id_from_profile(active)
+            owner_id = profiles.owner_id_from_profile(active)
             fields = store.load_sanctum_fields_sync(owner_id, active)
         else:
             fields = _sanctum_fields
@@ -180,7 +177,7 @@ def list_sessions(limit: int = 20) -> list[tuple[str, datetime, str]]:
     """List recent sessions as (session_id, datetime, preview), newest first."""
     import store
 
-    active = get_active_profile()
+    active = profiles.get_active_profile()
     if not active:
         return []
     return store.list_sessions_sync(active, limit=limit)
@@ -194,18 +191,6 @@ def load_session_messages(session_id: str) -> list[dict]:
 
 
 # ---------------------------------------------------------------------------
-# Profile identity helpers
-# ---------------------------------------------------------------------------
-
-
-def owner_id_from_profile(profile_id: str) -> str:
-    """Return the owner UUID for a given profile UUID."""
-    import store
-
-    return store.get_owner_id_for_profile_sync(profile_id) or ""
-
-
-# ---------------------------------------------------------------------------
 # Pulse-config helpers
 # ---------------------------------------------------------------------------
 
@@ -215,10 +200,10 @@ def load_pulse_config() -> dict:
     import store
     import yaml
 
-    active = get_active_profile()
+    active = profiles.get_active_profile()
     if not active:
         return {}
-    owner_id = owner_id_from_profile(active)
+    owner_id = profiles.owner_id_from_profile(active)
     fields = store.load_sanctum_fields_sync(owner_id, active)
     raw = fields.get("pulse_config", "")
     if not raw:
@@ -227,74 +212,6 @@ def load_pulse_config() -> dict:
         return yaml.safe_load(raw) or {}
     except Exception:
         return {}
-
-
-def list_profiles() -> list[dict]:
-    """Return configured profiles [{id, label}, ...] from PostgreSQL."""
-    import store
-
-    return store.list_profiles_sync()
-
-
-def get_active_profile() -> str:
-    """Return the runtime-selected profile id (set at startup via set_runtime_profile)."""
-    return _active_profile
-
-
-def set_runtime_profile(profile_id: str) -> None:
-    """Set the active profile for this process. Called once at startup after profile selection."""
-    global _active_profile
-    _active_profile = profile_id
-
-
-def create_first_owner_and_profile(written: dict[str, str]) -> tuple[str, str]:
-    """First Breath: create Owner + Profile from sanctum output.
-
-    Returns (owner_id, profile_id).
-    """
-    import store
-
-    name = (written.get("OWNER_NAME") or "").strip() or "User"
-    owner_id = store.add_owner_sync(name)
-    profile_id = store.add_profile_sync(owner_id, f"{name} — Default")
-    return owner_id, profile_id
-
-
-_PROFILE_LIMIT = 5
-
-
-def add_profile(label: str) -> str:
-    """Create a new profile under the active owner. Returns new profile UUID.
-    Raises ValueError if the owner already has _PROFILE_LIMIT profiles.
-    """
-    import store
-
-    existing = store.list_profiles_sync()
-    if len(existing) >= _PROFILE_LIMIT:
-        raise ValueError(f"Profile limit reached ({_PROFILE_LIMIT} max)")
-
-    active = get_active_profile()
-    owner_id = owner_id_from_profile(active) if active else ""
-    profile_id = store.add_profile_sync(owner_id, label)
-    set_runtime_profile(profile_id)
-    return profile_id
-
-
-def delete_profile(profile_id: str) -> None:
-    """Remove a profile from PostgreSQL. Clears runtime profile if it was the active one."""
-    import store
-
-    store.delete_profile_sync(profile_id)
-    if get_active_profile() == profile_id:
-        remaining = list_profiles()
-        set_runtime_profile(remaining[0]["id"] if remaining else "")
-
-
-def rename_profile_label(profile_id: str, new_label: str) -> None:
-    """Update the display label for a profile in PostgreSQL."""
-    import store
-
-    store.update_profile_label_sync(profile_id, new_label)
 
 
 def is_quiet_hours(pulse_config: dict | None = None) -> bool:

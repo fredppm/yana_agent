@@ -204,12 +204,12 @@ async def store_session(messages: list[dict], session_id: str) -> None:
     """
     Persist raw session messages in PostgreSQL and add a Graphiti episode.
     """
-    import core
+    import profiles
     import store
     from graphiti_core.nodes import EpisodeType
 
     cfg = _load_config()
-    profile_id = core.get_active_profile() or "yana-default"
+    profile_id = profiles.get_active_profile() or "yana-default"
     group_id = _to_group_id(profile_id)
 
     # Build conversation text for Graphiti episode
@@ -272,7 +272,7 @@ async def load_context(query: str | None = None) -> str:
 
     Returns a formatted markdown block, or empty string if unavailable.
     """
-    import core
+    import profiles
 
     if query is None:
         query = _context_query()
@@ -286,7 +286,7 @@ async def load_context(query: str | None = None) -> str:
         if task != asyncio.current_task():
             task.cancel()
 
-    profile_id = core.get_active_profile() or "yana-default"
+    profile_id = profiles.get_active_profile() or "yana-default"
     profile_gid = _to_group_id(profile_id)
     # Search only the profile group_id — UUID is the stable identifier
     search_group_ids = [profile_gid]

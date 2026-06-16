@@ -36,13 +36,13 @@ class SanctumContext:
     @classmethod
     def load(cls) -> SanctumContext:
         """Load from PostgreSQL. Raises FileNotFoundError if sanctum not initialised."""
-        import core
+        import profiles
         import store
 
-        active = core.get_active_profile()
+        active = profiles.get_active_profile()
         if not active:
             raise FileNotFoundError("No active profile — sanctum not initialised")
-        owner_id = core.owner_id_from_profile(active)
+        owner_id = profiles.owner_id_from_profile(active)
         fields = store.load_sanctum_fields_sync(owner_id, active)
         if not fields.get("persona"):
             raise FileNotFoundError(

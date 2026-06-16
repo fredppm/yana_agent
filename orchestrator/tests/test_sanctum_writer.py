@@ -11,7 +11,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import core
+import profiles
 import sanctum_writer
 
 # ---------------------------------------------------------------------------
@@ -122,7 +122,7 @@ def test_first_breath_pipeline_simple_name(db):
     """parse → create_first_owner_and_profile: plain first name ends up in DB correctly."""
     written = sanctum_writer._parse_and_write(_first_breath_llm_response("Fred"))
     assert written.get("OWNER_NAME") == "Fred"
-    owner_id, _ = core.create_first_owner_and_profile(written)
+    owner_id, _ = profiles.create_first_owner_and_profile(written)
     with db.Session(db._get_engine()) as s:
         owner = s.get(db.Owner, owner_id)
     assert owner.name == "Fred"
@@ -134,7 +134,7 @@ def test_first_breath_pipeline_full_name_from_llm(db):
     """LLM writes full name → stored as-is."""
     written = sanctum_writer._parse_and_write(_first_breath_llm_response("Fred Mourao"))
     assert written.get("OWNER_NAME") == "Fred Mourao"
-    owner_id, _ = core.create_first_owner_and_profile(written)
+    owner_id, _ = profiles.create_first_owner_and_profile(written)
     with db.Session(db._get_engine()) as s:
         owner = s.get(db.Owner, owner_id)
     assert owner.name == "Fred Mourao"
@@ -147,7 +147,7 @@ def test_first_breath_pipeline_missing_owner_name(db):
     response = "<<<FILE:PERSONA>>>\nYANA.\n<<<END>>>\n<<<FILE:BOND>>>\nThe owner.\n<<<END>>>"
     written = sanctum_writer._parse_and_write(response)
     assert "OWNER_NAME" not in written
-    owner_id, _ = core.create_first_owner_and_profile(written)
+    owner_id, _ = profiles.create_first_owner_and_profile(written)
     with db.Session(db._get_engine()) as s:
         owner = s.get(db.Owner, owner_id)
     assert owner.name == "User"

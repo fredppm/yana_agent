@@ -16,10 +16,10 @@ import re
 from datetime import datetime
 from pathlib import Path
 
-import core
 import errors
 import llm as prov
 import output
+import profiles
 
 # ---------------------------------------------------------------------------
 # Files YANA should write after First Breath
@@ -123,8 +123,8 @@ def write_sanctum(
     written = _parse_and_write(response)
 
     if written and save:
-        active = core.get_active_profile()
-        owner_id = core.owner_id_from_profile(active)
+        active = profiles.get_active_profile()
+        owner_id = profiles.owner_id_from_profile(active)
         import store
 
         store.save_sanctum_fields_sync(owner_id, active, written)

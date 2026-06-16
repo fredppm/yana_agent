@@ -30,7 +30,7 @@ def build_registry() -> ConnectorRegistry:
     """
     import json
 
-    import core
+    import profiles
     import store
     import yaml
 
@@ -40,7 +40,7 @@ def build_registry() -> ConnectorRegistry:
     if folder.exists():
         load_connectors(folder, registry)
 
-    profile_id = core.get_active_profile()
+    profile_id = profiles.get_active_profile()
     if not profile_id:
         # No profile yet (First Breath) — nothing to load
         return registry

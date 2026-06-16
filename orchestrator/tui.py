@@ -379,10 +379,11 @@ class ProfileSessionScreen(Screen[str | None]):
 
     def _on_profile_changed(self) -> None:
         import core
+        import profiles
 
         profile = self._profiles[self._profile_idx] if self._profiles else {}
         if profile:
-            core.set_runtime_profile(profile["id"])
+            profiles.set_runtime_profile(profile["id"])
             new_sessions = core.list_sessions()
             self._entries = _build_session_entries(new_sessions)
             self._cursor = 0
@@ -404,13 +405,14 @@ class ProfileSessionScreen(Screen[str | None]):
         if len(self._profiles) <= 1:
             return  # Refuse to delete the last profile
         import core
+        import profiles
 
         profile = self._profiles[self._profile_idx]
-        core.delete_profile(profile["id"])
+        profiles.delete_profile(profile["id"])
         self._profiles.pop(self._profile_idx)
         self._profile_idx = min(self._profile_idx, len(self._profiles) - 1)
         if self._profiles:
-            core.set_runtime_profile(self._profiles[self._profile_idx]["id"])
+            profiles.set_runtime_profile(self._profiles[self._profile_idx]["id"])
             new_sessions = core.list_sessions()
             self._entries = _build_session_entries(new_sessions)
         else:
@@ -431,10 +433,10 @@ class ProfileSessionScreen(Screen[str | None]):
     def _on_new_profile(self, label: str | None) -> None:
         if not label:
             return
-        import core
+        import profiles
 
         try:
-            profile_id = core.add_profile(label)
+            profile_id = profiles.add_profile(label)
         except ValueError as exc:
             self._flash_hint(str(exc))
             return
@@ -457,10 +459,10 @@ class ProfileSessionScreen(Screen[str | None]):
     def _on_rename(self, new_label: str | None) -> None:
         if not new_label:
             return
-        import core
+        import profiles
 
         profile = self._profiles[self._profile_idx]
-        core.rename_profile_label(profile["id"], new_label)
+        profiles.rename_profile_label(profile["id"], new_label)
         profile["label"] = new_label
         self._render_profile_bar()
 
@@ -980,9 +982,10 @@ class YANAApp(App[TuiResult]):
         if choice is None:
             return  # dismissed — stay in current session
         import core as _core
+        import profiles as _profiles
 
         # Update active profile (user may have navigated to a different profile in the browser)
-        self._active_profile_id = _core.get_active_profile() or self._active_profile_id
+        self._active_profile_id = _profiles.get_active_profile() or self._active_profile_id
         # Reset all chat state — including _busy which may be stale from the previous session
         self._messages = []
         self._session_history = []

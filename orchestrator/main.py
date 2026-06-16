@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import argparse
 import io
-import json
 import logging
 import subprocess
 import sys
@@ -39,12 +38,14 @@ sys.path.insert(0, str(_HERE))
 # Imports (after path fix)
 # ---------------------------------------------------------------------------
 
+import agent  # noqa: E402
 import connectors_setup  # noqa: E402
 import core  # noqa: E402
 import llm as prov  # noqa: E402
 import log  # noqa: E402
 import memory as mem  # noqa: E402
 import output  # noqa: E402
+import profiles  # noqa: E402
 import sanctum_writer as sw  # noqa: E402
 import store  # noqa: E402
 import voice as v  # noqa: E402
@@ -149,118 +150,7 @@ def run_pulse(task: str = "full", source: str = "", event: str = "", payload: st
     output.status(f"PULSE done — session: {session_id}")
 
 
-# ---------------------------------------------------------------------------
-# Connector tool execution
-# ---------------------------------------------------------------------------
-
-
-def _execute_tool(tool_call: dict, registry) -> str:
-    """Execute a single connector tool call and return the result as a JSON string."""
-    name = tool_call["name"]
-    inp = tool_call["input"]
-
-    if name == "call_connector":
-        result = registry.call(
-            inp["instance_id"],
-            inp["operation"],
-            inp.get("params") or {},
-        )
-        if result.ok:
-            return json.dumps({"ok": True, "data": result.data})
-        payload: dict = {"ok": False, "error": result.error}
-        if result.detail:
-            payload["detail"] = result.detail
-        return json.dumps(payload)
-
-    if name == "get_connector_contract":
-        try:
-            contract = registry.load_contract(inp["instance_id"])
-            return json.dumps(contract)
-        except KeyError as exc:
-            return json.dumps({"error": str(exc)})
-
-    return json.dumps({"error": f"unknown tool: {name}"})
-
-
-def _call_with_tool_loop(
-    messages: list[dict],
-    system_prompt: str,
-    tools: list[dict],
-    registry,
-    providers_config: dict,
-    task: str,
-    text_mode: bool = True,
-    clear_line: bool = False,
-    silent: bool = False,
-) -> str:
-    """
-    Run one conversation turn handling any connector tool calls.
-
-    *messages* must already include the latest user message.
-    Returns the final text reply after all tool calls are resolved.
-
-    silent=True: skip all terminal output (used by TUI mode — the caller
-    renders the reply itself).
-    """
-    work = list(messages)
-    _text_mode = text_mode
-
-    while True:
-        text, tool_uses, raw_content = prov.call_llm_with_tools(
-            work, system_prompt, tools, task=task, config=providers_config
-        )
-
-        if not tool_uses:
-            if not silent:
-                # Final text response — optionally clear a pending "thinking" line
-                if clear_line:
-                    log.console.print(" " * 60, end="\r")
-                    clear_line = False  # only clear once
-                log.yana_prefix(v.ts())
-                if text:
-                    log.yana_response(text, markdown=_text_mode)
-            return text or ""
-
-        # Print any thinking text that preceded the tool calls
-        if text and not silent:
-            log.console.print(text, end="")
-
-        # Add assistant message (with tool_use blocks) to working history
-        work.append({"role": "assistant", "content": raw_content})
-
-        # Execute each tool and collect results
-        tool_results = []
-        for tc in tool_uses:
-            inp = tc["input"]
-            if isinstance(inp, str):
-                try:
-                    inp = json.loads(inp)
-                except (json.JSONDecodeError, ValueError):
-                    inp = {}
-                tc = {**tc, "input": inp}
-            result_str = _execute_tool(tc, registry)
-            instance = inp.get("instance_id", "")
-            op = inp.get("operation", tc["name"])
-            try:
-                _r = json.loads(result_str)
-                _err = _r.get("error") if not _r.get("ok", True) else None
-            except Exception:
-                _err = None
-            if not silent:
-                if _err:
-                    log.connector_err(v.ts(), instance, op, _err)
-                else:
-                    log.connector_ok(v.ts(), instance, op)
-            tool_results.append(
-                {
-                    "type": "tool_result",
-                    "tool_use_id": tc["id"],
-                    "content": result_str,
-                }
-            )
-
-        # Feed results back as a user message and loop
-        work.append({"role": "user", "content": tool_results})
+# _execute_tool and _call_with_tool_loop live in agent.py
 
 
 # ---------------------------------------------------------------------------
@@ -278,7 +168,7 @@ def _run_tui_conversation(
     listen_fn: Callable[[], str] | None = None,
     speak_fn: Callable[[str], None] | None = None,
     auto_greet: bool = False,
-    profiles: list[dict] | None = None,
+    profile_list: list[dict] | None = None,
     active_profile: str = "",
     sessions: list | None = None,
 ) -> None:
@@ -313,7 +203,7 @@ def _run_tui_conversation(
             if ctx:
                 _graphiti_injected[0] = True  # only mark injected when ctx is actually used
                 _sp = system_prompt + "\n\n" + ctx
-        reply = _call_with_tool_loop(
+        reply = agent.call_with_tool_loop(
             msgs,
             _sp,
             tools,
@@ -346,8 +236,8 @@ def _run_tui_conversation(
                 )
             except KeyboardInterrupt:
                 written = {}
-            owner_id, profile_id = core.create_first_owner_and_profile(written)
-            core.set_runtime_profile(profile_id)
+            owner_id, profile_id = profiles.create_first_owner_and_profile(written)
+            profiles.set_runtime_profile(profile_id)
             if written:
                 store.save_sanctum_fields_sync(owner_id, profile_id, written)
             # Store the First Breath conversation — makes it visible in session browser
@@ -364,7 +254,7 @@ def _run_tui_conversation(
         listen_fn=listen_fn,
         speak_fn=speak_fn,
         auto_greet=auto_greet,
-        profiles=profiles,
+        profiles=profile_list,
         active_profile_id=active_profile,
     )
 
@@ -378,24 +268,24 @@ def run_conversation() -> None:
 
     # Profile selection — runtime, not persisted.
     # 0 profiles → First Breath. 1 profile → auto-select. N → pick first (future: selection UI).
-    profiles = core.list_profiles()
-    if profiles:
-        core.set_runtime_profile(profiles[0]["id"])
+    profile_list = profiles.list_profiles()
+    if profile_list:
+        profiles.set_runtime_profile(profile_list[0]["id"])
 
     # Build registry after profile is set — connectors are profile-scoped
     registry = connectors_setup.build_registry()
 
     # State detection: route based on identity state, not CLI flags.
-    active_profile = core.get_active_profile()
+    active_profile = profiles.get_active_profile()
     sanctum_fields: dict = {}
     if active_profile:
-        owner_id = core.owner_id_from_profile(active_profile)
+        owner_id = profiles.owner_id_from_profile(active_profile)
         sanctum_fields = store.load_sanctum_fields_sync(owner_id, active_profile)
 
     has_sanctum = bool(sanctum_fields.get("persona"))
-    is_first_breath = not profiles and not has_sanctum
+    is_first_breath = not profile_list and not has_sanctum
 
-    sessions = core.list_sessions() if (profiles or has_sanctum) else []
+    sessions = core.list_sessions() if (profile_list or has_sanctum) else []
 
     system_prompt = core.load_system_prompt(registry=registry, _sanctum_fields=sanctum_fields)
     task = "first_breath" if is_first_breath else "conversation"
@@ -428,7 +318,7 @@ def run_conversation() -> None:
         listen_fn=_listen,
         speak_fn=_speak,
         auto_greet=is_first_breath,
-        profiles=profiles,
+        profile_list=profile_list,
         active_profile=active_profile,
         sessions=sessions,
     )
@@ -442,7 +332,7 @@ def run_single_shot(message: str) -> None:
     system_prompt = core.load_system_prompt(voice_mode=False, registry=registry)
 
     messages = [{"role": "user", "content": message}]
-    _call_with_tool_loop(
+    agent.call_with_tool_loop(
         messages,
         system_prompt,
         tools,

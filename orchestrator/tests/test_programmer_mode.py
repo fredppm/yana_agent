@@ -94,7 +94,7 @@ class TestSanctumContext:
     def _mock_fields(self, fields: dict[str, str]):
         return [
             patch("store.load_sanctum_fields_sync", return_value=fields),
-            patch("core.get_active_profile", return_value="owner::pessoal"),
+            patch("profiles.get_active_profile", return_value="owner::pessoal"),
         ]
 
     def test_happy_path_returns_bond(self) -> None:
@@ -109,7 +109,7 @@ class TestSanctumContext:
                 p.stop()
 
     def test_missing_profile_raises(self) -> None:
-        with patch("core.get_active_profile", return_value=""):
+        with patch("profiles.get_active_profile", return_value=""):
             with pytest.raises(FileNotFoundError):
                 SanctumContext.load()
 
@@ -190,7 +190,7 @@ class TestModePeristence:
 class TestRunProgrammerModeHardStop:
     def test_exits_with_1_if_sanctum_missing(self) -> None:
         with (
-            patch("core.get_active_profile", return_value=""),
+            patch("profiles.get_active_profile", return_value=""),
             pytest.raises(SystemExit) as exc_info,
         ):
             from programmer.mode import run_programmer_mode
