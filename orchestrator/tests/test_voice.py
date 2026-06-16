@@ -6,6 +6,9 @@ No hardware, no network, no audio. Safe to run anywhere.
 
 import sys
 from pathlib import Path
+from unittest.mock import patch
+
+import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -101,9 +104,16 @@ class TestTs:
 # ---------------------------------------------------------------------------
 
 
+_REQUIRED_VOICE_ENV = {
+    "STT_LANGUAGE": "en",
+    "TTS_VOICE": "en-US-JennyNeural",
+}
+
+
 class TestLoadVoiceConfig:
     def test_all_keys_present(self):
-        cfg = voice.load_voice_config({})
+        with patch.dict("os.environ", _REQUIRED_VOICE_ENV):
+            cfg = voice.load_voice_config()
         for key in (
             "stt_provider",
             "stt_model",
@@ -114,20 +124,30 @@ class TestLoadVoiceConfig:
         ):
             assert key in cfg
 
-    def test_defaults(self):
-        cfg = voice.load_voice_config({})
-        assert cfg["stt_provider"] == "openai-whisper"
-        assert cfg["stt_model"] == "base"
-        assert cfg["stt_language"] == "pt"
-        assert cfg["tts_voice"] == "pt-BR-FranciscaNeural"
+    def test_reads_required_env_vars(self):
+        with patch.dict("os.environ", {"STT_LANGUAGE": "fr", "TTS_VOICE": "fr-FR-DeniseNeural"}):
+            cfg = voice.load_voice_config()
+        assert cfg["stt_language"] == "fr"
+        assert cfg["tts_voice"] == "fr-FR-DeniseNeural"
 
-    def test_custom_values_loaded(self):
-        providers_config = {
-            "stt": {"provider": "faster-whisper", "model": "tiny", "language": "en"},
-            "tts": {"voice": "en-US-JennyNeural", "rate": "+10%", "volume": "-5%"},
-        }
-        cfg = voice.load_voice_config(providers_config)
+    def test_missing_stt_language_raises(self):
+        env = {k: v for k, v in _REQUIRED_VOICE_ENV.items() if k != "STT_LANGUAGE"}
+        with patch("voice.load_dotenv"), patch.dict("os.environ", env, clear=True):
+            with pytest.raises(EnvironmentError, match="STT_LANGUAGE"):
+                voice.load_voice_config()
+
+    def test_missing_tts_voice_raises(self):
+        env = {k: v for k, v in _REQUIRED_VOICE_ENV.items() if k != "TTS_VOICE"}
+        with patch("voice.load_dotenv"), patch.dict("os.environ", env, clear=True):
+            with pytest.raises(EnvironmentError, match="TTS_VOICE"):
+                voice.load_voice_config()
+
+    def test_optional_env_vars(self):
+        with patch.dict(
+            "os.environ",
+            {**_REQUIRED_VOICE_ENV, "STT_PROVIDER": "faster-whisper", "STT_MODEL": "tiny", "TTS_RATE": "+10%"},
+        ):
+            cfg = voice.load_voice_config()
         assert cfg["stt_provider"] == "faster-whisper"
         assert cfg["stt_model"] == "tiny"
-        assert cfg["tts_voice"] == "en-US-JennyNeural"
         assert cfg["tts_rate"] == "+10%"

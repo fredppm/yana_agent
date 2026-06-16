@@ -50,19 +50,6 @@ class TestLoadProviders:
         # which is falsy, so the fallback kicks in during resolve_model, not load_providers
         assert "conversation" in cfg["models"]
 
-    def test_stt_config_from_env(self):
-        with _env(STT_PROVIDER="openai-whisper", STT_MODEL="base", STT_LANGUAGE="en"):
-            cfg = providers.load_providers()
-        assert cfg["stt"]["provider"] == "openai-whisper"
-        assert cfg["stt"]["model"] == "base"
-        assert cfg["stt"]["language"] == "en"
-
-    def test_tts_config_from_env(self):
-        with _env(TTS_VOICE="en-US-JennyNeural", TTS_RATE="+10%"):
-            cfg = providers.load_providers()
-        assert cfg["tts"]["voice"] == "en-US-JennyNeural"
-        assert cfg["tts"]["rate"] == "+10%"
-
 
 # ---------------------------------------------------------------------------
 # resolve_model

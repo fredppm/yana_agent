@@ -1,5 +1,5 @@
 """
-providers.py — LLM routing via LiteLLM proxy.
+llm.py — LLM routing via LiteLLM proxy.
 
 All calls go through a single Anthropic SDK client pointed at the LiteLLM base URL.
 LiteLLM translates to Bedrock (or any backend) transparently.
@@ -14,14 +14,11 @@ Required env vars:
   YANA_MODEL_SANCTUM_WRITE      model alias for sanctum writes
   YANA_MODEL_PULSE_SCHEDULED    model alias for scheduled PULSE tasks
   YANA_MODEL_PULSE_TRIGGERED    model alias for triggered PULSE tasks
-
-Optional:
-  STT_PROVIDER / STT_MODEL / STT_LANGUAGE
-  TTS_VOICE / TTS_RATE / TTS_VOLUME
 """
 
 from __future__ import annotations
 
+import json
 import os
 from collections.abc import Callable
 from pathlib import Path
@@ -58,16 +55,6 @@ def load_providers() -> dict:
         "models": {
             task: os.environ.get(env, _FALLBACK_MODEL)
             for task, env in _TASK_ENV.items()
-        },
-        "stt": {
-            "provider": os.environ.get("STT_PROVIDER", "faster-whisper"),
-            "model":    os.environ.get("STT_MODEL", "tiny"),
-            "language": os.environ.get("STT_LANGUAGE", "pt"),
-        },
-        "tts": {
-            "voice":  os.environ.get("TTS_VOICE", "pt-BR-FranciscaNeural"),
-            "rate":   os.environ.get("TTS_RATE", "+0%"),
-            "volume": os.environ.get("TTS_VOLUME", "+0%"),
         },
     }
 
@@ -261,6 +248,12 @@ def call_llm_with_tools(
         if block.type == "text":
             text_parts.append(block.text)
         elif block.type == "tool_use":
-            tool_uses.append({"id": block.id, "name": block.name, "input": block.input})
+            block_input = block.input
+            if isinstance(block_input, str):
+                try:
+                    block_input = json.loads(block_input)
+                except (json.JSONDecodeError, ValueError):
+                    block_input = {}
+            tool_uses.append({"id": block.id, "name": block.name, "input": block_input})
 
     return "".join(text_parts), tool_uses, raw_content

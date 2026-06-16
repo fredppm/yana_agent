@@ -26,6 +26,7 @@ class ParamSchema:
     required: bool = True
     unit: str | None = None
     format: str | None = None
+    description: str | None = None
 
 
 @dataclass
@@ -198,7 +199,7 @@ class Connector:
                 entry["params"] = {
                     k: {
                         f: getattr(v, f)
-                        for f in ("type", "required", "unit", "format")
+                        for f in ("type", "required", "unit", "format", "description")
                         if getattr(v, f) is not None
                     }
                     for k, v in meta.params.items()
