@@ -30,7 +30,11 @@ log = logging.getLogger(__name__)
 # Config
 # ---------------------------------------------------------------------------
 
-_CONFIG_PATH = Path(__file__).parent / "config" / "providers.yaml"
+import os
+
+from dotenv import load_dotenv
+
+load_dotenv(Path(__file__).parent / ".env")
 
 
 def _to_group_id(profile_id: str) -> str:
@@ -42,27 +46,17 @@ def _to_group_id(profile_id: str) -> str:
 # Written in Portuguese to match the primary conversation language.
 _CONTEXT_QUERY = "quem e o usuario, o que esta acontecendo na vida dele agora"
 
-_DEFAULT_CONFIG: dict = {
-    "uri": "bolt://localhost:7687",
-    "user": "",
-    "password": "",
-    "litellm_url": "http://localhost:4000",
-    "model": "bedrock-claude-haiku",
-    "embed_model": "bedrock-embed",
-}
-
 
 def _load_config() -> dict:
-    """Read graphiti section from providers.yaml. Returns defaults if missing."""
-    try:
-        import yaml
-
-        raw = yaml.safe_load(_CONFIG_PATH.read_text(encoding="utf-8")) or {}
-        cfg = {**_DEFAULT_CONFIG, **raw.get("graphiti", {})}
-    except Exception:
-        cfg = dict(_DEFAULT_CONFIG)
-
-    return cfg
+    """Read memory config from environment variables."""
+    return {
+        "uri":         os.environ.get("NEO4J_URI", "bolt://127.0.0.1:7687"),
+        "user":        os.environ.get("NEO4J_USER", ""),
+        "password":    os.environ.get("NEO4J_PASSWORD", ""),
+        "litellm_url": os.environ.get("LITELLM_URL", "http://127.0.0.1:4000"),
+        "model":       os.environ.get("YANA_MODEL_MEMORY", "bedrock-claude-haiku"),
+        "embed_model": os.environ.get("YANA_MODEL_EMBED", "bedrock-embed"),
+    }
 
 
 # ---------------------------------------------------------------------------

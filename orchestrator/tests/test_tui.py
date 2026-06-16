@@ -491,7 +491,7 @@ async def test_rename_profile_short_name_keeps_modal_open():
 @pytest.mark.tui_integration
 async def test_profile_session_screen_shows_new_entry(db):
     """After loading a real profile from DB, _NEW is the first entry."""
-    owner_id = db.add_owner_sync("fred", "Fred")
+    owner_id = db.add_owner_sync("Fred")
     profile_id = db.add_profile_sync(owner_id, "Fred — Default")
     core.set_runtime_profile(profile_id)
 
@@ -508,7 +508,7 @@ async def test_profile_session_screen_shows_new_entry(db):
 @pytest.mark.tui_integration
 async def test_single_profile_no_sessions_entry_count(db):
     """With one DB profile and zero sessions, the browser shows exactly one entry (_NEW)."""
-    owner_id = db.add_owner_sync("fred", "Fred")
+    owner_id = db.add_owner_sync("Fred")
     profile_id = db.add_profile_sync(owner_id, "Fred — Default")
     core.set_runtime_profile(profile_id)
 
@@ -528,7 +528,7 @@ async def test_single_profile_no_sessions_entry_count(db):
 @pytest.mark.tui_integration
 async def test_select_new_session_starts_chat(db):
     """Pressing Enter on _NEW (loaded from real profile) dismisses browser and enters chat."""
-    owner_id = db.add_owner_sync("fred", "Fred")
+    owner_id = db.add_owner_sync("Fred")
     profile_id = db.add_profile_sync(owner_id, "Fred — Default")
     core.set_runtime_profile(profile_id)
 
@@ -558,7 +558,7 @@ async def test_hint_bar_shows_new_profile_shortcut(db):
     With a single profile the hint bar shows the 'n' new-profile shortcut
     but NOT the 'd' delete shortcut (deleting the last profile is blocked).
     """
-    owner_id = db.add_owner_sync("fred", "Fred")
+    owner_id = db.add_owner_sync("Fred")
     profile_id = db.add_profile_sync(owner_id, "Fred — Default")
     core.set_runtime_profile(profile_id)
 
@@ -581,7 +581,7 @@ async def test_hint_bar_multiple_profiles_shows_delete_and_nav(db):
     With two profiles the hint bar shows 'd' delete and the profile navigation
     arrows in addition to the 'n' new-profile shortcut.
     """
-    owner_id = db.add_owner_sync("fred", "Fred")
+    owner_id = db.add_owner_sync("Fred")
     profile_id = db.add_profile_sync(owner_id, "Fred — Default")
     db.add_profile_sync(owner_id, "Fred — Trabalho")
     core.set_runtime_profile(profile_id)
@@ -606,7 +606,7 @@ async def test_hint_bar_updates_after_profile_delete(db):
     After deleting one of two profiles the hint bar drops the 'd' delete shortcut
     (only one profile remains — delete is blocked).
     """
-    owner_id = db.add_owner_sync("fred", "Fred")
+    owner_id = db.add_owner_sync("Fred")
     profile_id = db.add_profile_sync(owner_id, "Fred — Default")
     db.add_profile_sync(owner_id, "Fred — Trabalho")
     core.set_runtime_profile(profile_id)
@@ -635,7 +635,7 @@ async def test_hint_bar_updates_after_profile_delete(db):
 @pytest.mark.tui_integration
 async def test_cursor_moves_up_and_down(db):
     """Up/down arrows navigate DB-loaded sessions; cursor stops at both boundaries."""
-    owner_id = db.add_owner_sync("fred", "Fred")
+    owner_id = db.add_owner_sync("Fred")
     profile_id = db.add_profile_sync(owner_id, "Fred — Default")
     core.set_runtime_profile(profile_id)
     _seed_session(db, profile_id, "first")
@@ -683,7 +683,7 @@ async def test_cursor_moves_up_and_down(db):
 @pytest.mark.tui_integration
 async def test_profile_navigation_right_changes_active(db):
     """Right arrow advances through DB-loaded profiles; sets active profile in core."""
-    owner_id = db.add_owner_sync("fred", "Fred")
+    owner_id = db.add_owner_sync("Fred")
     db.add_profile_sync(owner_id, "Fred — Default")
     db.add_profile_sync(owner_id, "Fred — Trabalho")
 
@@ -714,7 +714,7 @@ async def test_profile_navigation_right_changes_active(db):
 @pytest.mark.tui_integration
 async def test_left_arrow_profile_navigation(db):
     """Left arrow navigates back through DB-loaded profiles and stops at the left boundary."""
-    owner_id = db.add_owner_sync("fred", "Fred")
+    owner_id = db.add_owner_sync("Fred")
     db.add_profile_sync(owner_id, "Fred — Default")
     db.add_profile_sync(owner_id, "Fred — Trabalho")
 
@@ -747,7 +747,7 @@ async def test_three_profile_navigation_reaches_middle(db):
     """With 3 profiles, each right/left press moves exactly one step — middle must be reachable.
     Regression: double-dispatch bug (BINDINGS + on_key) caused right to skip 0→2, left to skip 2→0.
     """
-    owner_id = db.add_owner_sync("fred", "Fred")
+    owner_id = db.add_owner_sync("Fred")
     db.add_profile_sync(owner_id, "Fred — A")
     db.add_profile_sync(owner_id, "Fred — B")
     db.add_profile_sync(owner_id, "Fred — C")
@@ -799,7 +799,7 @@ async def test_profile_switch_reloads_session_list(db):
     Switching to a different profile reloads the session list from the DB.
     Profile A has sessions; profile B does not — after switching to B only _NEW is shown.
     """
-    owner_id = db.add_owner_sync("fred", "Fred")
+    owner_id = db.add_owner_sync("Fred")
     profile_id_1 = db.add_profile_sync(owner_id, "Fred — Default")
     db.add_profile_sync(owner_id, "Fred — Trabalho")
 
@@ -839,7 +839,7 @@ async def test_select_existing_session_loads_messages(db):
     Selecting an existing session from the browser loads its stored messages
     into app._messages so the conversation continues from where it left off.
     """
-    owner_id = db.add_owner_sync("fred", "Fred")
+    owner_id = db.add_owner_sync("Fred")
     profile_id = db.add_profile_sync(owner_id, "Fred — Default")
     core.set_runtime_profile(profile_id)
 
@@ -890,7 +890,7 @@ async def test_select_existing_session_loads_messages(db):
 @pytest.mark.tui_integration
 async def test_delete_blocked_when_only_one_profile(db):
     """Pressing 'd' with a single DB profile does not remove it from TUI or DB."""
-    owner_id = db.add_owner_sync("fred", "Fred")
+    owner_id = db.add_owner_sync("Fred")
     profile_id = db.add_profile_sync(owner_id, "Fred — Default")
     core.set_runtime_profile(profile_id)
 
@@ -912,7 +912,7 @@ async def test_delete_blocked_when_only_one_profile(db):
 @pytest.mark.tui_integration
 async def test_delete_removes_profile_from_tui_and_db(db):
     """Pressing 'd' with two DB profiles removes the active one from TUI state and DB."""
-    owner_id = db.add_owner_sync("fred", "Fred")
+    owner_id = db.add_owner_sync("Fred")
     profile_id_1 = db.add_profile_sync(owner_id, "Fred — Default")
     profile_id_2 = db.add_profile_sync(owner_id, "Fred — Trabalho")
     core.set_runtime_profile(profile_id_1)
@@ -946,7 +946,7 @@ async def test_rename_profile_updates_label_in_tui_and_db(db):
     Renaming a profile via 'r' updates the profile bar immediately
     AND persists the new label to PostgreSQL.
     """
-    owner_id = db.add_owner_sync("fred", "Fred")
+    owner_id = db.add_owner_sync("Fred")
     profile_id = db.add_profile_sync(owner_id, "Fred — Default")
     core.set_runtime_profile(profile_id)
 
@@ -984,7 +984,7 @@ async def test_renamed_profile_label_persists_after_reopen(db):
     A renamed profile label survives closing and reopening the app
     (data reloaded from PostgreSQL).
     """
-    owner_id = db.add_owner_sync("fred", "Fred")
+    owner_id = db.add_owner_sync("Fred")
     profile_id = db.add_profile_sync(owner_id, "Fred — Default")
     core.set_runtime_profile(profile_id)
 
@@ -1018,7 +1018,7 @@ async def test_renamed_profile_label_persists_after_reopen(db):
 @pytest.mark.tui_integration
 async def test_hint_bar_shows_rename_shortcut(db):
     """The 'r rename' shortcut is visible in the hint bar (always, regardless of profile count)."""
-    owner_id = db.add_owner_sync("fred", "Fred")
+    owner_id = db.add_owner_sync("Fred")
     profile_id = db.add_profile_sync(owner_id, "Fred — Default")
     core.set_runtime_profile(profile_id)
 
@@ -1040,7 +1040,7 @@ async def test_hint_bar_shows_rename_shortcut(db):
 @pytest.mark.tui_integration
 async def test_new_profile_appears_in_bar_and_db(db):
     """After creating a profile via TUI it appears in the profile bar AND is in DB."""
-    owner_id = db.add_owner_sync("fred", "Fred")
+    owner_id = db.add_owner_sync("Fred")
     profile_id = db.add_profile_sync(owner_id, "Fred — Default")
     core.set_runtime_profile(profile_id)
 
@@ -1075,7 +1075,7 @@ async def test_new_profile_with_three_existing_profiles(db):
     Previously this worked with 1 profile but may fail with 3 due to DB state,
     profile navigation state, or TUI rendering with more profiles in the bar.
     """
-    owner_id = db.add_owner_sync("fred", "Fred")
+    owner_id = db.add_owner_sync("Fred")
     p1 = db.add_profile_sync(owner_id, "Fred — Work")
     db.add_profile_sync(owner_id, "Fred — Personal")
     db.add_profile_sync(owner_id, "Fred — Study")
@@ -1124,7 +1124,7 @@ async def test_new_profile_from_navigated_profile(db):
     The add_profile call uses get_active_profile() to find the owner — this
     must reflect the profile the user navigated to, not the startup default.
     """
-    owner_id = db.add_owner_sync("fred", "Fred")
+    owner_id = db.add_owner_sync("Fred")
     db.add_profile_sync(owner_id, "Fred — A")
     db.add_profile_sync(owner_id, "Fred — B")
 
@@ -1174,7 +1174,7 @@ async def test_create_profile_and_session_persisted_in_db(db):
     Full happy path: create a new profile, open a session, send a message,
     close the app — both profile and session must exist in PostgreSQL.
     """
-    owner_id = db.add_owner_sync("fred", "Fred")
+    owner_id = db.add_owner_sync("Fred")
     profile_id = db.add_profile_sync(owner_id, "Fred — Default")
     core.set_runtime_profile(profile_id)
 
@@ -1252,7 +1252,7 @@ async def test_session_visible_in_browser_after_reopen(db):
     A session stored in PostgreSQL appears in the session browser when the app is
     reopened with sessions loaded from the DB.
     """
-    owner_id = db.add_owner_sync("fred", "Fred")
+    owner_id = db.add_owner_sync("Fred")
     profile_id = db.add_profile_sync(owner_id, "Fred — Default")
     core.set_runtime_profile(profile_id)
 
@@ -1282,7 +1282,7 @@ async def test_delete_profile_purges_sessions_no_data_recovery(db):
     A newly created profile (with a new UUID) starts with no sessions
     — no ghost data from any previous profile.
     """
-    owner_id = db.add_owner_sync("fred", "Fred")
+    owner_id = db.add_owner_sync("Fred")
     profile_id_1 = db.add_profile_sync(owner_id, "Fred — Default")
     profile_id_2 = db.add_profile_sync(owner_id, "Fred — Trabalho")
     core.set_runtime_profile(profile_id_1)
@@ -1491,7 +1491,7 @@ async def test_profile_limit_blocks_new_profile_modal():
 @pytest.mark.tui_integration
 async def test_profiles_ordered_by_creation_time(db):
     """Profiles are returned in creation order, not UUID or label order."""
-    owner_id = db.add_owner_sync("fred", "Fred")
+    owner_id = db.add_owner_sync("Fred")
     pid1 = db.add_profile_sync(owner_id, "zzz")  # created first
     pid2 = db.add_profile_sync(owner_id, "aaa")  # created second
     pid3 = db.add_profile_sync(owner_id, "mmm")  # created third

@@ -216,47 +216,24 @@ def set_runtime_profile(profile_id: str) -> None:
     _active_profile = profile_id
 
 
-def _parse_owner_name(raw: str) -> tuple[str, str]:
-    """Return (slug, display) from a raw OWNER_NAME string.
-
-    Takes the first whitespace-delimited token, strips non-letter chars for the
-    slug, preserves original capitalisation for the display name.
-    Falls back to ("user", "User") when the result would be shorter than 2 chars.
-
-    Examples:
-        "Nelson"        → ("nelson",  "Nelson")
-        "Nelson Mourao" → ("nelson",  "Nelson")
-        "José"          → ("josé",    "José")
-        ""              → ("user",    "User")
-        "A"             → ("user",    "User")
-    """
-    import re
-
-    first_token = raw.strip().split()[0] if raw.strip() else ""
-    slug = re.sub(r"[^a-záéíóúàèìòùãõâêîôûñç]", "", first_token.lower())
-    if len(slug) < 2:
-        return "user", "User"
-    return slug, first_token.capitalize()
-
-
 def create_first_owner_and_profile(written: dict[str, str]) -> tuple[str, str]:
-    """First Breath: parse owner name from sanctum output, create Owner + Profile.
+    """First Breath: create Owner + Profile from sanctum output.
 
     Returns (owner_id, profile_id).
     """
     import store
 
-    slug, display = _parse_owner_name(written.get("OWNER_NAME", ""))
-    owner_id = store.add_owner_sync(slug, display)
-    profile_id = store.add_profile_sync(owner_id, f"{display} — Default")
+    name = (written.get("OWNER_NAME") or "").strip() or "User"
+    owner_id = store.add_owner_sync(name)
+    profile_id = store.add_profile_sync(owner_id, f"{name} — Default")
     return owner_id, profile_id
 
 
-def add_owner(username: str, name: str = "") -> str:
+def add_owner(name: str = "") -> str:
     """Create a new owner. Returns owner UUID."""
     import store
 
-    return store.add_owner_sync(username, name)
+    return store.add_owner_sync(name)
 
 
 _PROFILE_LIMIT = 5

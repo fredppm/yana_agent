@@ -97,10 +97,14 @@ LLM write protocol maps: `PERSONA` → `persona`, `BOND` → `bond`, `PULSE_CONF
 
 **All schema changes go through Alembic. Never edit the DB directly.**
 
-### Startup
+### Applying migrations
 
-`store.init_schema_sync()` calls `alembic upgrade head` automatically on every startup.
-It is idempotent — if the schema is already up to date, nothing happens.
+Run manually before starting YANA after a schema change:
+
+```bash
+cd orchestrator
+alembic upgrade head
+```
 
 ### Adding or changing a column
 
@@ -156,7 +160,6 @@ alembic downgrade base   # rollback everything
 
 | Function | Signature | Contract |
 |---|---|---|
-| `init_schema_sync()` | `() -> None` | Runs `alembic upgrade head` — idempotent, safe on every startup |
 | `load_sanctum_fields_sync(owner_id, profile_id)` | `(str, str) -> dict[str, str]` | Returns `{prop: val}` for all non-null sanctum fields |
 | `save_sanctum_fields_sync(owner_id, profile_id, fields)` | `(str, str, dict) -> None` | Upserts owner + profile rows. Keys are LLM protocol names (e.g. `"BOND"`) |
 | `list_profiles_sync()` | `() -> list[dict]` | Returns `[{id, label}]` ordered by `created_at` (creation time) |
@@ -213,8 +216,9 @@ No network calls. No file system side effects outside tmp. Safe to run anywhere.
 ## Infrastructure
 
 ```bash
+alembic upgrade head   # apply pending migrations (run once before first start, and after schema changes)
 docker compose up -d   # starts Neo4j, PostgreSQL, LiteLLM
-python main.py         # YANA runs store.init_schema_sync() on startup (alembic upgrade head)
+python main.py
 ```
 
 ---

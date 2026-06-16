@@ -499,9 +499,6 @@ def main() -> None:
         run_init()
         return
 
-    # Initialize PostgreSQL schema on every startup (idempotent — CREATE TABLE IF NOT EXISTS)
-    store.init_schema_sync()
-
     if args.programmer:
         from programmer.mode import run_programmer_mode
 

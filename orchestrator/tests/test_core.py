@@ -74,44 +74,6 @@ class TestIsQuietHours:
 
 
 # ---------------------------------------------------------------------------
-# _parse_owner_name
-# ---------------------------------------------------------------------------
-
-
-class TestParseOwnerName:
-    def test_simple_first_name(self):
-        assert core._parse_owner_name("Fred") == ("fred", "Fred")
-
-    def test_full_name_uses_first_word_only(self):
-        # LLM sometimes writes the full name — we only want the first token
-        assert core._parse_owner_name("Fred Mourao") == ("fred", "Fred")
-
-    def test_accented_name(self):
-        assert core._parse_owner_name("José") == ("josé", "José")
-
-    def test_name_with_digits_stripped_from_slug(self):
-        # Digits are removed from slug but display keeps original casing
-        slug, display = core._parse_owner_name("Fred2")
-        assert slug == "fred"
-        assert display == "Fred2"
-
-    def test_empty_string_falls_back(self):
-        assert core._parse_owner_name("") == ("user", "User")
-
-    def test_whitespace_only_falls_back(self):
-        assert core._parse_owner_name("   ") == ("user", "User")
-
-    def test_single_char_falls_back(self):
-        assert core._parse_owner_name("A") == ("user", "User")
-
-    def test_lowercase_input_capitalised_in_display(self):
-        assert core._parse_owner_name("fred") == ("fred", "Fred")
-
-    def test_uppercase_input(self):
-        assert core._parse_owner_name("FRED") == ("fred", "Fred")
-
-
-# ---------------------------------------------------------------------------
 # create_first_owner_and_profile (integration — requires PostgreSQL)
 # ---------------------------------------------------------------------------
 
@@ -130,31 +92,28 @@ def test_create_first_owner_and_profile_simple_name(db):
     with Session(db._get_engine()) as s:
         owner = s.get(db.Owner, owner_id)
     assert owner is not None
-    assert owner.username == "fred"
     assert owner.name == "Fred"
 
 
 @pytest.mark.tui_integration
-def test_create_first_owner_and_profile_full_name_uses_first_token(db):
-    """When LLM writes full name, only first token is used as username."""
+def test_create_first_owner_and_profile_full_name_preserved(db):
+    """When LLM writes full name, it is stored as-is."""
     owner_id, profile_id = core.create_first_owner_and_profile({"OWNER_NAME": "Fred Mourao"})
     from sqlalchemy.orm import Session
     with Session(db._get_engine()) as s:
         owner = s.get(db.Owner, owner_id)
-    assert owner.username == "fred"
-    assert owner.name == "Fred"
+    assert owner.name == "Fred Mourao"
     profiles = db.list_profiles_sync()
-    assert profiles[0]["label"] == "Fred — Default"
+    assert profiles[0]["label"] == "Fred Mourao — Default"
 
 
 @pytest.mark.tui_integration
 def test_create_first_owner_and_profile_empty_name_fallback(db):
-    """Empty OWNER_NAME falls back to 'user', not the OS username."""
+    """Empty OWNER_NAME falls back to 'User'."""
     owner_id, profile_id = core.create_first_owner_and_profile({})
     from sqlalchemy.orm import Session
     with Session(db._get_engine()) as s:
         owner = s.get(db.Owner, owner_id)
-    assert owner.username == "user"
     assert owner.name == "User"
     profiles = db.list_profiles_sync()
     assert profiles[0]["label"] == "User — Default"

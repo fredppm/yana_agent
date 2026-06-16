@@ -134,27 +134,25 @@ def test_first_breath_pipeline_simple_name(db):
     owner_id, _ = core.create_first_owner_and_profile(written)
     with db.Session(db._get_engine()) as s:
         owner = s.get(db.Owner, owner_id)
-    assert owner.username == "fred"
     assert owner.name == "Fred"
     assert db.list_profiles_sync()[0]["label"] == "Fred — Default"
 
 
 @pytest.mark.tui_integration
 def test_first_breath_pipeline_full_name_from_llm(db):
-    """LLM writes full name → only first token becomes username, not OS fallback."""
+    """LLM writes full name → stored as-is."""
     written = sanctum_writer._parse_and_write(_first_breath_llm_response("Fred Mourao"))
     assert written.get("OWNER_NAME") == "Fred Mourao"
     owner_id, _ = core.create_first_owner_and_profile(written)
     with db.Session(db._get_engine()) as s:
         owner = s.get(db.Owner, owner_id)
-    assert owner.username == "fred"   # not "mourao" (old bug)
-    assert owner.name == "Fred"
-    assert db.list_profiles_sync()[0]["label"] == "Fred — Default"
+    assert owner.name == "Fred Mourao"
+    assert db.list_profiles_sync()[0]["label"] == "Fred Mourao — Default"
 
 
 @pytest.mark.tui_integration
 def test_first_breath_pipeline_missing_owner_name(db):
-    """LLM omits OWNER_NAME entirely → falls back to 'user', not OS username."""
+    """LLM omits OWNER_NAME entirely → falls back to 'User'."""
     response = (
         "<<<FILE:PERSONA>>>\nYANA.\n<<<END>>>\n"
         "<<<FILE:BOND>>>\nThe owner.\n<<<END>>>"
@@ -164,4 +162,4 @@ def test_first_breath_pipeline_missing_owner_name(db):
     owner_id, _ = core.create_first_owner_and_profile(written)
     with db.Session(db._get_engine()) as s:
         owner = s.get(db.Owner, owner_id)
-    assert owner.username == "user"   # not OS username
+    assert owner.name == "User"

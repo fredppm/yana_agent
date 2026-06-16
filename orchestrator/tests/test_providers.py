@@ -1,53 +1,67 @@
 """
 tests/test_providers.py — unit tests for providers.py pure logic.
 
-No network, no API keys, no file I/O. Config is passed as dicts.
+No network, no API keys. Config is built from env vars via monkeypatch.
 """
+
+from __future__ import annotations
 
 import sys
 from pathlib import Path
+from unittest.mock import patch
+
+import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import providers
 
+
+def _env(**kwargs):
+    """Context manager: set env vars for the duration of the test."""
+    return patch.dict("os.environ", kwargs)
+
+
 # ---------------------------------------------------------------------------
-# Fixtures
+# load_providers
 # ---------------------------------------------------------------------------
 
 
-def _config(routing: dict | None = None, extra_providers: dict | None = None) -> dict:
-    """Build a minimal providers config dict."""
-    base_providers = {
-        "anthropic": {
-            "api_key_env": "ANTHROPIC_API_KEY",
-            "models": {
-                "fast": "claude-haiku-4-5",
-                "default": "claude-sonnet-4-6",
-                "powerful": "claude-opus-4-6",
-            },
-        },
-        "bedrock": {
-            "region": "us-east-1",
-            "models": {
-                "fast": "us.anthropic.claude-haiku",
-                "default": "us.anthropic.claude-sonnet",
-            },
-        },
-    }
-    if extra_providers:
-        base_providers.update(extra_providers)
+class TestLoadProviders:
+    def test_reads_litellm_url_from_env(self):
+        with _env(LITELLM_URL="http://myhost:9000"):
+            cfg = providers.load_providers()
+        assert cfg["litellm_url"] == "http://myhost:9000"
 
-    base_routing = {
-        "conversation": "default",
-        "conversation_fast": "fast",
-        "pulse_scheduled": "fast",
-        "first_breath": "powerful",
-    }
-    if routing:
-        base_routing.update(routing)
+    def test_defaults_litellm_url(self):
+        with patch.dict("os.environ", {}, clear=False):
+            cfg = providers.load_providers()
+        assert cfg["litellm_url"] == "http://127.0.0.1:4000"
 
-    return {"llm": {"providers": base_providers, "routing": base_routing}}
+    def test_reads_model_from_env(self):
+        with _env(YANA_MODEL_CONVERSATION="bedrock-claude-sonnet"):
+            cfg = providers.load_providers()
+        assert cfg["models"]["conversation"] == "bedrock-claude-sonnet"
+
+    def test_model_falls_back_to_default(self):
+        with patch.dict("os.environ", {"YANA_MODEL_CONVERSATION": ""}, clear=False):
+            cfg = providers.load_providers()
+        # Empty string → env var present but empty; os.environ.get returns ""
+        # which is falsy, so the fallback kicks in during resolve_model, not load_providers
+        assert "conversation" in cfg["models"]
+
+    def test_stt_config_from_env(self):
+        with _env(STT_PROVIDER="openai-whisper", STT_MODEL="base", STT_LANGUAGE="en"):
+            cfg = providers.load_providers()
+        assert cfg["stt"]["provider"] == "openai-whisper"
+        assert cfg["stt"]["model"] == "base"
+        assert cfg["stt"]["language"] == "en"
+
+    def test_tts_config_from_env(self):
+        with _env(TTS_VOICE="en-US-JennyNeural", TTS_RATE="+10%"):
+            cfg = providers.load_providers()
+        assert cfg["tts"]["voice"] == "en-US-JennyNeural"
+        assert cfg["tts"]["rate"] == "+10%"
 
 
 # ---------------------------------------------------------------------------
@@ -56,55 +70,36 @@ def _config(routing: dict | None = None, extra_providers: dict | None = None) ->
 
 
 class TestResolveModel:
-    def test_conversation_resolves_to_default(self):
-        provider, model = providers.resolve_model("conversation", _config())
-        assert provider == "anthropic"
-        assert model == "claude-sonnet-4-6"
+    def test_returns_litellm_provider(self):
+        with _env(YANA_MODEL_CONVERSATION="bedrock-claude-sonnet"):
+            provider, model = providers.resolve_model("conversation")
+        assert provider == "litellm"
+        assert model == "bedrock-claude-sonnet"
 
-    def test_fast_task_resolves_to_fast_model(self):
-        provider, model = providers.resolve_model("conversation_fast", _config())
-        assert provider == "anthropic"
-        assert model == "claude-haiku-4-5"
+    def test_conversation_fast_uses_own_env(self):
+        with _env(YANA_MODEL_CONVERSATION_FAST="bedrock-claude-haiku"):
+            _, model = providers.resolve_model("conversation_fast")
+        assert model == "bedrock-claude-haiku"
 
-    def test_explicit_provider_routing(self):
-        # routing: "conversation: bedrock:default" should pick bedrock's default model
-        cfg = _config(routing={"conversation": "bedrock:default"})
-        provider, model = providers.resolve_model("conversation", cfg)
-        assert provider == "bedrock"
-        assert model == "us.anthropic.claude-sonnet"
-
-    def test_explicit_provider_fast_routing(self):
-        cfg = _config(routing={"pulse_scheduled": "bedrock:fast"})
-        provider, model = providers.resolve_model("pulse_scheduled", cfg)
-        assert provider == "bedrock"
-        assert model == "us.anthropic.claude-haiku"
+    def test_first_breath_uses_own_env(self):
+        with _env(YANA_MODEL_FIRST_BREATH="bedrock-claude-opus"):
+            _, model = providers.resolve_model("first_breath")
+        assert model == "bedrock-claude-opus"
 
     def test_unknown_task_falls_back_to_conversation(self):
-        # Unknown task → falls back to "conversation" routing → default tier
-        provider, model = providers.resolve_model("nonexistent_task", _config())
-        assert provider == "anthropic"
-        assert model == "claude-sonnet-4-6"
+        with _env(YANA_MODEL_CONVERSATION="bedrock-claude-sonnet"):
+            _, model = providers.resolve_model("nonexistent_task")
+        assert model == "bedrock-claude-sonnet"
 
-    def test_first_breath_resolves_to_powerful(self):
-        provider, model = providers.resolve_model("first_breath", _config())
-        assert provider == "anthropic"
-        assert model == "claude-opus-4-6"
+    def test_config_dict_takes_precedence_over_env(self):
+        cfg = {"models": {"conversation": "explicit-model"}}
+        with _env(YANA_MODEL_CONVERSATION="env-model"):
+            _, model = providers.resolve_model("conversation", cfg)
+        assert model == "explicit-model"
 
-    def test_raises_if_unresolvable(self):
-        import pytest
-
-        # Config with no models at all
-        empty_cfg = {"llm": {"providers": {}, "routing": {}}}
-        with pytest.raises(ValueError):
-            providers.resolve_model("conversation", empty_cfg)
-
-    def test_provider_order_wins(self):
-        # When two providers define the same tier, the first one in yaml order wins
-        # (dicts are insertion-ordered in Python 3.7+)
-        cfg = _config()
-        provider, _ = providers.resolve_model("conversation_fast", cfg)
-        # "anthropic" is listed before "bedrock" in our fixture → anthropic wins
-        assert provider == "anthropic"
+    def test_empty_models_falls_back_to_hardcoded_default(self):
+        _, model = providers.resolve_model("conversation", {"models": {}})
+        assert model == providers._FALLBACK_MODEL
 
 
 # ---------------------------------------------------------------------------
@@ -123,27 +118,22 @@ class TestAutoTask:
         assert providers._auto_task(msgs, "conversation") == "conversation_fast"
 
     def test_long_message_stays_conversation(self):
-        long = "x" * 200
-        msgs = self._msgs(long, count=2)
+        msgs = self._msgs("x" * 200, count=2)
         assert providers._auto_task(msgs, "conversation") == "conversation"
 
     def test_short_message_long_history_stays_conversation(self):
-        msgs = self._msgs("oi", count=8)  # > 6 turns
+        msgs = self._msgs("oi", count=8)
         assert providers._auto_task(msgs, "conversation") == "conversation"
 
     def test_boundary_120_chars_stays_conversation(self):
-        # Exactly 120 chars — condition is < 120, so this should NOT downgrade
-        msg = "x" * 120
-        msgs = self._msgs(msg, count=2)
+        msgs = self._msgs("x" * 120, count=2)
         assert providers._auto_task(msgs, "conversation") == "conversation"
 
     def test_boundary_119_chars_downgrades(self):
-        msg = "x" * 119
-        msgs = self._msgs(msg, count=2)
+        msgs = self._msgs("x" * 119, count=2)
         assert providers._auto_task(msgs, "conversation") == "conversation_fast"
 
-    def test_boundary_6_turns_stays(self):
-        # Exactly 6 msgs — condition is <= 6, so this SHOULD downgrade
+    def test_boundary_6_turns_downgrades(self):
         msgs = self._msgs("oi", count=6)
         assert providers._auto_task(msgs, "conversation") == "conversation_fast"
 
@@ -157,6 +147,4 @@ class TestAutoTask:
         assert providers._auto_task(msgs, "first_breath") == "first_breath"
 
     def test_empty_messages_does_not_raise(self):
-        result = providers._auto_task([], "conversation")
-        # Empty history — last message is "" which is < 120, but count is 0 ≤ 6
-        assert result == "conversation_fast"
+        assert providers._auto_task([], "conversation") == "conversation_fast"
