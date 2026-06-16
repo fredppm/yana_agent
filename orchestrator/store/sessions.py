@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import logging
 from datetime import datetime
 
 from sqlalchemy import select
@@ -9,8 +8,6 @@ from sqlalchemy.orm import Session
 
 from .engine import _get_engine
 from .models import SessionRecord
-
-log = logging.getLogger(__name__)
 
 
 def create_session_sync(
@@ -20,29 +17,23 @@ def create_session_sync(
     preview: str,
     messages_json: str,
 ) -> None:
-    try:
-        with Session(_get_engine()) as db:
-            record = db.get(SessionRecord, session_id)
-            if record is None:
-                record = SessionRecord(id=session_id, profile_id=profile_id, started_at=started_at)
-                db.add(record)
-            record.preview = preview
-            record.messages_json = messages_json
-            db.commit()
-    except Exception as e:
-        log.debug("store: create_session failed: %s", e)
+    with Session(_get_engine()) as db:
+        record = db.get(SessionRecord, session_id)
+        if record is None:
+            record = SessionRecord(id=session_id, profile_id=profile_id, started_at=started_at)
+            db.add(record)
+        record.preview = preview
+        record.messages_json = messages_json
+        db.commit()
 
 
 def update_session_preview_sync(session_id: str, preview: str) -> None:
     """Update the preview/title of an existing session."""
-    try:
-        with Session(_get_engine()) as db:
-            record = db.get(SessionRecord, session_id)
-            if record:
-                record.preview = preview[:80]
-                db.commit()
-    except Exception as e:
-        log.debug("store: update_session_preview failed: %s", e)
+    with Session(_get_engine()) as db:
+        record = db.get(SessionRecord, session_id)
+        if record:
+            record.preview = preview[:80]
+            db.commit()
 
 
 def list_sessions_sync(profile_id: str, limit: int = 20) -> list[tuple[str, datetime, str]]:
