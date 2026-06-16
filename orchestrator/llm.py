@@ -40,9 +40,6 @@ _TASK_ENV: dict[str, str] = {
     "pulse_triggered":   "YANA_MODEL_PULSE_TRIGGERED",
 }
 
-_FALLBACK_MODEL = "bedrock-claude-haiku"
-
-
 # ---------------------------------------------------------------------------
 # Config loading
 # ---------------------------------------------------------------------------
@@ -53,18 +50,22 @@ def load_providers() -> dict:
     return {
         "litellm_url": os.environ.get("LITELLM_URL", "http://127.0.0.1:4000"),
         "models": {
-            task: os.environ.get(env, _FALLBACK_MODEL)
+            task: os.environ.get(env)
             for task, env in _TASK_ENV.items()
         },
     }
 
 
 def resolve_model(task: str = "conversation", config: dict | None = None) -> tuple[str, str]:
-    """Return ("litellm", model_alias) for the given task."""
+    """Return ("litellm", model_alias) for the given task. Raises ValueError if no model configured."""
     if config is None:
         config = load_providers()
     models = config.get("models", {})
-    model = models.get(task) or models.get("conversation") or _FALLBACK_MODEL
+    model = models.get(task) or models.get("conversation")
+    if not model:
+        raise ValueError(
+            f"No model configured for task {task!r} — set YANA_MODEL_CONVERSATION (and optionally YANA_MODEL_{task.upper()})"
+        )
     return "litellm", model
 
 

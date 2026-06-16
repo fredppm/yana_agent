@@ -43,12 +43,11 @@ class TestLoadProviders:
             cfg = providers.load_providers()
         assert cfg["models"]["conversation"] == "bedrock-claude-sonnet"
 
-    def test_model_falls_back_to_default(self):
+    def test_unset_model_is_none(self):
         with patch.dict("os.environ", {"YANA_MODEL_CONVERSATION": ""}, clear=False):
             cfg = providers.load_providers()
-        # Empty string → env var present but empty; os.environ.get returns ""
-        # which is falsy, so the fallback kicks in during resolve_model, not load_providers
-        assert "conversation" in cfg["models"]
+        # Empty string → env var present but empty; stored as "" (falsy) — no opinionated default
+        assert cfg["models"]["conversation"] == ""
 
 
 # ---------------------------------------------------------------------------
@@ -84,9 +83,9 @@ class TestResolveModel:
             _, model = providers.resolve_model("conversation", cfg)
         assert model == "explicit-model"
 
-    def test_empty_models_falls_back_to_hardcoded_default(self):
-        _, model = providers.resolve_model("conversation", {"models": {}})
-        assert model == providers._FALLBACK_MODEL
+    def test_no_model_configured_raises(self):
+        with pytest.raises(ValueError, match="YANA_MODEL_CONVERSATION"):
+            providers.resolve_model("conversation", {"models": {}})
 
 
 # ---------------------------------------------------------------------------
