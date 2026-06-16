@@ -261,6 +261,63 @@ def test_upsert_named_channel_replaces_existing(connector: ContactsConnector) ->
 
 
 # ---------------------------------------------------------------------------
+# Persistence — upserts survive a reload
+# ---------------------------------------------------------------------------
+
+
+def test_upsert_persona_persists(tmp_path: Path) -> None:
+    """upsert_persona writes to YAML — a new connector loaded from the same files sees it."""
+    personas_path = tmp_path / "personas.yaml"
+    contacts_path = tmp_path / "contacts.yaml"
+    personas_path.write_text(yaml.dump({"personas": []}))
+    contacts_path.write_text(yaml.dump({"contacts": [], "named_channels": []}))
+
+    c1 = ContactsConnector(
+        personas_file=str(personas_path), contacts_file=str(contacts_path)
+    )
+    c1.call(
+        "upsert_persona",
+        {"id": "novo", "name": "Novo", "aliases": ["novo"]},
+    )
+
+    c2 = ContactsConnector(
+        personas_file=str(personas_path), contacts_file=str(contacts_path)
+    )
+    result = c2.call("find_persona", {"name": "novo"})
+    assert result.ok
+    assert result.data["id"] == "novo"
+
+
+def test_upsert_named_channel_persists(tmp_path: Path) -> None:
+    """upsert_named_channel writes to YAML — a new connector loaded from the same files sees it."""
+    personas_path = tmp_path / "personas.yaml"
+    contacts_path = tmp_path / "contacts.yaml"
+    personas_path.write_text(yaml.dump({"personas": []}))
+    contacts_path.write_text(yaml.dump({"contacts": [], "named_channels": []}))
+
+    c1 = ContactsConnector(
+        personas_file=str(personas_path), contacts_file=str(contacts_path)
+    )
+    c1.call(
+        "upsert_named_channel",
+        {
+            "id": "familia_wpp",
+            "name": "família whatsapp",
+            "channel": "whatsapp",
+            "address": "+55group1",
+            "connector_id": "whatsapp",
+        },
+    )
+
+    c2 = ContactsConnector(
+        personas_file=str(personas_path), contacts_file=str(contacts_path)
+    )
+    result = c2.call("get_named_channel", {"name": "família whatsapp"})
+    assert result.ok
+    assert result.data["id"] == "familia_wpp"
+
+
+# ---------------------------------------------------------------------------
 # Contract — operations exposed
 # ---------------------------------------------------------------------------
 

@@ -74,6 +74,18 @@ connectors:
       personas_file: "orchestrator/config/personas.yaml"
       contacts_file: "orchestrator/config/contacts.yaml"
 
+  # Google Contacts — import Google address book into YANA's registry
+  - type: GoogleContactsConnector
+    id: google_contacts
+    name: "Google Contacts do Fred"
+    description: "Import contacts from Google Contacts into YANA's persona/contact registry"
+    owner: fred
+    config:
+      app_credential: "~/.yana/google_credentials.json"
+      persona_token: "~/.yana/tokens/google_contacts.json"
+      personas_file: "orchestrator/config/personas.yaml"
+      contacts_file: "orchestrator/config/contacts.yaml"
+
   - type: RGBLightConnector
     id: rgb_sala
     name: "Luz da Sala"

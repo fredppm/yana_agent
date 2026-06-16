@@ -230,6 +230,49 @@ def test_load_missing_files_does_not_raise(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
+# save() — round-trip persistence
+# ---------------------------------------------------------------------------
+
+
+def test_save_round_trips_personas(registry: ContactRegistry, tmp_path: Path) -> None:
+    """save() + fresh load returns same personas."""
+    registry.save()
+    reg2 = ContactRegistry()
+    reg2.load(registry._personas_path, registry._contacts_path)  # type: ignore[arg-type]
+    assert {p.id for p in reg2._personas.values()} == {p.id for p in registry._personas.values()}
+
+
+def test_save_round_trips_contacts(registry: ContactRegistry) -> None:
+    """save() + fresh load returns same contacts."""
+    registry.save()
+    reg2 = ContactRegistry()
+    reg2.load(registry._personas_path, registry._contacts_path)  # type: ignore[arg-type]
+    assert {c.id for c in reg2._contacts} == {c.id for c in registry._contacts}
+
+
+def test_save_round_trips_named_channels(registry: ContactRegistry) -> None:
+    """save() + fresh load returns same named channels."""
+    registry.save()
+    reg2 = ContactRegistry()
+    reg2.load(registry._personas_path, registry._contacts_path)  # type: ignore[arg-type]
+    assert {nc.id for nc in reg2._named_channels} == {nc.id for nc in registry._named_channels}
+
+
+def test_save_persists_new_persona(registry: ContactRegistry) -> None:
+    """A persona added after load() is persisted by save()."""
+    from contacts import Persona
+
+    registry._personas["novo"] = Persona(
+        id="novo", name="Novo", type="person", owner="fred", aliases=["novo"], context="", tags=[]
+    )
+    registry.save()
+
+    reg2 = ContactRegistry()
+    reg2.load(registry._personas_path, registry._contacts_path)  # type: ignore[arg-type]
+    assert reg2.find_persona("novo") is not None
+
+
+# ---------------------------------------------------------------------------
 # CommunicationChannel interface on GmailConnector
 # ---------------------------------------------------------------------------
 

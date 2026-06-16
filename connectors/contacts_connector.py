@@ -194,6 +194,7 @@ class ContactsConnector(Connector):
             tags=tags or [],
         )
         self._registry._personas[id] = p
+        self._registry.save()
         return True
 
     @command(
@@ -235,4 +236,5 @@ class ContactsConnector(Connector):
             x for x in self._registry._named_channels if x.id != id
         ]
         self._registry._named_channels.append(nc)
+        self._registry.save()
         return True

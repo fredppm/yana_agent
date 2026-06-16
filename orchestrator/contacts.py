@@ -75,12 +75,16 @@ class ContactRegistry:
         self._personas: dict[str, Persona] = {}
         self._contacts: list[Contact] = []
         self._named_channels: list[NamedChannel] = []
+        self._personas_path: Path | None = None
+        self._contacts_path: Path | None = None
 
     def load(
         self,
         personas_path: Path,
         contacts_path: Path,
     ) -> None:
+        self._personas_path = personas_path
+        self._contacts_path = contacts_path
         self._load_personas(personas_path)
         self._load_contacts(contacts_path)
 
@@ -226,3 +230,33 @@ class ContactRegistry:
             }
             for c in self._contacts
         ]
+
+    def all_named_channels(self) -> list[dict[str, Any]]:
+        return [
+            {
+                "id": nc.id,
+                "name": nc.name,
+                "channel": nc.channel,
+                "address": nc.address,
+                "connector_id": nc.connector_id,
+                "aliases": nc.aliases,
+            }
+            for nc in self._named_channels
+        ]
+
+    def save(self) -> None:
+        """Persist current state back to the YAML files loaded via load()."""
+        if self._personas_path is not None:
+            with open(self._personas_path, "w") as f:
+                yaml.dump({"personas": self.all_personas()}, f, allow_unicode=True, sort_keys=False)
+        if self._contacts_path is not None:
+            with open(self._contacts_path, "w") as f:
+                yaml.dump(
+                    {
+                        "contacts": self.all_contacts(),
+                        "named_channels": self.all_named_channels(),
+                    },
+                    f,
+                    allow_unicode=True,
+                    sort_keys=False,
+                )
