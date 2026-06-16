@@ -12,7 +12,7 @@ Setup (see docker-compose.yml):
   - Neo4j:   bolt://localhost:7687
   - LiteLLM: http://localhost:4000  →  AWS Bedrock
 
-Config lives in providers.yaml under the `graphiti:` key.
+Config is read from environment variables (see .env.example).
 """
 
 from __future__ import annotations
@@ -48,14 +48,24 @@ _CONTEXT_QUERY = "quem e o usuario, o que esta acontecendo na vida dele agora"
 
 
 def _load_config() -> dict:
-    """Read memory config from environment variables."""
+    """Read memory config from environment variables.
+
+    NEO4J_URI and LITELLM_URL default to localhost (neutral dev defaults).
+    YANA_MODEL_MEMORY and YANA_MODEL_EMBED are required — no opinionated default.
+    """
+    model = os.environ.get("YANA_MODEL_MEMORY")
+    if not model:
+        raise EnvironmentError("YANA_MODEL_MEMORY env var is not set")
+    embed_model = os.environ.get("YANA_MODEL_EMBED")
+    if not embed_model:
+        raise EnvironmentError("YANA_MODEL_EMBED env var is not set")
     return {
         "uri":         os.environ.get("NEO4J_URI", "bolt://127.0.0.1:7687"),
         "user":        os.environ.get("NEO4J_USER", ""),
         "password":    os.environ.get("NEO4J_PASSWORD", ""),
         "litellm_url": os.environ.get("LITELLM_URL", "http://127.0.0.1:4000"),
-        "model":       os.environ.get("YANA_MODEL_MEMORY", "bedrock-claude-haiku"),
-        "embed_model": os.environ.get("YANA_MODEL_EMBED", "bedrock-embed"),
+        "model":       model,
+        "embed_model": embed_model,
     }
 
 

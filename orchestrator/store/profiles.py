@@ -14,21 +14,18 @@ log = logging.getLogger(__name__)
 
 
 def add_profile_sync(owner_id: str, label: str) -> str:
-    """Create a new profile under owner_id. Returns new profile UUID."""
+    """Create a new profile under owner_id. Returns new profile UUID. Raises on DB failure."""
     profile_id = str(uuid.uuid4())
-    try:
-        with Session(_get_engine()) as session:
-            session.add(
-                Profile(
-                    id=profile_id,
-                    owner_id=owner_id,
-                    label=label,
-                    created_at=datetime.now(UTC).isoformat(),
-                )
+    with Session(_get_engine()) as session:
+        session.add(
+            Profile(
+                id=profile_id,
+                owner_id=owner_id,
+                label=label,
+                created_at=datetime.now(UTC).isoformat(),
             )
-            session.commit()
-    except Exception as e:
-        log.debug("store: add_profile failed: %s", e)
+        )
+        session.commit()
     return profile_id
 
 
@@ -44,13 +41,10 @@ def get_owner_id_for_profile_sync(profile_id: str) -> str | None:
 
 
 def list_profiles_sync() -> list[dict]:
-    try:
-        with Session(_get_engine()) as session:
-            profiles = session.scalars(select(Profile).order_by(Profile.created_at)).all()
-            return [{"id": p.id, "label": p.label} for p in profiles]
-    except Exception as e:
-        log.error("store: list_profiles failed — check PostgreSQL connection: %s", e)
-        return []
+    """Return [{id, label}] ordered by created_at. Raises on DB failure."""
+    with Session(_get_engine()) as session:
+        profiles = session.scalars(select(Profile).order_by(Profile.created_at)).all()
+        return [{"id": p.id, "label": p.label} for p in profiles]
 
 
 def update_profile_label_sync(profile_id: str, new_label: str) -> None:

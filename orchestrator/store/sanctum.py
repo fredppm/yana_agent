@@ -33,22 +33,19 @@ def save_sanctum_fields_sync(owner_id: str, profile_id: str, fields: dict[str, s
 
 
 def load_sanctum_fields_sync(owner_id: str, profile_id: str) -> dict[str, str]:
-    try:
-        with Session(_get_engine()) as session:
-            owner = session.get(Owner, owner_id)
-            profile = session.get(Profile, profile_id)
-        result: dict[str, str] = {}
-        if owner:
-            for prop in _OWNER_FIELDS.values():
-                val = getattr(owner, prop, None)
-                if val:
-                    result[prop] = val
-        if profile:
-            for prop in _PROFILE_FIELDS.values():
-                val = getattr(profile, prop, None)
-                if val:
-                    result[prop] = val
-        return result
-    except Exception as e:
-        log.debug("store: load_sanctum_fields failed: %s", e)
-        return {}
+    """Load sanctum fields from PostgreSQL. Raises on DB failure — empty return would trigger First Breath."""
+    with Session(_get_engine()) as session:
+        owner = session.get(Owner, owner_id)
+        profile = session.get(Profile, profile_id)
+    result: dict[str, str] = {}
+    if owner:
+        for prop in _OWNER_FIELDS.values():
+            val = getattr(owner, prop, None)
+            if val:
+                result[prop] = val
+    if profile:
+        for prop in _PROFILE_FIELDS.values():
+            val = getattr(profile, prop, None)
+            if val:
+                result[prop] = val
+    return result

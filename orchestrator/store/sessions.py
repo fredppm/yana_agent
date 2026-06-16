@@ -74,12 +74,9 @@ def list_sessions_sync(profile_id: str, limit: int = 20) -> list[tuple[str, date
 
 
 def load_session_messages_sync(session_id: str) -> list[dict]:
-    try:
-        with Session(_get_engine()) as db:
-            record = db.get(SessionRecord, session_id)
-        if not record or not record.messages_json:
-            return []
-        return json.loads(record.messages_json)
-    except Exception as e:
-        log.debug("store: load_session_messages failed: %s", e)
+    """Load messages for a session. Returns [] if not found. Raises on DB failure."""
+    with Session(_get_engine()) as db:
+        record = db.get(SessionRecord, session_id)
+    if not record or not record.messages_json:
         return []
+    return json.loads(record.messages_json)
