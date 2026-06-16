@@ -43,7 +43,7 @@ jobs:
           cache: pip
 
       - name: Install tools
-        run: pip install ruff mypy types-PyYAML vulture pip-audit pytest pytest-cov PyYAML rich
+        run: pip install ruff mypy types-PyYAML vulture pip-audit pytest pytest-cov PyYAML rich python-dotenv
 
       # ── Lint ─────────────────────────────────────────────────────────────
       # --output-format github emits ::error file=…,line=…:: annotations

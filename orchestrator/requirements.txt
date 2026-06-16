@@ -8,6 +8,7 @@ openai>=1.50.0
 
 # Config
 PyYAML>=6.0
+python-dotenv>=1.0.0
 
 # STT — choose one (or both); default config uses faster-whisper
 # openai-whisper>=20231117   # uncomment if using openai-whisper provider
