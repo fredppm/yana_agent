@@ -348,6 +348,7 @@ def test_upsert_named_channel_persists(tmp_path: Path) -> None:
 def test_connector_operations_declared() -> None:
     ops = set(ContactsConnector._operations.keys())
     assert ops == {
+        "list_personas",
         "find_persona",
         "get_contact",
         "get_named_channel",
@@ -355,3 +356,34 @@ def test_connector_operations_declared() -> None:
         "upsert_named_channel",
         "set_preferred_contact",
     }
+
+
+# ---------------------------------------------------------------------------
+# list_personas
+# ---------------------------------------------------------------------------
+
+
+def test_list_personas_no_filter_returns_all(connector: ContactsConnector) -> None:
+    result = connector.call("list_personas", {})
+    assert result.ok
+    ids = {p["id"] for p in result.data}
+    assert {"fred", "ana", "joao_pt", "joao_contador"} == ids
+
+
+def test_list_personas_filter_by_name_fragment(connector: ContactsConnector) -> None:
+    result = connector.call("list_personas", {"filter": "joão"})
+    assert result.ok
+    ids = {p["id"] for p in result.data}
+    assert ids == {"joao_pt", "joao_contador"}
+
+
+def test_list_personas_filter_no_match_returns_empty(connector: ContactsConnector) -> None:
+    result = connector.call("list_personas", {"filter": "xyz_naoexiste"})
+    assert result.ok
+    assert result.data == []
+
+
+def test_list_personas_includes_sources(connector: ContactsConnector) -> None:
+    result = connector.call("list_personas", {"filter": "fred"})
+    assert result.ok
+    assert "sources" in result.data[0]
