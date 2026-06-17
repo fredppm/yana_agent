@@ -564,3 +564,102 @@ def test_set_preferred_contact_persists_to_yaml(tmp_path: Path) -> None:
     cc2 = ContactsConnector(personas_file=str(personas_path), contacts_file=str(contacts_path))
     c = cc2._registry.get_contact(persona_id)
     assert c.channel == "whatsapp"
+
+
+# ---------------------------------------------------------------------------
+# Scenario 13 — purge_removed removes phantoms whose source_id left Google
+# ---------------------------------------------------------------------------
+
+
+def _sync_purge(connector: GoogleContactsConnector, people: list[dict]) -> dict:
+    """Run sync_contacts with purge_removed=True and force_update_names=True."""
+    with patch.object(connector, "_fetch_contacts", return_value=(people, [])):
+        return connector.sync_contacts(
+            owner="fred",
+            email_connector_id="gmail_fred_personal",
+            phone_connector_id="whatsapp",
+            channel_for_phone="whatsapp",
+            force_update_names=True,
+            purge_removed=True,
+        )
+
+
+def test_purge_removed_deletes_orphaned_google_persona(tmp_path: Path) -> None:
+    """
+    A phantom persona was created in a bad sync with a source_id that no longer
+    exists in Google. Running sync with purge_removed=True removes it.
+    """
+    connector = _make_connector(tmp_path)
+    # First sync: Ana created with source_id people/c001
+    _sync(connector, [_google_person("Ana", "people/c001", emails=["ana@example.com"])])
+    assert connector._registry.find_persona("Ana") is not None
+
+    # Second sync: Ana is gone from Google — purge_removed should remove her
+    result = _sync_purge(connector, [])
+    assert result["purged_personas"] == 1
+    assert "purged_names" in result
+    assert connector._registry.find_persona("Ana") is None
+
+
+def test_purge_removed_also_removes_contacts(tmp_path: Path) -> None:
+    """
+    Purging an orphaned persona also removes its contacts.
+    """
+    connector = _make_connector(tmp_path)
+    _sync(connector, [
+        _google_person("Ana", "people/c001", emails=["ana@example.com"], phones=["+55999"])
+    ])
+    contacts_before = len(connector._registry._contacts)
+    assert contacts_before == 2  # email + whatsapp
+
+    _sync_purge(connector, [])
+
+    assert len(connector._registry._contacts) == 0
+
+
+def test_purge_removed_keeps_personas_with_non_google_sources(tmp_path: Path) -> None:
+    """
+    A persona that has a Google source AND another source (e.g. manually added)
+    is NOT purged even if its Google source_id is no longer in the fetch.
+    """
+    connector = _make_connector(tmp_path)
+    _sync(connector, [_google_person("Ana", "people/c001", emails=["ana@example.com"])])
+
+    # Manually add a non-Google source to Ana
+    ana = connector._registry.find_persona("Ana")
+    assert ana is not None
+    ana.sources.append({"provider": "manual", "source_id": "local"})
+    connector._registry.save()
+
+    # Sync with Ana removed from Google — she should NOT be purged
+    result = _sync_purge(connector, [])
+    assert result["purged_personas"] == 0
+    assert connector._registry.find_persona("Ana") is not None
+
+
+def test_purge_removed_false_keeps_orphans(tmp_path: Path) -> None:
+    """
+    By default (purge_removed=False), orphaned Google personas are left alone.
+    """
+    connector = _make_connector(tmp_path)
+    _sync(connector, [_google_person("Ana", "people/c001", emails=["ana@example.com"])])
+
+    # Sync with Ana gone from Google — but purge_removed defaults to False
+    result = _sync(connector, [])
+    assert result.get("purged_personas", 0) == 0
+    assert connector._registry.find_persona("Ana") is not None
+
+
+def test_purge_removed_result_includes_purged_count(tmp_path: Path) -> None:
+    """
+    purge_removed always adds purged_personas to the result dict, even if 0.
+    """
+    connector = _make_connector(tmp_path)
+    _sync(connector, [_google_person("Ana", "people/c001", emails=["ana@example.com"])])
+
+    # Re-sync with Ana still present — nothing purged
+    result = _sync_purge(connector, [
+        _google_person("Ana", "people/c001", emails=["ana@example.com"])
+    ])
+    assert result["purged_personas"] == 0
+    assert "purged_names" not in result
