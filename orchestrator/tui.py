@@ -541,7 +541,6 @@ class YANAApp(App[TuiResult]):
         height: 2;
         background: #0a0a0a;
         border-top: solid #383838;
-        border-bottom: solid #383838;
         align: left bottom;
         padding: 0;
     }
@@ -576,9 +575,11 @@ class YANAApp(App[TuiResult]):
     /* ── Keyboard shortcut hints (below input-bar) ──────────── */
 
     #chat-hint {
-        height: 1;
+        height: 2;
         padding: 0;
+        border-top: solid #383838;
         color: #505050;
+        content-align: left middle;
     }
     """
     )
