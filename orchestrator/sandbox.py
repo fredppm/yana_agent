@@ -203,7 +203,7 @@ def load_runtime(config: dict | None = None) -> SandboxRuntime:
     If omitted, loads providers.yaml via providers.load_providers().
     """
     if config is None:
-        from providers import load_providers
+        from llm import load_providers
         config = load_providers()
 
     sandbox_cfg: dict = config.get("sandbox", {})
