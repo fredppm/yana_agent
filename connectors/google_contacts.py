@@ -28,12 +28,15 @@ Setup:
 
 from __future__ import annotations
 
+import logging
 import os
 import re
 import sys
 import importlib.util as _ilu
 from pathlib import Path
 from typing import Any
+
+log = logging.getLogger(__name__)
 
 from connectors import Connector, command, query
 
@@ -140,26 +143,46 @@ class GoogleContactsConnector(Connector):
         params={"max_results": {"type": "number", "required": False}},
         returns={"type": "list"},
     )
-    def list_contacts(self, max_results: int = 50) -> list[dict[str, Any]]:
-        result = (
-            self._svc()
-            .people()
-            .connections()
-            .list(
+    def _fetch_contacts(
+        self, max_results: int
+    ) -> tuple[list[dict[str, Any]], list[str]]:
+        """Fetch and parse contacts from Google. Returns (contacts, failed_resource_names)."""
+        page_token: str | None = None
+        all_persons: list[dict] = []
+        page_size = min(max_results, 1000)
+
+        # Follow pagination — the API caps at 1000 per page.
+        while True:
+            kwargs: dict[str, Any] = dict(
                 resourceName="people/me",
-                pageSize=min(max_results, 1000),
+                pageSize=page_size,
                 personFields="names,emailAddresses,phoneNumbers",
             )
-            .execute()
-        )
-        contacts = []
-        for person in result.get("connections", []):
+            if page_token:
+                kwargs["pageToken"] = page_token
+
+            page = (
+                self._svc()
+                .people()
+                .connections()
+                .list(**kwargs)
+                .execute()
+            )
+            all_persons.extend(page.get("connections", []))
+            page_token = page.get("nextPageToken")
+            if not page_token or len(all_persons) >= max_results:
+                break
+
+        contacts: list[dict[str, Any]] = []
+        parse_errors: list[str] = []
+        for person in all_persons:
+            resource_name = person.get("resourceName", "(unknown)")
             try:
                 names = person.get("names", [])
                 display = names[0]["displayName"] if names else None
                 if not display:
                     continue
-                # Encode/decode round-trip to surface and drop invalid characters
+                # Encode/decode round-trip to replace any invalid characters
                 display = display.encode("utf-8", errors="replace").decode("utf-8")
                 emails = [
                     e["value"].encode("utf-8", errors="replace").decode("utf-8")
@@ -169,7 +192,6 @@ class GoogleContactsConnector(Connector):
                     p["value"].encode("utf-8", errors="replace").decode("utf-8")
                     for p in person.get("phoneNumbers", [])
                 ]
-                resource_name = person.get("resourceName", "")
                 contacts.append(
                     {
                         "name": display,
@@ -178,9 +200,23 @@ class GoogleContactsConnector(Connector):
                         "source_id": resource_name,
                     }
                 )
-            except Exception:
-                # Skip any contact that fails to parse — don't abort the whole sync
-                continue
+            except Exception as exc:
+                log.warning(
+                    "google_contacts: failed to parse %s — %s: %s",
+                    resource_name, type(exc).__name__, exc,
+                )
+                parse_errors.append(resource_name)
+
+        if parse_errors:
+            log.warning(
+                "google_contacts: %d contact(s) could not be parsed: %s",
+                len(parse_errors), ", ".join(parse_errors),
+            )
+
+        return contacts, parse_errors
+
+    def list_contacts(self, max_results: int = 50) -> list[dict[str, Any]]:
+        contacts, _ = self._fetch_contacts(max_results)
         return contacts
 
     # ------------------------------------------------------------------
@@ -213,7 +249,7 @@ class GoogleContactsConnector(Connector):
         phone_connector_id: str | None = None,
         channel_for_phone: str = "whatsapp",
     ) -> dict[str, Any]:
-        raw = self.list_contacts(max_results=1000)
+        raw, fetch_errors = self._fetch_contacts(max_results=1000)
 
         added_personas = 0
         updated_personas = 0
@@ -308,7 +344,10 @@ class GoogleContactsConnector(Connector):
             "added_contacts": added_contacts,
             "skipped": skipped,
             "total_processed": len(raw),
+            "fetch_errors": len(fetch_errors),
         }
         if skipped_names:
             result["skipped_names"] = skipped_names
+        if fetch_errors:
+            result["fetch_error_ids"] = fetch_errors
         return result
