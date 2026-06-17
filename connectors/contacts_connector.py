@@ -56,7 +56,6 @@ class ContactsConnector(Connector):
         personas_file: str | None = None,
         contacts_file: str | None = None,
     ) -> None:
-        self._registry = ContactRegistry()
         personas_path = Path(personas_file or _DEFAULT_PERSONAS)
         contacts_path = Path(contacts_file or _DEFAULT_CONTACTS)
         # Resolve relative paths from the project root
@@ -64,7 +63,17 @@ class ContactsConnector(Connector):
             personas_path = Path(__file__).parent.parent / personas_path
         if not contacts_path.is_absolute():
             contacts_path = Path(__file__).parent.parent / contacts_path
+        self._personas_path = personas_path
+        self._contacts_path = contacts_path
+        self._registry = ContactRegistry()
         self._registry.load(personas_path, contacts_path)
+
+    def call(self, operation: str, params=None):
+        # Reload from disk before every call so changes made by other connectors
+        # (e.g. google_contacts sync_contacts) are always visible without restart.
+        self._registry = ContactRegistry()
+        self._registry.load(self._personas_path, self._contacts_path)
+        return super().call(operation, params)
 
     # ------------------------------------------------------------------
     # Queries
