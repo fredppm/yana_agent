@@ -80,7 +80,7 @@ VoiceListenFn = Callable[[], str]
 VoiceSpeakFn = Callable[[str], None]
 # tool_event_fn(instance_id, operation, error_or_none, payload_or_none)
 # payload is set for run_code: {"code", "deps", "stdout", "stderr", "exit_code", "timed_out"}
-ToolEventCallback = Callable[[str, str, "str | None", "dict | None"], None]
+ToolEventCallback = Callable[[str, str, str | None, dict | None], None]
 
 _SHARED_CSS = """
 Screen {
@@ -1294,7 +1294,7 @@ def run_tui(
         make_tool_event_cb=make_tool_event_cb,
     )
     try:
-        result = app.run(mouse=True)
+        result = app.run()
     except KeyboardInterrupt:
         result = None
     return result if result is not None else ([], None)

@@ -42,17 +42,25 @@ def _execute_tool(tool_call: dict, registry) -> str:
             return json.dumps({"error": str(exc)})
 
     if name == "run_code":
-        result = sb.run(
-            code=inp.get("code", ""),
-            deps=inp.get("deps") or [],
-            allow_network=bool(inp.get("allow_network", False)),
-        )
-        return json.dumps({
-            "stdout": result.stdout,
-            "stderr": result.stderr,
-            "exit_code": result.exit_code,
-            "timed_out": result.timed_out,
-        })
+        try:
+            result = sb.run(
+                code=inp.get("code", ""),
+                deps=inp.get("deps") or [],
+                allow_network=bool(inp.get("allow_network", False)),
+            )
+            return json.dumps({
+                "stdout": result.stdout,
+                "stderr": result.stderr,
+                "exit_code": result.exit_code,
+                "timed_out": result.timed_out,
+            })
+        except Exception as exc:
+            return json.dumps({
+                "stdout": "",
+                "stderr": f"sandbox error: {exc}",
+                "exit_code": 1,
+                "timed_out": False,
+            })
 
     return json.dumps({"error": f"unknown tool: {name}"})
 
@@ -67,7 +75,7 @@ def call_with_tool_loop(
     text_mode: bool = True,
     clear_line: bool = False,
     silent: bool = False,
-    on_tool_event: Callable[[str, str, str | None], None] | None = None,
+    on_tool_event: Callable[[str, str, str | None, dict | None], None] | None = None,
 ) -> str:
     """
     Run one conversation turn handling any connector tool calls.
