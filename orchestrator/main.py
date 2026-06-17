@@ -94,6 +94,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--event", default="", help="Trigger event (with --headless:trigger)")
     parser.add_argument("--payload", default="{}", help="JSON payload for trigger events")
     parser.add_argument("--verbose", "-v", action="store_true", help="Enable verbose debug logging")
+    parser.add_argument(
+        "--session-id",
+        default=None,
+        metavar="SESSION_ID",
+        help="Load a previous session as context for --text single-shot queries.",
+    )
 
     return parser.parse_args()
 
@@ -351,14 +357,39 @@ def run_conversation() -> None:
     )
 
 
-def run_single_shot(message: str) -> None:
-    """Send one message, print the reply, exit — no session log, no sanctum write."""
+def run_single_shot(message: str, session_id: str | None = None) -> None:
+    """Send one message, print the reply, exit — no session log, no sanctum write.
+
+    Loads the active profile and sanctum fields so YANA has full identity context.
+    If session_id is given, prepends that session's messages as conversation history.
+    """
     providers_config = prov.load_providers()
+
+    # Profile loading — same as run_conversation so YANA has identity context
+    profile_list = profiles.list_profiles()
+    if profile_list:
+        profiles.set_runtime_profile(profile_list[0]["id"])
+
     registry = connectors_setup.build_registry()
     tools = [*prov.CONNECTOR_TOOLS, prov.RUN_CODE_TOOL]
-    system_prompt = core.load_system_prompt(voice_mode=False, registry=registry)
 
-    messages = [{"role": "user", "content": message}]
+    active_profile = profiles.get_active_profile()
+    sanctum_fields: dict = {}
+    if active_profile:
+        owner_id = profiles.owner_id_from_profile(active_profile)
+        sanctum_fields = store.load_sanctum_fields_sync(owner_id, active_profile)
+
+    system_prompt = core.load_system_prompt(
+        voice_mode=False, registry=registry, _sanctum_fields=sanctum_fields
+    )
+
+    # Optionally seed conversation history from a previous session
+    messages: list[dict] = []
+    if session_id:
+        messages = core.load_session_messages(session_id)
+
+    messages.append({"role": "user", "content": message})
+
     agent.call_with_tool_loop(
         messages,
         system_prompt,
@@ -454,7 +485,7 @@ def main() -> None:
         return
 
     if isinstance(args.text, str):
-        run_single_shot(args.text)
+        run_single_shot(args.text, session_id=args.session_id)
         return
 
     run_conversation()
