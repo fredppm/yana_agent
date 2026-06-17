@@ -59,6 +59,9 @@ _STRINGS: dict[str, dict[str, str]] = {
         "chat_history_expand": "ctrl+o expand",
         "chat_history_collapse": "ctrl+o collapse",
         "saving_memory_skip": "ctrl+c skip",
+        # -- Sandbox event display --
+        "sandbox_label": "code",
+        "sandbox_timed_out": "timed out",
         # -- Memory --
         "memory_context_query": "who is the user, what is happening in their life right now",
         # -- Programmer mode --
@@ -110,6 +113,9 @@ _STRINGS: dict[str, dict[str, str]] = {
         "chat_history_expand": "ctrl+o expandir",
         "chat_history_collapse": "ctrl+o recolher",
         "saving_memory_skip": "ctrl+c pular",
+        # -- Sandbox event display --
+        "sandbox_label": "código",
+        "sandbox_timed_out": "tempo esgotado",
         # -- Memory --
         "memory_context_query": "quem é o usuário, o que está acontecendo na vida dele agora",
         # -- Programmer mode --

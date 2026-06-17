@@ -796,7 +796,7 @@ class YANAApp(App[TuiResult]):
         # Header line
         status = "[red]✗[/red]" if exit_code != 0 or timed_out else "[green]✓[/green]"
         deps_hint = f"  {', '.join(deps)}" if deps else ""
-        chat.write(f"[dim]  ⚙ code {status}[/dim][dim]{escape(deps_hint)}[/dim]")
+        chat.write(f"[dim]  {escape(t('sandbox_label'))} {status}[/dim][dim]{escape(deps_hint)}[/dim]")
 
         # Code block — full, no truncation
         for line in code.splitlines():
@@ -804,7 +804,7 @@ class YANAApp(App[TuiResult]):
 
         # Output
         if timed_out:
-            chat.write("[dim]  → timed out[/dim]")
+            chat.write(f"[dim]  → {escape(t('sandbox_timed_out'))}[/dim]")
         elif stdout:
             for line in stdout.splitlines():
                 chat.write(f"[dim]  → {escape(line)}[/dim]")
