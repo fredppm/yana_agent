@@ -148,6 +148,29 @@ def test_find_persona_ambiguous(connector: ContactsConnector) -> None:
     assert "joao_pt" in result.error or "João PT" in result.error
 
 
+def test_find_persona_by_first_word(connector: ContactsConnector) -> None:
+    """Searching by first name alone should match multi-word aliases (first-word fallback)."""
+    result = connector.call("find_persona", {"name": "ana"})
+    assert result.ok
+    assert result.data["id"] == "ana"
+
+
+def test_find_persona_first_word_ambiguous(connector: ContactsConnector) -> None:
+    """First-word fallback is still ambiguous when multiple personas share the same first name."""
+    # Both joao_pt and joao_contador have "João" as the first word of their aliases
+    result = connector.call("find_persona", {"name": "João"})
+    assert not result.ok
+    assert "ambiguous" in result.error
+
+
+def test_find_persona_first_word_no_false_positive(connector: ContactsConnector) -> None:
+    """A word that only appears mid-alias does NOT trigger the first-word fallback."""
+    # "PT" is the second word of "João PT" — should NOT match
+    result = connector.call("find_persona", {"name": "PT"})
+    assert not result.ok
+    assert "not_found" in result.error
+
+
 # ---------------------------------------------------------------------------
 # get_contact
 # ---------------------------------------------------------------------------
