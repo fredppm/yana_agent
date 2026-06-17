@@ -234,7 +234,10 @@ class GoogleContactsConnector(Connector):
             "phone_connector_id: connector to use for phone contacts (e.g. 'whatsapp'). "
             "channel_for_phone: 'whatsapp' or 'sms' — defaults to 'whatsapp'. "
             "force_update_names: if true, overwrite the stored name with the current Google name "
-            "for existing personas — use this to fix contacts imported with wrong names."
+            "for existing personas — use this to fix contacts imported with wrong names. "
+            "purge_removed: if true, delete any persona whose ONLY source is Google and whose "
+            "source_id is no longer in the current Google fetch — removes phantom contacts that "
+            "survived bad previous syncs. Use together with force_update_names for a full reset."
         ),
         params={
             "owner": {"type": "string", "required": True},
@@ -242,6 +245,7 @@ class GoogleContactsConnector(Connector):
             "phone_connector_id": {"type": "string", "required": False},
             "channel_for_phone": {"type": "string", "required": False},
             "force_update_names": {"type": "boolean", "required": False},
+            "purge_removed": {"type": "boolean", "required": False},
         },
         returns={"type": "object"},
     )
@@ -252,6 +256,7 @@ class GoogleContactsConnector(Connector):
         phone_connector_id: str | None = None,
         channel_for_phone: str = "whatsapp",
         force_update_names: bool = False,
+        purge_removed: bool = False,
     ) -> dict[str, Any]:
         raw, fetch_errors = self._fetch_contacts(max_results=1000)
 
@@ -352,17 +357,54 @@ class GoogleContactsConnector(Connector):
                         existing_contact_ids.add(contact_id)
                         added_contacts += 1
 
+        # Purge personas whose Google source_id no longer exists in the current fetch.
+        # Only removes personas whose EVERY source is Google — personas with mixed sources
+        # (e.g. also in WhatsApp) are left alone.
+        purged_personas = 0
+        purged_names: list[str] = []
+        if purge_removed:
+            fetched_source_ids = {entry["source_id"] for entry in raw if entry.get("source_id")}
+            to_purge = []
+            for p in list(self._registry._personas.values()):
+                google_sources = [s for s in p.sources if s.get("provider") == "google"]
+                if not google_sources:
+                    continue  # Not a Google persona — skip
+                all_sources_are_google = all(
+                    s.get("provider") == "google" for s in p.sources
+                )
+                if not all_sources_are_google:
+                    continue  # Has non-Google sources — keep
+                orphaned = all(
+                    s.get("source_id") not in fetched_source_ids for s in google_sources
+                )
+                if orphaned:
+                    to_purge.append(p)
+            for p in to_purge:
+                log.warning(
+                    "google_contacts: purging orphaned persona %r (%s) — source_id not in Google",
+                    p.name, p.id,
+                )
+                del self._registry._personas[p.id]
+                self._registry._contacts = [
+                    c for c in self._registry._contacts if c.persona_id != p.id
+                ]
+                purged_personas += 1
+                purged_names.append(f"{p.name} ({p.id})")
+
         self._registry.save()
         result: dict[str, Any] = {
             "added_personas": added_personas,
             "updated_personas": updated_personas,
             "added_contacts": added_contacts,
+            "purged_personas": purged_personas,
             "skipped": skipped,
             "total_processed": len(raw),
             "fetch_errors": len(fetch_errors),
         }
         if skipped_names:
             result["skipped_names"] = skipped_names
+        if purged_names:
+            result["purged_names"] = purged_names
         if fetch_errors:
             result["fetch_error_ids"] = fetch_errors
         return result
