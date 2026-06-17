@@ -78,8 +78,9 @@ ExitCallback = Callable[[list[dict], str | None], None]
 TuiResult = tuple[list[dict], str | None]
 VoiceListenFn = Callable[[], str]
 VoiceSpeakFn = Callable[[str], None]
-# tool_event_fn(instance_id, operation, error_or_none)
-ToolEventCallback = Callable[[str, str, "str | None"], None]
+# tool_event_fn(instance_id, operation, error_or_none, payload_or_none)
+# payload is set for run_code: {"code", "deps", "stdout", "stderr", "exit_code", "timed_out"}
+ToolEventCallback = Callable[[str, str, str | None, dict | None], None]
 
 _SHARED_CSS = """
 Screen {
@@ -284,12 +285,12 @@ class ProfileSessionScreen(Screen[str | None]):
         + """
     #profile-bar {
         height: 1;
-        padding: 0 3;
+        padding: 0;
         color: #e0e0e0;
     }
     #session-list {
         height: 1fr;
-        padding: 0 3;
+        padding: 0;
         background: transparent;
         scrollbar-color: #787878;
         scrollbar-background: transparent;
@@ -297,7 +298,7 @@ class ProfileSessionScreen(Screen[str | None]):
     }
     #session-hint {
         height: 1;
-        padding: 0 5;
+        padding: 0;
         color: #909090;
     }
     """
@@ -350,7 +351,7 @@ class ProfileSessionScreen(Screen[str | None]):
         sep = "  [dim]│[/dim]  "
         left = "◄  " if self._profile_idx > 0 else "   "
         right = "  ►" if self._profile_idx < len(self._profiles) - 1 else ""
-        bar.update(f"  {left}{sep.join(parts)}{right}")
+        bar.update(f"{left}{sep.join(parts)}{right}")
 
     # ------------------------------------------------------------------
     # Session list
@@ -388,7 +389,7 @@ class ProfileSessionScreen(Screen[str | None]):
     def _update_hint(self) -> None:
         frame = self._SPINNER[self._spinner_idx]
         if self._flash_ticks > 0:
-            self.query_one("#session-hint", Label).update(f"  {frame}  {self._flash_msg}")
+            self.query_one("#session-hint", Label).update(f"{frame}  {self._flash_msg}")
             return
         multi = len(self._profiles) > 1
         nav = t("profiles_hint_nav") if multi else t("sessions_hint_nav")
@@ -401,7 +402,7 @@ class ProfileSessionScreen(Screen[str | None]):
         ]
         if multi:
             parts.append(t("profiles_hint_delete"))
-        self.query_one("#session-hint", Label).update(f"  {frame}  {'   '.join(parts)}")
+        self.query_one("#session-hint", Label).update(f"{frame}  {'   '.join(parts)}")
 
     # ------------------------------------------------------------------
     # Actions
@@ -527,7 +528,7 @@ class YANAApp(App[TuiResult]):
 
     #chat {
         height: 1fr;
-        padding: 0 3;
+        padding: 0;
         background: transparent;
         scrollbar-color: #787878;
         scrollbar-background: transparent;
@@ -537,45 +538,35 @@ class YANAApp(App[TuiResult]):
     /* ── Input row ─────────────────────────────────────── */
 
     #input-bar {
-        height: auto;
-        min-height: 3;
-        max-height: 8;
+        height: 2;
         background: #0a0a0a;
         border-top: solid #383838;
-        align: left top;
-        padding: 0 2;
+        align: left bottom;
+        padding: 0;
     }
 
     #prompt-label {
         width: 3;
         color: #909090;
-        content-align: center top;
-        padding-top: 1;
+        content-align: center middle;
     }
 
-    TextArea {
+    #input {
         background: #0a0a0a;
         border: none;
-        height: auto;
-        min-height: 1;
-        max-height: 6;
         color: #e0e0e0;
-        padding: 1 0;
+        padding: 0;
     }
 
-    TextArea:focus {
+    #input:focus {
         border: none;
-    }
-
-    TextArea .text-area--cursor {
-        background: #505050;
     }
 
     /* ── Thinking / listening indicator (row above input-bar) ─ */
 
     #thinking {
         height: 1;
-        padding: 0 3;
+        padding: 0;
         color: #909090;
         content-align: left middle;
         display: none;
@@ -584,9 +575,11 @@ class YANAApp(App[TuiResult]):
     /* ── Keyboard shortcut hints (below input-bar) ──────────── */
 
     #chat-hint {
-        height: 1;
-        padding: 0 3;
+        height: 2;
+        padding: 0;
+        border-top: solid #383838;
         color: #505050;
+        content-align: left middle;
     }
     """
     )
@@ -595,6 +588,7 @@ class YANAApp(App[TuiResult]):
         Binding("ctrl+c", "quit_app", "Quit", priority=True),
         Binding("ctrl+d", "quit_app", "End session", show=True, priority=True),
         Binding("ctrl+o", "toggle_history", "History", show=False),
+        Binding("ctrl+y", "copy_last", "Copy last reply", show=False),
         Binding("ctrl+t", "toggle_voice", "Voice", show=True),
         Binding("ctrl+b", "switch_session", "Sessions", show=False),
         Binding("pageup", "scroll_chat_up", "Scroll up", show=False, priority=True),
@@ -646,6 +640,7 @@ class YANAApp(App[TuiResult]):
         self._chat_started: bool = (
             False  # True once _start_chat() completes — guards on_input_submitted
         )
+        self._last_yana_reply: str = ""  # for ctrl+y copy
 
     # ------------------------------------------------------------------
     # Layout
@@ -655,7 +650,7 @@ class YANAApp(App[TuiResult]):
         yield Label("", id="thinking")
         with Horizontal(id="input-bar"):
             yield Label("❯", id="prompt-label")  # noqa: RUF001
-            yield SubmitTextArea(id="input", tab_behavior="indent", soft_wrap=True)
+            yield Input(id="input")
         yield Label("", id="chat-hint")
 
     def on_mount(self) -> None:
@@ -678,8 +673,9 @@ class YANAApp(App[TuiResult]):
         if choice != _NEW:
             import core
 
-            self._messages = core.load_session_messages(choice)
-            self._session_history = list(self._messages)
+            all_msgs = core.load_session_messages(choice)
+            self._session_history = all_msgs
+            self._messages = [m for m in all_msgs if m.get("role") in ("user", "assistant")]
             self._chosen_session = choice
         self._start_chat()
 
@@ -779,44 +775,111 @@ class YANAApp(App[TuiResult]):
         instance: str,
         operation: str,
         error: str | None = None,
+        payload: dict | None = None,
+        ts: str = "",
     ) -> None:
         """Render a tool call/result event in the chat log (dim, muted style)."""
+        if operation == "run_code" and payload is not None:
+            self._write_sandbox_event(chat, payload, ts=ts)
+            return
         label = escape(f"{instance}/{operation}") if instance else escape(operation)
+        ts_mk = f"[dim]  {ts}[/dim]" if ts else ""
         if error:
-            chat.write(f"[dim]  ⚙ {label}  ✗ {escape(error)}[/dim]")
+            chat.write(f"[dim]  ⚙ {label}  ✗ {escape(error)}[/dim]{ts_mk}")
         else:
-            chat.write(f"[dim]  ⚙ {label}[/dim]")
+            chat.write(f"[dim]  ⚙ {label}[/dim]{ts_mk}")
+
+    def _write_sandbox_event(self, chat: RichLog, payload: dict, ts: str = "") -> None:
+        """Render a sandbox run_code event — shows code sent and output received."""
+        code: str = payload.get("code", "")
+        deps: list = payload.get("deps") or []
+        stdout: str = payload.get("stdout", "").strip()
+        stderr: str = payload.get("stderr", "").strip()
+        exit_code: int = payload.get("exit_code", -1)
+        timed_out: bool = payload.get("timed_out", False)
+
+        # Header line
+        status = "[red]✗[/red]" if exit_code != 0 or timed_out else "[green]✓[/green]"
+        deps_hint = f"  {', '.join(deps)}" if deps else ""
+        ts_mk = f"[dim]  {ts}[/dim]" if ts else ""
+        chat.write(
+            f"[dim]  {escape(t('sandbox_label'))} {status}[/dim][dim]{escape(deps_hint)}[/dim]{ts_mk}"
+        )
+
+        # Code block — blank line after, plain indent, no │
+        for line in code.splitlines():
+            chat.write(f"[dim]    {escape(line)}[/dim]")
+        chat.write("")
+
+        # Output
+        if timed_out:
+            chat.write(f"[dim]  → {escape(t('sandbox_timed_out'))}[/dim]")
+        elif stdout:
+            for line in stdout.splitlines():
+                chat.write(f"[dim]  → {escape(line)}[/dim]")
+        elif stderr:
+            first_err = stderr.splitlines()[0]
+            chat.write(f"[dim]  → [red]{escape(first_err)}[/red][/dim]")
 
     def _make_tool_event_fn(self, chat: RichLog) -> ToolEventCallback:
         """Return a thread-safe callback that writes tool events to *chat*."""
 
-        def _cb(instance: str, operation: str, error: str | None) -> None:
+        def _cb(
+            instance: str, operation: str, error: str | None, payload: dict | None = None
+        ) -> None:
+            ts = datetime.now().strftime("%H:%M:%S")
             msg: dict = {"role": "tool", "content": instance, "tool_op": operation}
             if error:
                 msg["error"] = error
-            self._new_messages.append(("", msg))
-            self.call_from_thread(self._write_tool_event, chat, instance, operation, error)
+            if payload:
+                msg["payload"] = payload
+            self._new_messages.append((ts, msg))
+            self.call_from_thread(
+                self._write_tool_event, chat, instance, operation, error, payload, ts
+            )
 
         return _cb
 
     def _history_line(self, chat: RichLog, m: dict, truncate: int | None = 80) -> None:
+        if m["role"] == "tool":
+            # Always render tool events fully — no truncation concept
+            self._write_tool_event(
+                chat,
+                m.get("content", ""),
+                m.get("tool_op", ""),
+                m.get("error"),
+                m.get("payload"),
+                m.get("ts", ""),
+            )
+            return
         if m["role"] == "user":
             raw = m["content"].replace("\n", " ")
             if truncate is not None:
                 text = raw[:truncate] + ("…" if len(raw) > truncate else "")
             else:
                 text = raw
-            self._write_user_bg(chat, text, ts=self._session_ts())
+            self._write_user_bg(chat, text, ts=m.get("ts", self._session_ts()))
         else:
+            ts = m.get("ts", self._session_ts())
             if truncate is None:
                 # Expanded: full markdown with icon + ts header
-                self._write_yana(chat, m["content"], ts=self._session_ts())
+                self._write_yana(chat, m["content"], ts=ts)
             else:
                 # Collapsed: ● icon + truncated text (normal color)
                 raw = m["content"].replace("\n", " ")
                 text = raw[:truncate] + ("…" if len(raw) > truncate else "")
                 chat.write(f"●  {escape(text)}")
                 chat.write("")
+
+    def _build_storable_messages(self) -> list[dict]:
+        """Merge _new_messages (user + assistant + tool events) into a flat list for storage."""
+        result = []
+        for ts, m in self._new_messages:
+            entry = dict(m)
+            if ts:
+                entry.setdefault("ts", ts)
+            result.append(entry)
+        return result or list(self._messages)
 
     def _session_ts(self) -> str:
         """Return HH:MM:SS from the chosen session ID, or empty string."""
@@ -840,21 +903,26 @@ class YANAApp(App[TuiResult]):
 
     def _start_chat(self) -> None:
         chat = self.query_one("#chat", RichLog)
-        self.query_one(SubmitTextArea).clear()  # flush any text buffered during screen transitions
+        self.query_one("#input", Input).clear()  # flush any text buffered during screen transitions
         self._chat_started = True  # gate: discard events before this point
         # Hint bar
-        hints = [t("chat_hint_end"), t("chat_hint_history")]
+        hints = [
+            t("chat_hint_end"),
+            t("chat_hint_history"),
+            t("chat_hint_copy"),
+            t("chat_hint_select"),
+        ]
         if self._listen_fn:
             hints.append(t("chat_hint_voice"))
         if self._profiles:
             hints.append(t("chat_hint_sessions"))
-        self.query_one("#chat-hint", Label).update(f"  {'   '.join(hints)}")
+        self.query_one("#chat-hint", Label).update("   ".join(hints))
         if self._session_history:
             self._write_history(chat)
         if self._voice_mode:
             self._voice_gen += 1
             self.query_one("#prompt-label", Label).display = False
-            self.query_one(SubmitTextArea).display = False
+            self.query_one("#input", Input).display = False
             if self._greeting:
                 ts = datetime.now().strftime("%H:%M:%S")
                 self._write_yana(chat, self._greeting, ts)
@@ -863,13 +931,13 @@ class YANAApp(App[TuiResult]):
             if self._greeting:
                 ts = datetime.now().strftime("%H:%M:%S")
                 self._write_yana(chat, self._greeting, ts)
-                self.query_one(SubmitTextArea).focus()
+                self.query_one("#input", Input).focus()
             elif self._auto_greet:
                 self._busy = True
                 self._show_thinking(True)
                 self._do_auto_greet()
             else:
-                self.query_one(SubmitTextArea).focus()
+                self.query_one("#input", Input).focus()
         self._inbox_timer = self.set_interval(2.0, self._check_pulse_inbox)
 
     def _check_pulse_inbox(self) -> None:
@@ -926,6 +994,8 @@ class YANAApp(App[TuiResult]):
         self._messages.append(trigger)
         self._messages.append({"role": "assistant", "content": reply})
         self._new_messages.append((reply_ts, {"role": "assistant", "content": reply}))
+        if reply:
+            self._last_yana_reply = reply
 
         self.call_from_thread(self._show_thinking, False)
         if reply:
@@ -984,6 +1054,8 @@ class YANAApp(App[TuiResult]):
         reply_ts = datetime.now().strftime("%H:%M:%S")
         self._messages.append({"role": "assistant", "content": reply})
         self._new_messages.append((reply_ts, {"role": "assistant", "content": reply}))
+        if reply:
+            self._last_yana_reply = reply
 
         self.call_from_thread(self._show_thinking, False)
         if reply:
@@ -1009,7 +1081,7 @@ class YANAApp(App[TuiResult]):
         if self._voice_mode:
             self._voice_gen += 1
             self.query_one("#prompt-label", Label).display = False
-            self.query_one(SubmitTextArea).display = False
+            self.query_one("#input", Input).display = False
             self._voice_loop(self._voice_gen)
         else:
             if self._spinner_timer is not None:
@@ -1017,8 +1089,8 @@ class YANAApp(App[TuiResult]):
                 self._spinner_timer = None
             self.query_one("#thinking", Label).display = False
             self.query_one("#prompt-label", Label).display = True
-            self.query_one(SubmitTextArea).display = True
-            self.query_one(SubmitTextArea).focus()
+            self.query_one("#input", Input).display = True
+            self.query_one("#input", Input).focus()
 
     def action_toggle_history(self) -> None:
         if not self._session_history:
@@ -1031,7 +1103,9 @@ class YANAApp(App[TuiResult]):
             if m["role"] == "user":
                 self._write_user_bg(chat, m["content"], ts)
             elif m["role"] == "tool":
-                self._write_tool_event(chat, m["content"], m.get("tool_op", ""), m.get("error"))
+                self._write_tool_event(
+                    chat, m["content"], m.get("tool_op", ""), m.get("error"), m.get("payload")
+                )
             else:
                 self._write_yana(chat, m["content"], ts)
 
@@ -1042,6 +1116,34 @@ class YANAApp(App[TuiResult]):
     def action_scroll_chat_down(self) -> None:
         """Scroll the chat log down by one page (PageDown while input is focused)."""
         self.query_one("#chat", RichLog).scroll_page_down(animate=False)
+
+    def action_copy_last(self) -> None:
+        """Copy the last YANA reply to the system clipboard (ctrl+y)."""
+        if not self._last_yana_reply:
+            self._flash_hint(t("chat_nothing_to_copy"))
+            return
+        self.copy_to_clipboard(self._last_yana_reply)
+        self._flash_hint(t("chat_copied"))
+
+    def _flash_hint(self, msg: str, duration: float = 1.5) -> None:
+        """Briefly show *msg* in the hint bar, then restore the normal hints."""
+        hint = self.query_one("#chat-hint", Label)
+        hint.update(msg)
+        self.set_timer(duration, self._restore_hint)
+
+    def _restore_hint(self) -> None:
+        """Restore the normal hint bar content after a flash."""
+        hints = [
+            t("chat_hint_end"),
+            t("chat_hint_history"),
+            t("chat_hint_copy"),
+            t("chat_hint_select"),
+        ]
+        if self._listen_fn:
+            hints.append(t("chat_hint_voice"))
+        if self._profiles:
+            hints.append(t("chat_hint_sessions"))
+        self.query_one("#chat-hint", Label).update("   ".join(hints))
 
     def on_mouse_scroll_up(self, event: MouseScrollUp) -> None:
         """Forward mouse wheel up to the chat log regardless of where the mouse is."""
@@ -1062,7 +1164,7 @@ class YANAApp(App[TuiResult]):
             import threading as _threading
 
             _session_id = self._chosen_session or datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-            _msgs = list(self._messages)
+            _msgs = self._build_storable_messages()
             _on_exit = self._on_exit
             _threading.Thread(
                 target=lambda: _on_exit(_msgs, _session_id),
@@ -1093,28 +1195,31 @@ class YANAApp(App[TuiResult]):
         self._history_expanded = False
         self._busy = False
         if choice != _NEW:
-            self._messages = _core.load_session_messages(choice)
-            self._session_history = list(self._messages)
+            all_msgs = _core.load_session_messages(choice)
+            self._session_history = all_msgs
+            self._messages = [m for m in all_msgs if m.get("role") in ("user", "assistant")]
             self._chosen_session = choice
         self.query_one("#chat", RichLog).clear()
         self._chat_started = False
-        self.query_one(SubmitTextArea).clear()
+        self.query_one("#input", Input).clear()
         self._start_chat()
 
     # ------------------------------------------------------------------
-    # Input — SubmitTextArea message handling
+    # Input handling
 
-    def on_submit_text_area_submit(self, event: SubmitTextArea.Submit) -> None:
-        """Handle Enter-to-submit from the chat input TextArea."""
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        """Handle Enter-to-submit from the chat input."""
+        if event.input.id != "input":
+            return  # ignore modal inputs
         if self._voice_mode:
             return
         if not self._chat_started:
-            self.query_one(SubmitTextArea).clear()
+            event.input.clear()
             return
-        text = event.text_area.text.strip()
+        text = event.value.strip()
         if not text or self._busy:
             return
-        event.text_area.clear()
+        event.input.clear()
         self._busy = True
         self._do_turn(text)
 
@@ -1142,6 +1247,8 @@ class YANAApp(App[TuiResult]):
         reply_ts = datetime.now().strftime("%H:%M:%S")
         self._messages.append({"role": "assistant", "content": reply})
         self._new_messages.append((reply_ts, {"role": "assistant", "content": reply}))
+        if reply:
+            self._last_yana_reply = reply
 
         self.call_from_thread(self._show_thinking, False)
         if reply:
@@ -1170,7 +1277,7 @@ class YANAApp(App[TuiResult]):
                 self._spinner_timer = None
             thinking.display = False
             if not self._saving_mode:
-                self.query_one(SubmitTextArea).focus()
+                self.query_one("#input", Input).focus()
 
     def _tick_spinner(self) -> None:
         self._spinner_idx = (self._spinner_idx + 1) % len(self._SPINNER)
@@ -1189,20 +1296,20 @@ class YANAApp(App[TuiResult]):
         if self._saving_mode:
             # Second Ctrl+C — force exit immediately; daemon thread dies with the process
             self._force_exited = True
-            self.exit((self._messages, self._chosen_session))
+            self.exit((self._build_storable_messages(), self._chosen_session))
             return
         if self._on_exit is None or not self._messages:
-            self.exit((self._messages, self._chosen_session))
+            self.exit((self._build_storable_messages(), self._chosen_session))
             return
         self._saving_mode = True
-        self.query_one(SubmitTextArea).disabled = True
+        self.query_one("#input", Input).disabled = True
         self._show_thinking(True)
         threading.Thread(target=self._save_and_exit, daemon=True).start()
 
     def _save_and_exit(self) -> None:
         try:
             if self._on_exit is not None:
-                self._on_exit(list(self._messages), self._chosen_session)
+                self._on_exit(self._build_storable_messages(), self._chosen_session)
         except Exception:
             pass
         if not self._force_exited:

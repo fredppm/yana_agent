@@ -212,9 +212,11 @@ async def store_session(messages: list[dict], session_id: str) -> None:
     profile_id = profiles.get_active_profile() or "yana-default"
     group_id = _to_group_id(profile_id)
 
-    # Build conversation text for Graphiti episode
+    # Build conversation text for Graphiti episode — skip tool events
     lines = []
     for m in messages:
+        if m.get("role") == "tool":
+            continue
         if not isinstance(m.get("content"), str) or not m["content"].strip():
             continue
         role = "user" if m["role"] == "user" else "YANA"

@@ -51,11 +51,18 @@ _STRINGS: dict[str, dict[str, str]] = {
         "session_label": "session",
         "chat_hint_end": "ctrl+d end",
         "chat_hint_history": "ctrl+o history",
+        "chat_hint_copy": "ctrl+y copy",
+        "chat_hint_select": "shift+drag select",
         "chat_hint_voice": "ctrl+t voice",
         "chat_hint_sessions": "ctrl+b sessions",
+        "chat_copied": "copied ✓",
+        "chat_nothing_to_copy": "nothing to copy yet",
         "chat_history_expand": "ctrl+o expand",
         "chat_history_collapse": "ctrl+o collapse",
         "saving_memory_skip": "ctrl+c skip",
+        # -- Sandbox event display --
+        "sandbox_label": "code",
+        "sandbox_timed_out": "timed out",
         # -- Memory --
         "memory_context_query": "who is the user, what is happening in their life right now",
         # -- Programmer mode --
@@ -99,11 +106,18 @@ _STRINGS: dict[str, dict[str, str]] = {
         "session_label": "sessão",
         "chat_hint_end": "ctrl+d encerrar",
         "chat_hint_history": "ctrl+o histórico",
+        "chat_hint_copy": "ctrl+y copiar",
+        "chat_hint_select": "shift+arrastar selecionar",
         "chat_hint_voice": "ctrl+t voz",
         "chat_hint_sessions": "ctrl+b sessões",
+        "chat_copied": "copiado ✓",
+        "chat_nothing_to_copy": "nada para copiar ainda",
         "chat_history_expand": "ctrl+o expandir",
         "chat_history_collapse": "ctrl+o recolher",
         "saving_memory_skip": "ctrl+c pular",
+        # -- Sandbox event display --
+        "sandbox_label": "código",
+        "sandbox_timed_out": "tempo esgotado",
         # -- Memory --
         "memory_context_query": "quem é o usuário, o que está acontecendo na vida dele agora",
         # -- Programmer mode --

@@ -86,6 +86,37 @@ def _auto_task(messages: list[dict], task: str) -> str:
 # ---------------------------------------------------------------------------
 
 
+RUN_CODE_TOOL: dict = {
+    "name": "run_code",
+    "description": (
+        "Execute Python code in an isolated sandbox container. "
+        "Use this whenever you need to run code, perform calculations, process data, "
+        "or verify that generated code works. "
+        "The sandbox has no access to the host filesystem or local commands. "
+        "Network is blocked by default — set allow_network=true only when the code "
+        "explicitly needs to reach an external API."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "code": {
+                "type": "string",
+                "description": "Python source code to execute.",
+            },
+            "deps": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "PyPI packages to install before execution (e.g. ['requests', 'numpy==1.26.0']).",
+            },
+            "allow_network": {
+                "type": "boolean",
+                "description": "Grant outbound network access during execution. Default false.",
+            },
+        },
+        "required": ["code"],
+    },
+}
+
 CONNECTOR_TOOLS: list[dict] = [
     {
         "name": "call_connector",

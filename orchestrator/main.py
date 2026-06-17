@@ -289,7 +289,7 @@ def _run_tui_conversation(
 def run_conversation() -> None:
     providers_config = prov.load_providers()
     voice_cfg = v.load_voice_config()
-    tools = prov.CONNECTOR_TOOLS
+    tools = [*prov.CONNECTOR_TOOLS, prov.RUN_CODE_TOOL]
 
     output.configure(voice_mode=False)
 
@@ -355,7 +355,7 @@ def run_single_shot(message: str) -> None:
     """Send one message, print the reply, exit — no session log, no sanctum write."""
     providers_config = prov.load_providers()
     registry = connectors_setup.build_registry()
-    tools = prov.CONNECTOR_TOOLS
+    tools = [*prov.CONNECTOR_TOOLS, prov.RUN_CODE_TOOL]
     system_prompt = core.load_system_prompt(voice_mode=False, registry=registry)
 
     messages = [{"role": "user", "content": message}]

@@ -12,6 +12,7 @@ from collections.abc import Callable
 
 import llm as prov
 import log
+import sandbox as sb
 import voice as v
 
 
@@ -40,6 +41,31 @@ def _execute_tool(tool_call: dict, registry) -> str:
         except KeyError as exc:
             return json.dumps({"error": str(exc)})
 
+    if name == "run_code":
+        try:
+            result = sb.run(
+                code=inp.get("code", ""),
+                deps=inp.get("deps") or [],
+                allow_network=bool(inp.get("allow_network", False)),
+            )
+            return json.dumps(
+                {
+                    "stdout": result.stdout,
+                    "stderr": result.stderr,
+                    "exit_code": result.exit_code,
+                    "timed_out": result.timed_out,
+                }
+            )
+        except Exception as exc:
+            return json.dumps(
+                {
+                    "stdout": "",
+                    "stderr": f"sandbox error: {exc}",
+                    "exit_code": 1,
+                    "timed_out": False,
+                }
+            )
+
     return json.dumps({"error": f"unknown tool: {name}"})
 
 
@@ -53,7 +79,7 @@ def call_with_tool_loop(
     text_mode: bool = True,
     clear_line: bool = False,
     silent: bool = False,
-    on_tool_event: Callable[[str, str, str | None], None] | None = None,
+    on_tool_event: Callable[[str, str, str | None, dict | None], None] | None = None,
 ) -> str:
     """
     Run one conversation turn handling any connector tool calls.
@@ -116,7 +142,21 @@ def call_with_tool_loop(
                 else:
                     log.connector_ok(v.ts(), instance, op)
             if on_tool_event is not None:
-                on_tool_event(instance, op, _err)
+                payload: dict | None = None
+                if tc["name"] == "run_code":
+                    try:
+                        _res = json.loads(result_str)
+                    except Exception:
+                        _res = {}
+                    payload = {
+                        "code": inp.get("code", ""),
+                        "deps": inp.get("deps") or [],
+                        "stdout": _res.get("stdout", ""),
+                        "stderr": _res.get("stderr", ""),
+                        "exit_code": _res.get("exit_code", -1),
+                        "timed_out": _res.get("timed_out", False),
+                    }
+                on_tool_event(instance, op, _err, payload)
             tool_results.append(
                 {
                     "type": "tool_result",
