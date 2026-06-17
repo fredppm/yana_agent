@@ -72,8 +72,8 @@ def _google_person(
 
 
 def _sync(connector: GoogleContactsConnector, people: list[dict]) -> dict:
-    """Run sync_contacts with a mocked list_contacts."""
-    with patch.object(connector, "list_contacts", return_value=people):
+    """Run sync_contacts with a mocked _fetch_contacts (no network, no parse errors)."""
+    with patch.object(connector, "_fetch_contacts", return_value=(people, [])):
         return connector.sync_contacts(
             owner="fred",
             email_connector_id="gmail_fred_personal",
