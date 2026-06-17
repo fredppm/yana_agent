@@ -285,12 +285,12 @@ class ProfileSessionScreen(Screen[str | None]):
         + """
     #profile-bar {
         height: 1;
-        padding: 0 3;
+        padding: 0;
         color: #e0e0e0;
     }
     #session-list {
         height: 1fr;
-        padding: 0 3;
+        padding: 0;
         background: transparent;
         scrollbar-color: #787878;
         scrollbar-background: transparent;
@@ -298,7 +298,7 @@ class ProfileSessionScreen(Screen[str | None]):
     }
     #session-hint {
         height: 1;
-        padding: 0 5;
+        padding: 0;
         color: #909090;
     }
     """
@@ -351,7 +351,7 @@ class ProfileSessionScreen(Screen[str | None]):
         sep = "  [dim]│[/dim]  "
         left = "◄  " if self._profile_idx > 0 else "   "
         right = "  ►" if self._profile_idx < len(self._profiles) - 1 else ""
-        bar.update(f"  {left}{sep.join(parts)}{right}")
+        bar.update(f"{left}{sep.join(parts)}{right}")
 
     # ------------------------------------------------------------------
     # Session list
@@ -389,7 +389,7 @@ class ProfileSessionScreen(Screen[str | None]):
     def _update_hint(self) -> None:
         frame = self._SPINNER[self._spinner_idx]
         if self._flash_ticks > 0:
-            self.query_one("#session-hint", Label).update(f"  {frame}  {self._flash_msg}")
+            self.query_one("#session-hint", Label).update(f"{frame}  {self._flash_msg}")
             return
         multi = len(self._profiles) > 1
         nav = t("profiles_hint_nav") if multi else t("sessions_hint_nav")
@@ -402,7 +402,7 @@ class ProfileSessionScreen(Screen[str | None]):
         ]
         if multi:
             parts.append(t("profiles_hint_delete"))
-        self.query_one("#session-hint", Label).update(f"  {frame}  {'   '.join(parts)}")
+        self.query_one("#session-hint", Label).update(f"{frame}  {'   '.join(parts)}")
 
     # ------------------------------------------------------------------
     # Actions
