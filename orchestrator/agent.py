@@ -130,7 +130,21 @@ def call_with_tool_loop(
                 else:
                     log.connector_ok(v.ts(), instance, op)
             if on_tool_event is not None:
-                on_tool_event(instance, op, _err)
+                payload: dict | None = None
+                if tc["name"] == "run_code":
+                    try:
+                        _res = json.loads(result_str)
+                    except Exception:
+                        _res = {}
+                    payload = {
+                        "code": inp.get("code", ""),
+                        "deps": inp.get("deps") or [],
+                        "stdout": _res.get("stdout", ""),
+                        "stderr": _res.get("stderr", ""),
+                        "exit_code": _res.get("exit_code", -1),
+                        "timed_out": _res.get("timed_out", False),
+                    }
+                on_tool_event(instance, op, _err, payload)
             tool_results.append(
                 {
                     "type": "tool_result",

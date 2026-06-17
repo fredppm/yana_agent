@@ -78,8 +78,9 @@ ExitCallback = Callable[[list[dict], str | None], None]
 TuiResult = tuple[list[dict], str | None]
 VoiceListenFn = Callable[[], str]
 VoiceSpeakFn = Callable[[str], None]
-# tool_event_fn(instance_id, operation, error_or_none)
-ToolEventCallback = Callable[[str, str, "str | None"], None]
+# tool_event_fn(instance_id, operation, error_or_none, payload_or_none)
+# payload is set for run_code: {"code", "deps", "stdout", "stderr", "exit_code", "timed_out"}
+ToolEventCallback = Callable[[str, str, "str | None", "dict | None"], None]
 
 _SHARED_CSS = """
 Screen {
@@ -779,23 +780,64 @@ class YANAApp(App[TuiResult]):
         instance: str,
         operation: str,
         error: str | None = None,
+        payload: dict | None = None,
     ) -> None:
         """Render a tool call/result event in the chat log (dim, muted style)."""
+        if operation == "run_code" and payload is not None:
+            self._write_sandbox_event(chat, payload)
+            return
         label = escape(f"{instance}/{operation}") if instance else escape(operation)
         if error:
             chat.write(f"[dim]  ⚙ {label}  ✗ {escape(error)}[/dim]")
         else:
             chat.write(f"[dim]  ⚙ {label}[/dim]")
 
+    def _write_sandbox_event(self, chat: RichLog, payload: dict) -> None:
+        """Render a sandbox run_code event — shows code sent and output received."""
+        code: str = payload.get("code", "")
+        deps: list = payload.get("deps") or []
+        stdout: str = payload.get("stdout", "").strip()
+        stderr: str = payload.get("stderr", "").strip()
+        exit_code: int = payload.get("exit_code", -1)
+        timed_out: bool = payload.get("timed_out", False)
+
+        # Header line
+        status = "[red]✗[/red]" if exit_code != 0 or timed_out else "[green]✓[/green]"
+        deps_hint = f"  deps: {', '.join(deps)}" if deps else ""
+        chat.write(f"[dim]  ⚙ sandbox {status}[/dim][dim]{escape(deps_hint)}[/dim]")
+
+        # Code block — truncated to 10 lines
+        code_lines = code.splitlines()
+        shown = code_lines[:10]
+        truncated = len(code_lines) > 10
+        for line in shown:
+            chat.write(f"[dim]  │ {escape(line)}[/dim]")
+        if truncated:
+            chat.write(f"[dim]  │ … ({len(code_lines) - 10} more lines)[/dim]")
+
+        # Output
+        if timed_out:
+            chat.write("[dim]  → timed out[/dim]")
+        elif stdout:
+            for line in stdout.splitlines()[:5]:
+                chat.write(f"[dim]  → {escape(line)}[/dim]")
+            if len(stdout.splitlines()) > 5:
+                chat.write("[dim]  → …[/dim]")
+        elif stderr:
+            first_err = stderr.splitlines()[0]
+            chat.write(f"[dim]  → [red]{escape(first_err)}[/red][/dim]")
+
     def _make_tool_event_fn(self, chat: RichLog) -> ToolEventCallback:
         """Return a thread-safe callback that writes tool events to *chat*."""
 
-        def _cb(instance: str, operation: str, error: str | None) -> None:
+        def _cb(instance: str, operation: str, error: str | None, payload: dict | None = None) -> None:
             msg: dict = {"role": "tool", "content": instance, "tool_op": operation}
             if error:
                 msg["error"] = error
+            if payload:
+                msg["payload"] = payload
             self._new_messages.append(("", msg))
-            self.call_from_thread(self._write_tool_event, chat, instance, operation, error)
+            self.call_from_thread(self._write_tool_event, chat, instance, operation, error, payload)
 
         return _cb
 
@@ -1031,7 +1073,7 @@ class YANAApp(App[TuiResult]):
             if m["role"] == "user":
                 self._write_user_bg(chat, m["content"], ts)
             elif m["role"] == "tool":
-                self._write_tool_event(chat, m["content"], m.get("tool_op", ""), m.get("error"))
+                self._write_tool_event(chat, m["content"], m.get("tool_op", ""), m.get("error"), m.get("payload"))
             else:
                 self._write_yana(chat, m["content"], ts)
 
