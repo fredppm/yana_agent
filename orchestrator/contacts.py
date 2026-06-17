@@ -37,6 +37,9 @@ class Persona:
     aliases: list[str] = field(default_factory=list)
     context: str = ""
     tags: list[str] = field(default_factory=list)
+    # Shadow copy tracking — list of {provider, source_id} dicts
+    # e.g. [{"provider": "google", "source_id": "people/c1234567"}]
+    sources: list[dict] = field(default_factory=list)
 
 
 @dataclass
@@ -102,6 +105,7 @@ class ContactRegistry:
                 aliases=entry.get("aliases", []),
                 context=entry.get("context", ""),
                 tags=entry.get("tags", []),
+                sources=entry.get("sources", []),
             )
             self._personas[p.id] = p
 
@@ -190,6 +194,14 @@ class ContactRegistry:
         preferred = [c for c in persona_contacts if c.preferred]
         return preferred[0] if preferred else persona_contacts[0]
 
+    def find_by_source(self, provider: str, source_id: str) -> Persona | None:
+        """Find a Persona by its external source reference."""
+        for p in self._personas.values():
+            for s in p.sources:
+                if s.get("provider") == provider and s.get("source_id") == source_id:
+                    return p
+        return None
+
     def get_named_channel(self, name: str) -> NamedChannel | None:
         """Resolve a Named Channel by name or alias (case-insensitive)."""
         needle = name.strip().lower()
@@ -214,6 +226,7 @@ class ContactRegistry:
                 "aliases": p.aliases,
                 "context": p.context,
                 "tags": p.tags,
+                **({"sources": p.sources} if p.sources else {}),
             }
             for p in self._personas.values()
         ]

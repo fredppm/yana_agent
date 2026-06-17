@@ -156,9 +156,15 @@ class GoogleContactsConnector(Connector):
             emails = [e["value"] for e in person.get("emailAddresses", [])]
             phones = [p["value"] for p in person.get("phoneNumbers", [])]
             display = names[0]["displayName"] if names else None
+            resource_name = person.get("resourceName", "")
             if display:
                 contacts.append(
-                    {"name": display, "emails": emails, "phones": phones}
+                    {
+                        "name": display,
+                        "emails": emails,
+                        "phones": phones,
+                        "source_id": resource_name,  # e.g. "people/c1234567"
+                    }
                 )
         return contacts
 
@@ -168,9 +174,10 @@ class GoogleContactsConnector(Connector):
 
     @command(
         description=(
-            "Import Google Contacts into YANA's persona/contact registry. "
-            "Creates a Persona for each contact and adds email/phone Contact entries. "
-            "Existing personas (matched by id) are skipped — call again to refresh aliases. "
+            "Sync Google Contacts into YANA's persona/contact registry (shadow copy). "
+            "New contacts are created. Existing ones (matched by Google source_id) have their "
+            "name and addresses updated — YANA enrichment (aliases, context, tags, preferred channel) "
+            "is never overwritten. Safe to run repeatedly. "
             "owner: persona owner label (usually 'fred'). "
             "email_connector_id: connector to use for email contacts (e.g. 'gmail_fred_personal'). "
             "phone_connector_id: connector to use for phone contacts (e.g. 'whatsapp'). "
@@ -184,7 +191,7 @@ class GoogleContactsConnector(Connector):
         },
         returns={"type": "object"},
     )
-    def import_contacts(
+    def sync_contacts(
         self,
         owner: str,
         email_connector_id: str,
@@ -194,21 +201,43 @@ class GoogleContactsConnector(Connector):
         raw = self.list_contacts(max_results=1000)
 
         added_personas = 0
+        updated_personas = 0
         added_contacts = 0
         skipped = 0
+
+        existing_contact_ids = {c.id for c in self._registry._contacts}
 
         for entry in raw:
             display: str = entry["name"]
             emails: list[str] = entry["emails"]
             phones: list[str] = entry["phones"]
+            source_id: str = entry["source_id"]
 
-            persona_id = _slugify(display)
-            if not persona_id:
+            if not display.strip():
                 skipped += 1
                 continue
 
-            # Upsert persona (skip if already present — preserve YANA's richer context)
-            if persona_id not in self._registry._personas:
+            # Find existing persona by source_id (reliable) or fall back to slugified name
+            existing = self._registry.find_by_source("google", source_id) if source_id else None
+            if existing is None:
+                persona_id = _slugify(display)
+                if not persona_id:
+                    skipped += 1
+                    continue
+                existing = self._registry._personas.get(persona_id)
+
+            if existing is not None:
+                # Update base data only — never touch aliases, context, tags
+                existing.name = display
+                if not any(s.get("source_id") == source_id for s in existing.sources):
+                    existing.sources.append({"provider": "google", "source_id": source_id})
+                updated_personas += 1
+                persona_id = existing.id
+            else:
+                persona_id = _slugify(display)
+                if not persona_id:
+                    skipped += 1
+                    continue
                 p = Persona(
                     id=persona_id,
                     name=display,
@@ -217,45 +246,46 @@ class GoogleContactsConnector(Connector):
                     aliases=[display],
                     context="",
                     tags=[],
+                    sources=[{"provider": "google", "source_id": source_id}],
                 )
                 self._registry._personas[persona_id] = p
                 added_personas += 1
 
-            # Add email contacts not already in the registry
-            existing_ids = {c.id for c in self._registry._contacts}
+            # Sync email contacts
             for email in emails:
                 contact_id = f"{persona_id}_email_{_slugify(email)}"
-                if contact_id not in existing_ids:
-                    c = Contact(
+                if contact_id not in existing_contact_ids:
+                    self._registry._contacts.append(Contact(
                         id=contact_id,
                         persona_id=persona_id,
                         channel="email",
                         address=email,
                         connector_id=email_connector_id,
                         preferred=len(emails) == 1 and not phones,
-                    )
-                    self._registry._contacts.append(c)
+                    ))
+                    existing_contact_ids.add(contact_id)
                     added_contacts += 1
 
-            # Add phone contacts if connector provided
+            # Sync phone contacts
             if phone_connector_id:
                 for phone in phones:
                     contact_id = f"{persona_id}_{channel_for_phone}_{_slugify(phone)}"
-                    if contact_id not in existing_ids:
-                        c = Contact(
+                    if contact_id not in existing_contact_ids:
+                        self._registry._contacts.append(Contact(
                             id=contact_id,
                             persona_id=persona_id,
                             channel=channel_for_phone,
                             address=phone,
                             connector_id=phone_connector_id,
                             preferred=not emails,
-                        )
-                        self._registry._contacts.append(c)
+                        ))
+                        existing_contact_ids.add(contact_id)
                         added_contacts += 1
 
         self._registry.save()
         return {
             "added_personas": added_personas,
+            "updated_personas": updated_personas,
             "added_contacts": added_contacts,
             "skipped": skipped,
             "total_processed": len(raw),
