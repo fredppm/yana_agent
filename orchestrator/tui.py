@@ -541,6 +541,7 @@ class YANAApp(App[TuiResult]):
         height: 2;
         background: #0a0a0a;
         border-top: solid #383838;
+        border-bottom: solid #383838;
         align: left bottom;
         padding: 0;
     }
@@ -870,7 +871,7 @@ class YANAApp(App[TuiResult]):
         self.query_one("#input", Input).clear()  # flush any text buffered during screen transitions
         self._chat_started = True  # gate: discard events before this point
         # Hint bar
-        hints = [t("chat_hint_end"), t("chat_hint_history"), t("chat_hint_copy")]
+        hints = [t("chat_hint_end"), t("chat_hint_history"), t("chat_hint_copy"), t("chat_hint_select")]
         if self._listen_fn:
             hints.append(t("chat_hint_voice"))
         if self._profiles:
@@ -1090,7 +1091,7 @@ class YANAApp(App[TuiResult]):
 
     def _restore_hint(self) -> None:
         """Restore the normal hint bar content after a flash."""
-        hints = [t("chat_hint_end"), t("chat_hint_history"), t("chat_hint_copy")]
+        hints = [t("chat_hint_end"), t("chat_hint_history"), t("chat_hint_copy"), t("chat_hint_select")]
         if self._listen_fn:
             hints.append(t("chat_hint_voice"))
         if self._profiles:
