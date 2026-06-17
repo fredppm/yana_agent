@@ -8,6 +8,7 @@ returns a final text response.
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 
 import llm as prov
 import log
@@ -52,6 +53,7 @@ def call_with_tool_loop(
     text_mode: bool = True,
     clear_line: bool = False,
     silent: bool = False,
+    on_tool_event: Callable[[str, str, "str | None"], None] | None = None,
 ) -> str:
     """
     Run one conversation turn handling any connector tool calls.
@@ -61,6 +63,8 @@ def call_with_tool_loop(
 
     silent=True: skip all terminal output (used by TUI mode — the caller
     renders the reply itself).
+    on_tool_event: optional callback(instance_id, operation, error_or_none) fired
+    after each tool call resolves — used by the TUI to display tool activity.
     """
     work = list(messages)
     _text_mode = text_mode
@@ -111,6 +115,8 @@ def call_with_tool_loop(
                     log.connector_err(v.ts(), instance, op, _err)
                 else:
                     log.connector_ok(v.ts(), instance, op)
+            if on_tool_event is not None:
+                on_tool_event(instance, op, _err)
             tool_results.append(
                 {
                     "type": "tool_result",

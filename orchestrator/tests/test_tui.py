@@ -43,12 +43,13 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 import core
 import profiles as _profiles
 from strings import t
-from textual.widgets import Input, Label
+from textual.widgets import Input, Label, TextArea
 from tui import (
     _NEW,
     NewProfileScreen,
     ProfileSessionScreen,
     RenameProfileScreen,
+    SubmitTextArea,
     YANAApp,
 )
 
@@ -96,7 +97,7 @@ async def test_first_breath_skips_session_browser():
     async with app.run_test(size=(80, 24)) as pilot:
         await pilot.pause()
         assert not isinstance(app.screen, ProfileSessionScreen)
-        assert app.query_one(Input).display is True
+        assert app.query_one(SubmitTextArea).display is True
 
 
 @pytest.mark.asyncio
@@ -205,7 +206,7 @@ async def test_modal_text_does_not_leak_into_new_profile_chat():
             await pilot.press("enter")  # select _NEW in new profile
             await pilot.pause()
 
-            assert app.query_one(Input).value == ""
+            assert app.query_one(SubmitTextArea).text == ""
             assert app._messages == []
 
 
@@ -266,7 +267,7 @@ async def test_thinking_indicator_visible_during_turn():
         thinking = app.query_one("#thinking", Label)
         assert thinking.display is True
         assert str(thinking.content).strip() != "", "thinking label is visible but has no content"
-        assert app.query_one(Input).display is True, (
+        assert app.query_one(SubmitTextArea).display is True, (
             "Input must remain visible while thinking — user can pre-type"
         )
 
@@ -319,7 +320,7 @@ async def test_thinking_visible_during_first_user_turn_after_auto_greet():
             "thinking not visible during first user turn after auto-greet"
         )
         assert str(thinking.content).strip() != "", "thinking label is visible but has no content"
-        assert app.query_one(Input).display is True, (
+        assert app.query_one(SubmitTextArea).display is True, (
             "Input must remain visible while thinking — user can pre-type"
         )
 
@@ -359,7 +360,7 @@ async def test_auto_greet_thinking_indicator_visible_immediately():
         thinking = app.query_one("#thinking", Label)
         assert thinking.display is True
         assert str(thinking.content).strip() != "", "thinking label is visible but has no content"
-        assert app.query_one(Input).display is True, (
+        assert app.query_one(SubmitTextArea).display is True, (
             "Input must remain visible during auto-greet — user can pre-type"
         )
 
@@ -546,7 +547,7 @@ async def test_select_new_session_starts_chat(db):
         await pilot.pause()
 
         assert not isinstance(app.screen, ProfileSessionScreen)
-        assert app.query_one(Input).display is True
+        assert app.query_one(SubmitTextArea).display is True
 
 
 # -- Hint bar ----------------------------------------------------------------
