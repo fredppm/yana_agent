@@ -76,7 +76,7 @@ connectors:
     import os
     import tempfile
 
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+    with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", suffix=".yaml", delete=False) as f:
         f.write(manifest_yaml)
         tmp = f.name
     try:
@@ -232,7 +232,7 @@ connectors:
     name: Ghost
     description: Not registered
 """
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+    with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", suffix=".yaml", delete=False) as f:
         f.write(manifest_yaml)
         tmp = f.name
     try:
