@@ -8,7 +8,7 @@ Exposes the ContactRegistry as a Connector so the LLM can call:
 
 Resolution contract:
   - find_persona returns ok=True with data if exactly one match.
-  - find_persona returns ok=False, error="ambiguous" with data=[list of matches]
+  - find_persona returns ok=False, error="ambiguous" with a list of candidates
     if multiple personas share the alias — YANA should ask for clarification.
   - find_persona returns ok=False, error="not_found" if no match at all.
   - get_contact returns ok=False, error="not_found" if persona has no contacts,
@@ -20,6 +20,11 @@ Register in orchestrator/config/connectors.yaml:
       id: contacts
       name: "Contacts"
       description: "Resolve personas and contacts — find who someone is and how to reach them"
+      config: {}
+
+For backward compatibility, optional file paths may be passed to activate YAML
+mode (used by tests):
+
       config:
         personas_file: "orchestrator/config/personas.yaml"
         contacts_file: "orchestrator/config/contacts.yaml"
@@ -27,25 +32,21 @@ Register in orchestrator/config/connectors.yaml:
 
 from __future__ import annotations
 
+import importlib.util as _ilu
+import sys as _sys
 from pathlib import Path
 from typing import Any
 
-from connectors import Connector, ConnectorResult, command, query
+from connectors import Connector, command, query
 
 # ContactRegistry lives in orchestrator/contacts.py.
 # Import via importlib to avoid naming collision with this file's package name.
-import importlib.util as _ilu
-import sys as _sys
-
 _contacts_mod_path = Path(__file__).parent.parent / "orchestrator" / "contacts.py"
 _spec = _ilu.spec_from_file_location("orchestrator.contacts", _contacts_mod_path)
 _contacts_mod = _ilu.module_from_spec(_spec)  # type: ignore[arg-type]
 _sys.modules["orchestrator.contacts"] = _contacts_mod
 _spec.loader.exec_module(_contacts_mod)  # type: ignore[union-attr]
 ContactRegistry = _contacts_mod.ContactRegistry
-
-_DEFAULT_PERSONAS = "orchestrator/config/personas.yaml"
-_DEFAULT_CONTACTS = "orchestrator/config/contacts.yaml"
 
 
 class ContactsConnector(Connector):
@@ -56,24 +57,20 @@ class ContactsConnector(Connector):
         personas_file: str | None = None,
         contacts_file: str | None = None,
     ) -> None:
-        personas_path = Path(personas_file or _DEFAULT_PERSONAS)
-        contacts_path = Path(contacts_file or _DEFAULT_CONTACTS)
-        # Resolve relative paths from the project root
-        if not personas_path.is_absolute():
-            personas_path = Path(__file__).parent.parent / personas_path
-        if not contacts_path.is_absolute():
-            contacts_path = Path(__file__).parent.parent / contacts_path
-        self._personas_path = personas_path
-        self._contacts_path = contacts_path
         self._registry = ContactRegistry()
-        self._registry.load(personas_path, contacts_path)
 
-    def call(self, operation: str, params=None):
-        # Reload from disk before every call so changes made by other connectors
-        # (e.g. google_contacts sync_contacts) are always visible without restart.
-        self._registry = ContactRegistry()
-        self._registry.load(self._personas_path, self._contacts_path)
-        return super().call(operation, params)
+        if personas_file is not None:
+            # YAML mode — activated by tests or legacy config
+            personas_path = Path(personas_file)
+            contacts_path = Path(contacts_file) if contacts_file is not None else None
+            if not personas_path.is_absolute():
+                personas_path = Path(__file__).parent.parent / personas_path
+            if contacts_path is not None and not contacts_path.is_absolute():
+                contacts_path = Path(__file__).parent.parent / contacts_path
+            self._registry.load(personas_path, contacts_path)
+        else:
+            # DB mode — production; load once at startup; DB is the live source
+            self._registry.load()
 
     # ------------------------------------------------------------------
     # Queries

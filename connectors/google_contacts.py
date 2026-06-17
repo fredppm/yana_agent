@@ -4,7 +4,7 @@ connectors/google_contacts.py — Google Contacts (People API) connector.
 Two operations:
   list_contacts(max_results?)          → raw Google contact data (query)
   import_contacts(owner, email_connector_id, phone_connector_id?, channel_for_phone?)
-                                       → upserts Personas + Contacts into YAML (command)
+                                       → upserts Personas + Contacts into the registry (command)
 
 import_contacts is designed to be run once (or periodically) to seed the registry.
 Personas that already exist (by id) are merged — aliases and context are updated,
@@ -22,6 +22,8 @@ Setup:
          config:
            app_credential: "~/.yana/google_credentials.json"
            persona_token: "~/.yana/tokens/google_contacts.json"
+
+  Optional — pass personas_file/contacts_file to use YAML mode (tests / legacy):
            personas_file: "orchestrator/config/personas.yaml"
            contacts_file: "orchestrator/config/contacts.yaml"
 """
@@ -55,12 +57,9 @@ Persona = _contacts_mod.Persona
 
 _SCOPES = ["https://www.googleapis.com/auth/contacts.readonly"]
 
-_DEFAULT_PERSONAS = "orchestrator/config/personas.yaml"
-_DEFAULT_CONTACTS = "orchestrator/config/contacts.yaml"
-
 
 def _slugify(name: str) -> str:
-    """Turn a display name into a lowercase id safe for YAML keys."""
+    """Turn a display name into a lowercase id safe for use as a persona id."""
     slug = name.strip().lower()
     slug = re.sub(r"[^a-z0-9]+", "_", slug)
     return slug.strip("_")
@@ -87,15 +86,21 @@ class GoogleContactsConnector(Connector):
             or os.environ.get("GOOGLE_TOKEN_FILE", "~/.yana/tokens/google_contacts.json")
         ).expanduser()
 
-        personas_path = Path(personas_file or _DEFAULT_PERSONAS)
-        contacts_path = Path(contacts_file or _DEFAULT_CONTACTS)
-        if not personas_path.is_absolute():
-            personas_path = Path(__file__).parent.parent / personas_path
-        if not contacts_path.is_absolute():
-            contacts_path = Path(__file__).parent.parent / contacts_path
-
         self._registry = ContactRegistry()
-        self._registry.load(personas_path, contacts_path)
+
+        if personas_file is not None:
+            # YAML mode — activated by tests or legacy config
+            personas_path = Path(personas_file)
+            contacts_path = Path(contacts_file) if contacts_file is not None else None
+            if not personas_path.is_absolute():
+                personas_path = Path(__file__).parent.parent / personas_path
+            if contacts_path is not None and not contacts_path.is_absolute():
+                contacts_path = Path(__file__).parent.parent / contacts_path
+            self._registry.load(personas_path, contacts_path)
+        else:
+            # DB mode — production
+            self._registry.load()
+
         self._service = None  # lazy
 
     # ------------------------------------------------------------------

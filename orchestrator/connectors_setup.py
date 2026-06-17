@@ -25,8 +25,8 @@ def build_registry() -> ConnectorRegistry:
     """Build and return a populated ConnectorRegistry.
 
     Types are discovered by scanning the project-level connectors/ folder.
-    Instances are loaded from PostgreSQL (source of truth).
-    On first run (no connectors in DB), imports from connectors.yaml and persists.
+    Instances are loaded from connectors.yaml and upserted into PostgreSQL on every
+    startup, so YAML changes propagate automatically without manual DB edits.
     """
     import json
 
@@ -48,14 +48,18 @@ def build_registry() -> ConnectorRegistry:
     db_rows = store.list_connectors_sync(profile_id)
     db_ids = {row["instance_id"] for row in db_rows}
 
-    # Sync YAML → DB: persist any entries not yet in the database
+    # Sync YAML → DB: upsert all entries so config changes in YAML propagate to DB
     manifest = _HERE / "config" / "connectors.yaml"
+    yaml_ids: set[str] = set()
     if manifest.exists():
         data = yaml.safe_load(manifest.read_text(encoding="utf-8")) or {}
         for c in data.get("connectors", []):
-            if c["id"] not in db_ids:
-                store.save_connector_sync(profile_id, c["id"], json.dumps(c, ensure_ascii=False))
-                db_rows.append({"instance_id": c["id"], "config_json": json.dumps(c, ensure_ascii=False)})
+            yaml_ids.add(c["id"])
+            config_json = json.dumps(c, ensure_ascii=False)
+            store.save_connector_sync(profile_id, c["id"], config_json)
+            # Replace or append the row so db_rows reflects the current YAML state
+            db_rows = [r for r in db_rows if r["instance_id"] != c["id"]]
+            db_rows.append({"instance_id": c["id"], "config_json": config_json})
 
     if db_rows:
         registry.load_from_db(db_rows)

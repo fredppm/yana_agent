@@ -70,9 +70,7 @@ connectors:
     id: contacts
     name: "Contacts"
     description: "Resolve personas and contacts — find who someone is and how to reach them"
-    config:
-      personas_file: "orchestrator/config/personas.yaml"
-      contacts_file: "orchestrator/config/contacts.yaml"
+    config: {}
 
   # Google Contacts — import Google address book into YANA's registry
   - type: GoogleContactsConnector
@@ -83,8 +81,6 @@ connectors:
     config:
       app_credential: "~/.yana/google_credentials.json"
       persona_token: "~/.yana/tokens/google_contacts.json"
-      personas_file: "orchestrator/config/personas.yaml"
-      contacts_file: "orchestrator/config/contacts.yaml"
 
   - type: RGBLightConnector
     id: rgb_sala
