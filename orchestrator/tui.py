@@ -803,8 +803,7 @@ class YANAApp(App[TuiResult]):
         ts_mk = f"[dim]  {ts}[/dim]" if ts else ""
         chat.write(f"[dim]  {escape(t('sandbox_label'))} {status}[/dim][dim]{escape(deps_hint)}[/dim]{ts_mk}")
 
-        # Code block — blank line above/below, plain indent, no │
-        chat.write("")
+        # Code block — blank line after, plain indent, no │
         for line in code.splitlines():
             chat.write(f"[dim]    {escape(line)}[/dim]")
         chat.write("")
