@@ -802,7 +802,9 @@ class YANAApp(App[TuiResult]):
         status = "[red]✗[/red]" if exit_code != 0 or timed_out else "[green]✓[/green]"
         deps_hint = f"  {', '.join(deps)}" if deps else ""
         ts_mk = f"[dim]  {ts}[/dim]" if ts else ""
-        chat.write(f"[dim]  {escape(t('sandbox_label'))} {status}[/dim][dim]{escape(deps_hint)}[/dim]{ts_mk}")
+        chat.write(
+            f"[dim]  {escape(t('sandbox_label'))} {status}[/dim][dim]{escape(deps_hint)}[/dim]{ts_mk}"
+        )
 
         # Code block — blank line after, plain indent, no │
         for line in code.splitlines():
@@ -822,7 +824,9 @@ class YANAApp(App[TuiResult]):
     def _make_tool_event_fn(self, chat: RichLog) -> ToolEventCallback:
         """Return a thread-safe callback that writes tool events to *chat*."""
 
-        def _cb(instance: str, operation: str, error: str | None, payload: dict | None = None) -> None:
+        def _cb(
+            instance: str, operation: str, error: str | None, payload: dict | None = None
+        ) -> None:
             ts = datetime.now().strftime("%H:%M:%S")
             msg: dict = {"role": "tool", "content": instance, "tool_op": operation}
             if error:
@@ -830,7 +834,9 @@ class YANAApp(App[TuiResult]):
             if payload:
                 msg["payload"] = payload
             self._new_messages.append((ts, msg))
-            self.call_from_thread(self._write_tool_event, chat, instance, operation, error, payload, ts)
+            self.call_from_thread(
+                self._write_tool_event, chat, instance, operation, error, payload, ts
+            )
 
         return _cb
 
@@ -900,7 +906,12 @@ class YANAApp(App[TuiResult]):
         self.query_one("#input", Input).clear()  # flush any text buffered during screen transitions
         self._chat_started = True  # gate: discard events before this point
         # Hint bar
-        hints = [t("chat_hint_end"), t("chat_hint_history"), t("chat_hint_copy"), t("chat_hint_select")]
+        hints = [
+            t("chat_hint_end"),
+            t("chat_hint_history"),
+            t("chat_hint_copy"),
+            t("chat_hint_select"),
+        ]
         if self._listen_fn:
             hints.append(t("chat_hint_voice"))
         if self._profiles:
@@ -1092,7 +1103,9 @@ class YANAApp(App[TuiResult]):
             if m["role"] == "user":
                 self._write_user_bg(chat, m["content"], ts)
             elif m["role"] == "tool":
-                self._write_tool_event(chat, m["content"], m.get("tool_op", ""), m.get("error"), m.get("payload"))
+                self._write_tool_event(
+                    chat, m["content"], m.get("tool_op", ""), m.get("error"), m.get("payload")
+                )
             else:
                 self._write_yana(chat, m["content"], ts)
 
@@ -1120,7 +1133,12 @@ class YANAApp(App[TuiResult]):
 
     def _restore_hint(self) -> None:
         """Restore the normal hint bar content after a flash."""
-        hints = [t("chat_hint_end"), t("chat_hint_history"), t("chat_hint_copy"), t("chat_hint_select")]
+        hints = [
+            t("chat_hint_end"),
+            t("chat_hint_history"),
+            t("chat_hint_copy"),
+            t("chat_hint_select"),
+        ]
         if self._listen_fn:
             hints.append(t("chat_hint_voice"))
         if self._profiles:

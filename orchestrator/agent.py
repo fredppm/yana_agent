@@ -48,19 +48,23 @@ def _execute_tool(tool_call: dict, registry) -> str:
                 deps=inp.get("deps") or [],
                 allow_network=bool(inp.get("allow_network", False)),
             )
-            return json.dumps({
-                "stdout": result.stdout,
-                "stderr": result.stderr,
-                "exit_code": result.exit_code,
-                "timed_out": result.timed_out,
-            })
+            return json.dumps(
+                {
+                    "stdout": result.stdout,
+                    "stderr": result.stderr,
+                    "exit_code": result.exit_code,
+                    "timed_out": result.timed_out,
+                }
+            )
         except Exception as exc:
-            return json.dumps({
-                "stdout": "",
-                "stderr": f"sandbox error: {exc}",
-                "exit_code": 1,
-                "timed_out": False,
-            })
+            return json.dumps(
+                {
+                    "stdout": "",
+                    "stderr": f"sandbox error: {exc}",
+                    "exit_code": 1,
+                    "timed_out": False,
+                }
+            )
 
     return json.dumps({"error": f"unknown tool: {name}"})
 
