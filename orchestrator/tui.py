@@ -31,7 +31,6 @@ from textual import work
 from textual.app import App, ComposeResult
 from textual.binding import Binding, BindingType
 from textual.containers import Container, Horizontal
-from textual.events import MouseScrollDown, MouseScrollUp
 from textual.message import Message
 from textual.screen import ModalScreen, Screen
 from textual.timer import Timer
@@ -538,10 +537,10 @@ class YANAApp(App[TuiResult]):
     /* ── Input row ─────────────────────────────────────── */
 
     #input-bar {
-        height: 3;
+        height: 2;
         background: #0a0a0a;
         border-top: solid #383838;
-        align: left middle;
+        align: left bottom;
         padding: 0 2;
     }
 
@@ -1104,16 +1103,6 @@ class YANAApp(App[TuiResult]):
             hints.append(t("chat_hint_sessions"))
         self.query_one("#chat-hint", Label).update(f"  {'   '.join(hints)}")
 
-    def on_mouse_scroll_up(self, event: MouseScrollUp) -> None:
-        """Forward mouse wheel up to the chat log regardless of where the mouse is."""
-        event.stop()
-        self.query_one("#chat", RichLog).scroll_up(animate=False)
-
-    def on_mouse_scroll_down(self, event: MouseScrollDown) -> None:
-        """Forward mouse wheel down to the chat log regardless of where the mouse is."""
-        event.stop()
-        self.query_one("#chat", RichLog).scroll_down(animate=False)
-
     def action_switch_session(self) -> None:
         """Return to the session browser mid-conversation (ctrl+b)."""
         if self._busy:
@@ -1317,7 +1306,7 @@ def run_tui(
         make_tool_event_cb=make_tool_event_cb,
     )
     try:
-        result = app.run()
+        result = app.run(mouse=False)
     except KeyboardInterrupt:
         result = None
     return result if result is not None else ([], None)
