@@ -110,7 +110,7 @@ class ConnectorRegistry:
         return instance
 
     def load_manifest(self, path: Path) -> None:
-        with open(path) as f:
+        with open(path, encoding="utf-8") as f:
             data = yaml.safe_load(f)
         for entry in data.get("connectors", []):
             self._load_entry(entry)
