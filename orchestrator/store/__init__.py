@@ -41,8 +41,10 @@ from .sanctum import load_sanctum_fields_sync, save_sanctum_fields_sync
 from .sessions import (
     create_session_sync,
     list_sessions_sync,
+    list_untitled_sessions_sync,
     load_session_messages_sync,
-    update_session_preview_sync,
+    load_session_summary_sync,
+    update_session_title_sync,
 )
 
 __all__ = [
@@ -76,13 +78,15 @@ __all__ = [
     "list_personas_sync",
     "list_profiles_sync",
     "list_sessions_sync",
+    "list_untitled_sessions_sync",
     "load_sanctum_fields_sync",
     "load_session_messages_sync",
+    "load_session_summary_sync",
     "save_connector_sync",
     "save_sanctum_fields_sync",
     "update_contacts_preferred_sync",
     "update_profile_label_sync",
-    "update_session_preview_sync",
+    "update_session_title_sync",
     "upsert_contact_sync",
     "upsert_named_channel_sync",
     "upsert_persona_sync",

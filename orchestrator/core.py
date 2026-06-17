@@ -49,9 +49,10 @@ def save_session_log(messages: list[dict], session_id: str) -> Path:
     profile_id = profiles.get_active_profile()
     if profile_id:
         now = datetime.now().isoformat()
-        preview = next((m["content"][:80] for m in messages if m.get("role") == "assistant"), "")
+        # Store empty title initially — write_session_title() generates it at session close
+        title = ""
         store.create_session_sync(
-            session_id, profile_id, now, preview, _json.dumps(messages, ensure_ascii=False)
+            session_id, profile_id, now, title, _json.dumps(messages, ensure_ascii=False)
         )
 
     sessions_dir = sanctum_path() / "sessions"
@@ -174,7 +175,7 @@ def load_system_prompt(
 
 
 def list_sessions(limit: int = 20) -> list[tuple[str, datetime, str]]:
-    """List recent sessions as (session_id, datetime, preview), newest first."""
+    """List recent sessions as (session_id, datetime, title), newest first."""
     import store
 
     active = profiles.get_active_profile()

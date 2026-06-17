@@ -176,3 +176,93 @@ def _save_raw_response(response: str, session_date: str) -> None:
     debug_path = Path(__file__).parent / "config" / f"_debug-sanctum-{session_date}.txt"
     debug_path.write_text(response, encoding="utf-8")
     output.status(errors.e("MEM-004", filename=debug_path.name))
+
+
+# ---------------------------------------------------------------------------
+# Session title + summary generation
+# ---------------------------------------------------------------------------
+
+_TITLE_CONTEXT_LIMIT = 20  # max messages for title generation
+
+_TITLE_PROMPT = """Analyze this conversation and generate a title and summary.
+
+Skip any greetings, pleasantries, or small talk. Extract the real topic(s) discussed.
+
+Use this exact format — no deviations:
+
+<<<TITLE>>>
+[One line, 80-120 chars. Topic + key detail. No quotes, no period at the end]
+<<<END>>>
+
+<<<SUMMARY>>>
+[1-3 sentences. Last state of the discussion + any pending decisions or follow-ups]
+<<<END>>>
+
+Rules:
+- Title must capture WHAT was discussed, not that a conversation happened
+- If multiple topics: focus on the most substantive one
+- Summary should help the user remember where they left off
+- Write in the same language as the conversation
+- If the conversation is too short or trivial (only greetings), return nothing"""
+
+
+def write_session_title(
+    messages: list[dict],
+    config: dict | None = None,
+) -> dict[str, str]:
+    """
+    Generate a title and summary for a conversation session.
+
+    Calls the LLM with task "conversation_fast" (cheap, fast) to produce a
+    one-line title and a 1-3 sentence summary.
+
+    Returns {"title": "...", "summary": "..."} or empty dict if parsing fails.
+    Never raises — always returns a dict.
+    """
+    try:
+        if config is None:
+            config = prov.load_providers()
+
+        context = messages[-_TITLE_CONTEXT_LIMIT:]
+        if not context:
+            return {}
+
+        title_messages = [*context, {"role": "user", "content": _TITLE_PROMPT}]
+
+        response = prov.call_llm(
+            title_messages,
+            "You are a session summarizer. Generate a title and summary for this conversation.",
+            task="conversation_fast",
+            stream=False,
+            config=config,
+            timeout=30.0,
+        )
+
+        return _parse_title_response(response)
+    except Exception:
+        return {}
+
+
+def _parse_title_response(response: str) -> dict[str, str]:
+    """Parse <<<TITLE>>>...<<<END>>> and <<<SUMMARY>>>...<<<END>>> blocks.
+
+    Returns {"title": "...", "summary": "..."} or empty dict if parsing fails.
+    """
+    title_match = re.search(r"<<<TITLE>>>\n(.*?)<<<END>>>", response, re.DOTALL)
+    summary_match = re.search(r"<<<SUMMARY>>>\n(.*?)<<<END>>>", response, re.DOTALL)
+
+    if not title_match:
+        return {}
+
+    title = title_match.group(1).strip()
+    if not title:
+        return {}
+
+    result: dict[str, str] = {"title": title[:200]}
+
+    if summary_match:
+        summary = summary_match.group(1).strip()
+        if summary:
+            result["summary"] = summary
+
+    return result

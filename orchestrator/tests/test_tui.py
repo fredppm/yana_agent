@@ -73,10 +73,10 @@ def _app(
     )
 
 
-def _seed_session(db, profile_id: str, preview: str = "test") -> str:
+def _seed_session(db, profile_id: str, title: str = "test") -> str:
     """Insert one session row and return its id."""
     sid = f"2024-01-01_10-00-00_{uuid.uuid4().hex[:6]}"
-    db.create_session_sync(sid, profile_id, dt.now(UTC).isoformat(), preview, json.dumps([]))
+    db.create_session_sync(sid, profile_id, dt.now(UTC).isoformat(), title, json.dumps([]))
     return sid
 
 

@@ -63,7 +63,8 @@ class SessionRecord(Base):
     id: MappedColumn[str] = mapped_column(String, primary_key=True)
     profile_id: MappedColumn[str] = mapped_column(String, nullable=False)
     started_at: MappedColumn[str] = mapped_column(String, nullable=False)
-    preview: MappedColumn[str | None] = mapped_column(Text, nullable=True)
+    title: MappedColumn[str | None] = mapped_column(Text, nullable=True)
+    summary: MappedColumn[str | None] = mapped_column(Text, nullable=True)
     messages_json: MappedColumn[str | None] = mapped_column(Text, nullable=True)
 
 
