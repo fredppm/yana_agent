@@ -354,6 +354,7 @@ def test_connector_operations_declared() -> None:
         "get_named_channel",
         "upsert_persona",
         "upsert_named_channel",
+        "delete_persona",
         "set_preferred_contact",
     }
 
@@ -387,3 +388,44 @@ def test_list_personas_includes_sources(connector: ContactsConnector) -> None:
     result = connector.call("list_personas", {"filter": "fred"})
     assert result.ok
     assert "sources" in result.data[0]
+
+
+# ---------------------------------------------------------------------------
+# delete_persona
+# ---------------------------------------------------------------------------
+
+
+def test_delete_persona_removes_persona_and_contacts(connector: ContactsConnector) -> None:
+    result = connector.call("delete_persona", {"persona_id": "ana"})
+    assert result.ok
+
+    result2 = connector.call("find_persona", {"name": "ana"})
+    assert not result2.ok
+    assert "not_found" in result2.error
+
+    # Her contact should also be gone
+    result3 = connector.call("get_contact", {"persona_id": "ana"})
+    assert not result3.ok
+    assert "not_found" in result3.error
+
+
+def test_delete_persona_not_found(connector: ContactsConnector) -> None:
+    result = connector.call("delete_persona", {"persona_id": "nao_existe"})
+    assert not result.ok
+    assert "not_found" in result.error
+
+
+def test_delete_persona_persists(tmp_path: Path) -> None:
+    personas_path = tmp_path / "personas.yaml"
+    contacts_path = tmp_path / "contacts.yaml"
+    personas_path.write_text(yaml.dump({"personas": [{"id": "fantasma", "name": "Fantasma",
+        "type": "person", "owner": "fred", "aliases": ["Fantasma"], "context": ""}]}))
+    contacts_path.write_text(yaml.dump({"contacts": [], "named_channels": []}))
+
+    c1 = ContactsConnector(personas_file=str(personas_path), contacts_file=str(contacts_path))
+    c1.call("delete_persona", {"persona_id": "fantasma"})
+
+    c2 = ContactsConnector(personas_file=str(personas_path), contacts_file=str(contacts_path))
+    result = c2.call("find_persona", {"name": "Fantasma"})
+    assert not result.ok
+    assert "not_found" in result.error

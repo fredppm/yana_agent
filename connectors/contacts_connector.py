@@ -272,6 +272,27 @@ class ContactsConnector(Connector):
 
     @command(
         description=(
+            "Delete a persona and all their contacts from the registry. "
+            "Use this to remove phantom or incorrect personas. "
+            "Returns error='not_found' if the persona id does not exist."
+        ),
+        params={
+            "persona_id": {"type": "string", "required": True},
+        },
+        returns={"type": "boolean"},
+    )
+    def delete_persona(self, persona_id: str) -> bool:
+        if persona_id not in self._registry._personas:
+            raise ValueError(f"not_found: persona '{persona_id}' does not exist")
+        del self._registry._personas[persona_id]
+        self._registry._contacts = [
+            c for c in self._registry._contacts if c.persona_id != persona_id
+        ]
+        self._registry.save()
+        return True
+
+    @command(
+        description=(
             "Set the preferred contact channel for a persona. "
             "After this, get_contact without a channel will return this channel. "
             "Returns error='not_found' if persona has no contacts. "
