@@ -1,8 +1,7 @@
 """
 contacts.py — Persona and Contact registry for YANA.
 
-Loads personas.yaml and contacts.yaml, providing two resolution primitives
-that the LLM calls as tools:
+Provides two resolution primitives that the LLM calls as tools:
 
     find_persona(name)               → Persona | None
     get_contact(persona_id, channel) → Contact | None
@@ -11,7 +10,10 @@ Personas: real-world entities (people, companies, orgs) known to YANA.
 Contacts: how to reach a Persona on a specific channel.
 Named Channels: destinations without a Persona (e.g. a large Slack channel).
 
-Both YAML files are owned by YANA and by Fred — either can edit them.
+Storage backends:
+  - DB mode (default): reads/writes PostgreSQL via store/contacts.py.
+  - YAML mode (legacy/tests): reads/writes YAML files, activated by passing
+    paths to load().
 """
 
 from __future__ import annotations
@@ -21,7 +23,6 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-
 
 # ---------------------------------------------------------------------------
 # Data models
@@ -71,27 +72,66 @@ class ContactRegistry:
     """
     In-memory registry of Personas, Contacts, and Named Channels.
 
-    Loaded once from config files; supports fuzzy name resolution for the LLM.
+    Default mode: DB backend via store/contacts.py (PostgreSQL in production,
+    injectable SQLAlchemy engine for tests).
+
+    Legacy/test mode: YAML backend — activated when paths are passed to load().
+    Preserves full backward compatibility with existing tests.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, engine: Any = None) -> None:
+        """
+        Args:
+            engine: Optional SQLAlchemy engine for DB mode.  Pass a SQLite
+                in-memory engine in unit tests to avoid a real database.
+                If None and DB mode is active, uses store._get_engine().
+        """
         self._personas: dict[str, Persona] = {}
         self._contacts: list[Contact] = []
         self._named_channels: list[NamedChannel] = []
+
+        # YAML-mode state (populated only when paths are given to load())
+        self._use_db: bool = True
         self._personas_path: Path | None = None
         self._contacts_path: Path | None = None
 
+        # DB-mode engine (None → resolved lazily from store._get_engine())
+        self._engine = engine
+
+    # ------------------------------------------------------------------
+    # Loading
+    # ------------------------------------------------------------------
+
     def load(
         self,
-        personas_path: Path,
-        contacts_path: Path,
+        personas_path: Path | None = None,
+        contacts_path: Path | None = None,
     ) -> None:
-        self._personas_path = personas_path
-        self._contacts_path = contacts_path
-        self._load_personas(personas_path)
-        self._load_contacts(contacts_path)
+        """
+        Load the registry.
 
-    def _load_personas(self, path: Path) -> None:
+        Call with no arguments (or engine injected via __init__) to use DB mode.
+        Call with both path arguments to use YAML mode (legacy / tests).
+        """
+        if personas_path is not None:
+            # YAML mode — legacy and tests
+            self._use_db = False
+            self._personas_path = Path(personas_path)
+            self._contacts_path = Path(contacts_path) if contacts_path is not None else None
+            self._load_from_yaml(self._personas_path, self._contacts_path)
+        else:
+            self._use_db = True
+            self._load_from_db()
+
+    def _load_from_yaml(self, personas_path: Path, contacts_path: Path | None) -> None:
+        self._personas = {}
+        self._contacts = []
+        self._named_channels = []
+        self._load_personas_yaml(personas_path)
+        if contacts_path is not None:
+            self._load_contacts_yaml(contacts_path)
+
+    def _load_personas_yaml(self, path: Path) -> None:
         if not path.exists():
             return
         with open(path, encoding="utf-8") as f:
@@ -109,7 +149,7 @@ class ContactRegistry:
             )
             self._personas[p.id] = p
 
-    def _load_contacts(self, path: Path) -> None:
+    def _load_contacts_yaml(self, path: Path) -> None:
         if not path.exists():
             return
         with open(path, encoding="utf-8") as f:
@@ -132,6 +172,48 @@ class ContactRegistry:
                 address=entry["address"],
                 connector_id=entry["connector_id"],
                 aliases=entry.get("aliases", []),
+            )
+            self._named_channels.append(nc)
+
+    def _load_from_db(self) -> None:
+        from store.contacts import list_contacts_sync, list_named_channels_sync, list_personas_sync
+
+        self._personas = {}
+        self._contacts = []
+        self._named_channels = []
+
+        for d in list_personas_sync(engine=self._engine):
+            p = Persona(
+                id=d["id"],
+                name=d["name"],
+                type=d["type"],
+                owner=d["owner"],
+                aliases=d["aliases"],
+                context=d["context"],
+                tags=d["tags"],
+                sources=d["sources"],
+            )
+            self._personas[p.id] = p
+
+        for d in list_contacts_sync(engine=self._engine):
+            c = Contact(
+                id=d["id"],
+                persona_id=d["persona_id"],
+                channel=d["channel"],
+                address=d["address"],
+                connector_id=d["connector_id"],
+                preferred=d["preferred"],
+            )
+            self._contacts.append(c)
+
+        for d in list_named_channels_sync(engine=self._engine):
+            nc = NamedChannel(
+                id=d["id"],
+                name=d["name"],
+                channel=d["channel"],
+                address=d["address"],
+                connector_id=d["connector_id"],
+                aliases=d["aliases"],
             )
             self._named_channels.append(nc)
 
@@ -274,10 +356,22 @@ class ContactRegistry:
         ]
 
     def save(self) -> None:
-        """Persist current state back to the YAML files loaded via load()."""
+        """Persist current in-memory state to the configured backend."""
+        if self._use_db:
+            self._save_to_db()
+        else:
+            self._save_to_yaml()
+
+    def _save_to_yaml(self) -> None:
+        """Write current state back to the YAML files (legacy/test mode)."""
         if self._personas_path is not None:
             with open(self._personas_path, "w", encoding="utf-8") as f:
-                yaml.dump({"personas": self.all_personas()}, f, allow_unicode=True, sort_keys=False)
+                yaml.dump(
+                    {"personas": self.all_personas()},
+                    f,
+                    allow_unicode=True,
+                    sort_keys=False,
+                )
         if self._contacts_path is not None:
             with open(self._contacts_path, "w", encoding="utf-8") as f:
                 yaml.dump(
@@ -289,3 +383,73 @@ class ContactRegistry:
                     allow_unicode=True,
                     sort_keys=False,
                 )
+
+    def _save_to_db(self) -> None:
+        """Write current in-memory state to the DB (production mode)."""
+        from store.contacts import (
+            delete_named_channel_sync,
+            delete_persona_sync,
+            list_contacts_sync,
+            list_named_channels_sync,
+            list_personas_sync,
+            upsert_contact_sync,
+            upsert_named_channel_sync,
+            upsert_persona_sync,
+        )
+
+        engine = self._engine
+
+        # Sync personas: upsert all in-memory, delete any removed from DB
+        current_ids = set(self._personas.keys())
+        for d in self.all_personas():
+            upsert_persona_sync(d, engine=engine)
+        for d in list_personas_sync(engine=engine):
+            if d["id"] not in current_ids:
+                delete_persona_sync(d["id"], engine=engine)
+
+        # Sync contacts: full replacement per persona_id
+        db_contact_ids = {d["id"] for d in list_contacts_sync(engine=engine)}
+        mem_contact_ids = {c.id for c in self._contacts}
+        # Upsert all in-memory contacts
+        for c in self._contacts:
+            upsert_contact_sync(self._contact_to_dict(c), engine=engine)
+        # Delete any contacts removed from memory
+        for cid in db_contact_ids - mem_contact_ids:
+            # We need to delete by id — use a targeted delete
+            from store.contacts import _session as _store_session
+            from store.models import ContactRecord
+            with _store_session(engine) as s:
+                r = s.get(ContactRecord, cid)
+                if r:
+                    s.delete(r)
+                    s.commit()
+
+        # Sync named channels: upsert all in-memory, delete removed
+        db_nc_ids = {d["id"] for d in list_named_channels_sync(engine=engine)}
+        mem_nc_ids = {nc.id for nc in self._named_channels}
+        for nc in self._named_channels:
+            upsert_named_channel_sync(self._nc_to_dict(nc), engine=engine)
+        for ncid in db_nc_ids - mem_nc_ids:
+            delete_named_channel_sync(ncid, engine=engine)
+
+    @staticmethod
+    def _contact_to_dict(c: Contact) -> dict[str, Any]:
+        return {
+            "id": c.id,
+            "persona_id": c.persona_id,
+            "channel": c.channel,
+            "address": c.address,
+            "connector_id": c.connector_id,
+            "preferred": c.preferred,
+        }
+
+    @staticmethod
+    def _nc_to_dict(nc: NamedChannel) -> dict[str, Any]:
+        return {
+            "id": nc.id,
+            "name": nc.name,
+            "channel": nc.channel,
+            "address": nc.address,
+            "connector_id": nc.connector_id,
+            "aliases": nc.aliases,
+        }
