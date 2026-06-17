@@ -5,3 +5,13 @@ engines:
     sdk: subprocess           # subprocess (current) | anthropic_agent (future SDK)
     model: claude-sonnet-4-6  # passed to claude --model; remove to use Claude Code's default
     flags: []                 # extra CLI flags
+
+sandbox:
+  runtime: docker             # docker | podman | stub
+  image: python:3.11-slim
+  # Timeouts in seconds. Cannot go below floors (30s exec, 60s install).
+  exec_timeout: 30
+  install_timeout: 60
+  # Resource limits. Cannot go below floors (256m RAM, 1 CPU).
+  memory: 256m
+  cpus: 1

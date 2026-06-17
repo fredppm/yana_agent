@@ -12,6 +12,7 @@ from collections.abc import Callable
 
 import llm as prov
 import log
+import sandbox as sb
 import voice as v
 
 
@@ -39,6 +40,19 @@ def _execute_tool(tool_call: dict, registry) -> str:
             return json.dumps(contract)
         except KeyError as exc:
             return json.dumps({"error": str(exc)})
+
+    if name == "run_code":
+        result = sb.run(
+            code=inp.get("code", ""),
+            deps=inp.get("deps") or [],
+            allow_network=bool(inp.get("allow_network", False)),
+        )
+        return json.dumps({
+            "stdout": result.stdout,
+            "stderr": result.stderr,
+            "exit_code": result.exit_code,
+            "timed_out": result.timed_out,
+        })
 
     return json.dumps({"error": f"unknown tool: {name}"})
 
