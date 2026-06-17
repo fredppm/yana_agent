@@ -207,7 +207,7 @@ class GmailConnector(Connector, CommunicationChannel):
             self._persona_token.parent.mkdir(parents=True, exist_ok=True)
             self._persona_token.write_text(creds.to_json())
 
-        return build("gmail", "v1", credentials=creds)
+        return build("gmail", "v1", credentials=creds, cache_discovery=False)
 
     def _fetch_messages(self, gmail_query: str, max_results: int = 10) -> list[dict]:
         svc = self._svc()
