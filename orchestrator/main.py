@@ -216,6 +216,32 @@ def _run_tui_conversation(
         task_ref[0] = "conversation"
         return reply
 
+    def make_tool_event_cb(tool_event_fn):
+        """Return an on_turn variant that fires tool_event_fn for each tool call."""
+
+        def _on_turn_with_events(msgs: list[dict]) -> str:
+            _sp = system_prompt
+            if not _graphiti_injected[0] and active_profile:
+                ctx = _graphiti_ctx[0]
+                if ctx:
+                    _graphiti_injected[0] = True
+                    _sp = system_prompt + "\n\n" + ctx
+            reply = agent.call_with_tool_loop(
+                msgs,
+                _sp,
+                tools,
+                registry,
+                providers_config,
+                task=task_ref[0],
+                text_mode=True,
+                silent=True,
+                on_tool_event=tool_event_fn,
+            )
+            task_ref[0] = "conversation"
+            return reply
+
+        return _on_turn_with_events
+
     def on_exit(final_messages: list[dict], chosen_session: str | None) -> None:
         session_id = chosen_session or datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         session_date = session_id[:10]
@@ -256,6 +282,7 @@ def _run_tui_conversation(
         auto_greet=auto_greet,
         profiles=profile_list,
         active_profile_id=active_profile,
+        make_tool_event_cb=make_tool_event_cb,
     )
 
 

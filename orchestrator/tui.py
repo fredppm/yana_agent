@@ -10,6 +10,7 @@ Visual language:
   User  :  [dim HH:MM:SS  >[/dim]  text
   YANA  :  RichMarkdown, spaced by blank lines
   Input :  darker bg + visible separator + > prompt label
+  Tool  :  ⚙ [tool_name] … (dim) / indented result (dim)
 """
 
 from __future__ import annotations
@@ -30,17 +31,55 @@ from textual import work
 from textual.app import App, ComposeResult
 from textual.binding import Binding, BindingType
 from textual.containers import Container, Horizontal
+from textual.events import MouseScrollDown, MouseScrollUp
+from textual.message import Message
 from textual.screen import ModalScreen, Screen
 from textual.timer import Timer
-from textual.widgets import Input, Label, RichLog
+from textual.widgets import Input, Label, RichLog, TextArea
 
 _NEW = "__new__"
+
+
+# ---------------------------------------------------------------------------
+# Custom TextArea — Enter submits, Ctrl+Enter inserts newline
+# ---------------------------------------------------------------------------
+
+
+class SubmitTextArea(TextArea):
+    """
+    A TextArea that:
+    - Submits the form on plain Enter (posts a ``SubmitTextArea.Submit`` message)
+    - Inserts a literal newline on Ctrl+Enter
+    - Wraps text visually (soft_wrap=True, no horizontal scroll)
+    """
+
+    class Submit(Message):
+        """Posted when the user presses Enter to submit."""
+
+        def __init__(self, text_area: SubmitTextArea) -> None:
+            super().__init__()
+            self.text_area = text_area
+
+    async def _on_key(self, event) -> None:
+        if event.key in ("enter", "ctrl+j"):
+            event.prevent_default()
+            event.stop()
+            self.post_message(self.Submit(self))
+        elif event.key == "ctrl+enter":
+            event.prevent_default()
+            event.stop()
+            self.insert("\n")
+        else:
+            await super()._on_key(event)
+
 
 TurnCallback = Callable[[list[dict]], str]
 ExitCallback = Callable[[list[dict], str | None], None]
 TuiResult = tuple[list[dict], str | None]
 VoiceListenFn = Callable[[], str]
 VoiceSpeakFn = Callable[[str], None]
+# tool_event_fn(instance_id, operation, error_or_none)
+ToolEventCallback = Callable[[str, str, "str | None"], None]
 
 _SHARED_CSS = """
 Screen {
@@ -498,28 +537,38 @@ class YANAApp(App[TuiResult]):
     /* ── Input row ─────────────────────────────────────── */
 
     #input-bar {
-        height: 3;
+        height: auto;
+        min-height: 3;
+        max-height: 8;
         background: #0a0a0a;
         border-top: solid #383838;
-        align: left middle;
+        align: left top;
         padding: 0 2;
     }
 
     #prompt-label {
         width: 3;
         color: #909090;
-        content-align: center middle;
+        content-align: center top;
+        padding-top: 1;
     }
 
-    Input {
+    TextArea {
         background: #0a0a0a;
         border: none;
-        height: 100%;
+        height: auto;
+        min-height: 1;
+        max-height: 6;
         color: #e0e0e0;
+        padding: 1 0;
     }
 
-    Input:focus {
+    TextArea:focus {
         border: none;
+    }
+
+    TextArea .text-area--cursor {
+        background: #505050;
     }
 
     /* ── Thinking / listening indicator (row above input-bar) ─ */
@@ -548,6 +597,8 @@ class YANAApp(App[TuiResult]):
         Binding("ctrl+o", "toggle_history", "History", show=False),
         Binding("ctrl+t", "toggle_voice", "Voice", show=True),
         Binding("ctrl+b", "switch_session", "Sessions", show=False),
+        Binding("pageup", "scroll_chat_up", "Scroll up", show=False, priority=True),
+        Binding("pagedown", "scroll_chat_down", "Scroll down", show=False, priority=True),
     ]
 
     _SPINNER = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
@@ -565,12 +616,14 @@ class YANAApp(App[TuiResult]):
         auto_greet: bool = False,
         profiles: list[dict] | None = None,
         active_profile_id: str = "",
+        make_tool_event_cb: Callable[[ToolEventCallback], TurnCallback] | None = None,
     ) -> None:
         super().__init__()
         self._sessions = sessions
         self._profiles = profiles or []
         self._active_profile_id = active_profile_id
         self._on_turn = on_turn
+        self._make_tool_event_cb = make_tool_event_cb
         self._on_exit = on_exit
         self._messages: list[dict] = []
         self._session_history: list[dict] = []  # loaded from old session
@@ -602,7 +655,7 @@ class YANAApp(App[TuiResult]):
         yield Label("", id="thinking")
         with Horizontal(id="input-bar"):
             yield Label("❯", id="prompt-label")  # noqa: RUF001
-            yield Input(id="input")
+            yield SubmitTextArea(id="input", tab_behavior="indent", soft_wrap=True)
         yield Label("", id="chat-hint")
 
     def on_mount(self) -> None:
@@ -720,6 +773,32 @@ class YANAApp(App[TuiResult]):
 
         chat.write("")
 
+    def _write_tool_event(
+        self,
+        chat: RichLog,
+        instance: str,
+        operation: str,
+        error: str | None = None,
+    ) -> None:
+        """Render a tool call/result event in the chat log (dim, muted style)."""
+        label = escape(f"{instance}/{operation}") if instance else escape(operation)
+        if error:
+            chat.write(f"[dim]  ⚙ {label}  ✗ {escape(error)}[/dim]")
+        else:
+            chat.write(f"[dim]  ⚙ {label}[/dim]")
+
+    def _make_tool_event_fn(self, chat: RichLog) -> ToolEventCallback:
+        """Return a thread-safe callback that writes tool events to *chat*."""
+
+        def _cb(instance: str, operation: str, error: str | None) -> None:
+            msg: dict = {"role": "tool", "content": instance, "tool_op": operation}
+            if error:
+                msg["error"] = error
+            self._new_messages.append(("", msg))
+            self.call_from_thread(self._write_tool_event, chat, instance, operation, error)
+
+        return _cb
+
     def _history_line(self, chat: RichLog, m: dict, truncate: int | None = 80) -> None:
         if m["role"] == "user":
             raw = m["content"].replace("\n", " ")
@@ -761,8 +840,8 @@ class YANAApp(App[TuiResult]):
 
     def _start_chat(self) -> None:
         chat = self.query_one("#chat", RichLog)
-        self.query_one(Input).value = ""  # flush any text buffered during screen transitions
-        self._chat_started = True  # gate: discard any Input.Submitted events before this point
+        self.query_one(SubmitTextArea).clear()  # flush any text buffered during screen transitions
+        self._chat_started = True  # gate: discard events before this point
         # Hint bar
         hints = [t("chat_hint_end"), t("chat_hint_history")]
         if self._listen_fn:
@@ -775,7 +854,7 @@ class YANAApp(App[TuiResult]):
         if self._voice_mode:
             self._voice_gen += 1
             self.query_one("#prompt-label", Label).display = False
-            self.query_one(Input).display = False
+            self.query_one(SubmitTextArea).display = False
             if self._greeting:
                 ts = datetime.now().strftime("%H:%M:%S")
                 self._write_yana(chat, self._greeting, ts)
@@ -784,13 +863,13 @@ class YANAApp(App[TuiResult]):
             if self._greeting:
                 ts = datetime.now().strftime("%H:%M:%S")
                 self._write_yana(chat, self._greeting, ts)
-                self.query_one(Input).focus()
+                self.query_one(SubmitTextArea).focus()
             elif self._auto_greet:
                 self._busy = True
                 self._show_thinking(True)
                 self._do_auto_greet()
             else:
-                self.query_one(Input).focus()
+                self.query_one(SubmitTextArea).focus()
         self._inbox_timer = self.set_interval(2.0, self._check_pulse_inbox)
 
     def _check_pulse_inbox(self) -> None:
@@ -930,7 +1009,7 @@ class YANAApp(App[TuiResult]):
         if self._voice_mode:
             self._voice_gen += 1
             self.query_one("#prompt-label", Label).display = False
-            self.query_one(Input).display = False
+            self.query_one(SubmitTextArea).display = False
             self._voice_loop(self._voice_gen)
         else:
             if self._spinner_timer is not None:
@@ -938,8 +1017,8 @@ class YANAApp(App[TuiResult]):
                 self._spinner_timer = None
             self.query_one("#thinking", Label).display = False
             self.query_one("#prompt-label", Label).display = True
-            self.query_one(Input).display = True
-            self.query_one(Input).focus()
+            self.query_one(SubmitTextArea).display = True
+            self.query_one(SubmitTextArea).focus()
 
     def action_toggle_history(self) -> None:
         if not self._session_history:
@@ -951,8 +1030,28 @@ class YANAApp(App[TuiResult]):
         for ts, m in self._new_messages:
             if m["role"] == "user":
                 self._write_user_bg(chat, m["content"], ts)
+            elif m["role"] == "tool":
+                self._write_tool_event(chat, m["content"], m.get("tool_op", ""), m.get("error"))
             else:
                 self._write_yana(chat, m["content"], ts)
+
+    def action_scroll_chat_up(self) -> None:
+        """Scroll the chat log up by one page (PageUp while input is focused)."""
+        self.query_one("#chat", RichLog).scroll_page_up(animate=False)
+
+    def action_scroll_chat_down(self) -> None:
+        """Scroll the chat log down by one page (PageDown while input is focused)."""
+        self.query_one("#chat", RichLog).scroll_page_down(animate=False)
+
+    def on_mouse_scroll_up(self, event: MouseScrollUp) -> None:
+        """Forward mouse wheel up to the chat log regardless of where the mouse is."""
+        event.stop()
+        self.query_one("#chat", RichLog).scroll_up(animate=False)
+
+    def on_mouse_scroll_down(self, event: MouseScrollDown) -> None:
+        """Forward mouse wheel down to the chat log regardless of where the mouse is."""
+        event.stop()
+        self.query_one("#chat", RichLog).scroll_down(animate=False)
 
     def action_switch_session(self) -> None:
         """Return to the session browser mid-conversation (ctrl+b)."""
@@ -999,21 +1098,23 @@ class YANAApp(App[TuiResult]):
             self._chosen_session = choice
         self.query_one("#chat", RichLog).clear()
         self._chat_started = False
+        self.query_one(SubmitTextArea).clear()
         self._start_chat()
 
     # ------------------------------------------------------------------
-    # Input
+    # Input — SubmitTextArea message handling
 
-    def on_input_submitted(self, event: Input.Submitted) -> None:
+    def on_submit_text_area_submit(self, event: SubmitTextArea.Submit) -> None:
+        """Handle Enter-to-submit from the chat input TextArea."""
         if self._voice_mode:
             return
-        if not self._chat_started:  # discard events that leaked before _start_chat()
-            event.input.clear()
+        if not self._chat_started:
+            self.query_one(SubmitTextArea).clear()
             return
-        text = event.value.strip()
+        text = event.text_area.text.strip()
         if not text or self._busy:
             return
-        event.input.clear()
+        event.text_area.clear()
         self._busy = True
         self._do_turn(text)
 
@@ -1027,8 +1128,15 @@ class YANAApp(App[TuiResult]):
 
         self._messages.append({"role": "user", "content": text})
         self._new_messages.append((ts, {"role": "user", "content": text}))
+
+        # Wire tool-event display if the caller provided a factory
+        _on_turn = self._on_turn
+        if self._make_tool_event_cb is not None:
+            tool_cb = self._make_tool_event_fn(chat)
+            _on_turn = self._make_tool_event_cb(tool_cb)
+
         try:
-            reply = self._on_turn(list(self._messages))
+            reply = _on_turn(list(self._messages))
         except Exception as exc:
             reply = f"[error: {exc}]"
         reply_ts = datetime.now().strftime("%H:%M:%S")
@@ -1062,7 +1170,7 @@ class YANAApp(App[TuiResult]):
                 self._spinner_timer = None
             thinking.display = False
             if not self._saving_mode:
-                self.query_one(Input).focus()
+                self.query_one(SubmitTextArea).focus()
 
     def _tick_spinner(self) -> None:
         self._spinner_idx = (self._spinner_idx + 1) % len(self._SPINNER)
@@ -1087,7 +1195,7 @@ class YANAApp(App[TuiResult]):
             self.exit((self._messages, self._chosen_session))
             return
         self._saving_mode = True
-        self.query_one(Input).disabled = True
+        self.query_one(SubmitTextArea).disabled = True
         self._show_thinking(True)
         threading.Thread(target=self._save_and_exit, daemon=True).start()
 
@@ -1118,6 +1226,7 @@ def run_tui(
     auto_greet: bool = False,
     profiles: list[dict] | None = None,
     active_profile_id: str = "",
+    make_tool_event_cb: Callable[[ToolEventCallback], TurnCallback] | None = None,
 ) -> TuiResult:
     """
     Launch the YANA TUI. Blocks until the user exits (and on_exit completes).
@@ -1126,6 +1235,8 @@ def run_tui(
 
     profiles: list of {id, label} dicts — if provided, shows profile switcher (CAP-1).
     active_profile_id: the currently active profile id.
+    make_tool_event_cb: optional factory — receives a ToolEventCallback and returns
+        a TurnCallback that routes tool events to the chat display.
     """
     app = YANAApp(
         sessions=sessions,
@@ -1138,9 +1249,10 @@ def run_tui(
         auto_greet=auto_greet,
         profiles=profiles,
         active_profile_id=active_profile_id,
+        make_tool_event_cb=make_tool_event_cb,
     )
     try:
-        result = app.run(mouse=False)
+        result = app.run(mouse=True)
     except KeyboardInterrupt:
         result = None
     return result if result is not None else ([], None)
