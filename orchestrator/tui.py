@@ -538,38 +538,28 @@ class YANAApp(App[TuiResult]):
     /* ── Input row ─────────────────────────────────────── */
 
     #input-bar {
-        height: auto;
-        min-height: 3;
-        max-height: 8;
+        height: 3;
         background: #0a0a0a;
         border-top: solid #383838;
-        align: left top;
+        align: left middle;
         padding: 0 2;
     }
 
     #prompt-label {
         width: 3;
         color: #909090;
-        content-align: center top;
-        padding-top: 1;
+        content-align: center middle;
     }
 
-    TextArea {
+    #input {
         background: #0a0a0a;
         border: none;
-        height: auto;
-        min-height: 1;
-        max-height: 6;
         color: #e0e0e0;
-        padding: 1 0;
+        padding: 0;
     }
 
-    TextArea:focus {
+    #input:focus {
         border: none;
-    }
-
-    TextArea .text-area--cursor {
-        background: #505050;
     }
 
     /* ── Thinking / listening indicator (row above input-bar) ─ */
@@ -658,7 +648,7 @@ class YANAApp(App[TuiResult]):
         yield Label("", id="thinking")
         with Horizontal(id="input-bar"):
             yield Label("❯", id="prompt-label")  # noqa: RUF001
-            yield SubmitTextArea(id="input", tab_behavior="indent", soft_wrap=True)
+            yield Input(id="input")
         yield Label("", id="chat-hint")
 
     def on_mount(self) -> None:
@@ -884,7 +874,7 @@ class YANAApp(App[TuiResult]):
 
     def _start_chat(self) -> None:
         chat = self.query_one("#chat", RichLog)
-        self.query_one(SubmitTextArea).clear()  # flush any text buffered during screen transitions
+        self.query_one("#input", Input).clear()  # flush any text buffered during screen transitions
         self._chat_started = True  # gate: discard events before this point
         # Hint bar
         hints = [t("chat_hint_end"), t("chat_hint_history"), t("chat_hint_copy")]
@@ -898,7 +888,7 @@ class YANAApp(App[TuiResult]):
         if self._voice_mode:
             self._voice_gen += 1
             self.query_one("#prompt-label", Label).display = False
-            self.query_one(SubmitTextArea).display = False
+            self.query_one("#input", Input).display = False
             if self._greeting:
                 ts = datetime.now().strftime("%H:%M:%S")
                 self._write_yana(chat, self._greeting, ts)
@@ -907,13 +897,13 @@ class YANAApp(App[TuiResult]):
             if self._greeting:
                 ts = datetime.now().strftime("%H:%M:%S")
                 self._write_yana(chat, self._greeting, ts)
-                self.query_one(SubmitTextArea).focus()
+                self.query_one("#input", Input).focus()
             elif self._auto_greet:
                 self._busy = True
                 self._show_thinking(True)
                 self._do_auto_greet()
             else:
-                self.query_one(SubmitTextArea).focus()
+                self.query_one("#input", Input).focus()
         self._inbox_timer = self.set_interval(2.0, self._check_pulse_inbox)
 
     def _check_pulse_inbox(self) -> None:
@@ -1057,7 +1047,7 @@ class YANAApp(App[TuiResult]):
         if self._voice_mode:
             self._voice_gen += 1
             self.query_one("#prompt-label", Label).display = False
-            self.query_one(SubmitTextArea).display = False
+            self.query_one("#input", Input).display = False
             self._voice_loop(self._voice_gen)
         else:
             if self._spinner_timer is not None:
@@ -1065,8 +1055,8 @@ class YANAApp(App[TuiResult]):
                 self._spinner_timer = None
             self.query_one("#thinking", Label).display = False
             self.query_one("#prompt-label", Label).display = True
-            self.query_one(SubmitTextArea).display = True
-            self.query_one(SubmitTextArea).focus()
+            self.query_one("#input", Input).display = True
+            self.query_one("#input", Input).focus()
 
     def action_toggle_history(self) -> None:
         if not self._session_history:
@@ -1169,23 +1159,25 @@ class YANAApp(App[TuiResult]):
             self._chosen_session = choice
         self.query_one("#chat", RichLog).clear()
         self._chat_started = False
-        self.query_one(SubmitTextArea).clear()
+        self.query_one("#input", Input).clear()
         self._start_chat()
 
     # ------------------------------------------------------------------
-    # Input — SubmitTextArea message handling
+    # Input handling
 
-    def on_submit_text_area_submit(self, event: SubmitTextArea.Submit) -> None:
-        """Handle Enter-to-submit from the chat input TextArea."""
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        """Handle Enter-to-submit from the chat input."""
+        if event.input.id != "input":
+            return  # ignore modal inputs
         if self._voice_mode:
             return
         if not self._chat_started:
-            self.query_one(SubmitTextArea).clear()
+            event.input.clear()
             return
-        text = event.text_area.text.strip()
+        text = event.value.strip()
         if not text or self._busy:
             return
-        event.text_area.clear()
+        event.input.clear()
         self._busy = True
         self._do_turn(text)
 
@@ -1243,7 +1235,7 @@ class YANAApp(App[TuiResult]):
                 self._spinner_timer = None
             thinking.display = False
             if not self._saving_mode:
-                self.query_one(SubmitTextArea).focus()
+                self.query_one("#input", Input).focus()
 
     def _tick_spinner(self) -> None:
         self._spinner_idx = (self._spinner_idx + 1) % len(self._SPINNER)
@@ -1268,7 +1260,7 @@ class YANAApp(App[TuiResult]):
             self.exit((self._messages, self._chosen_session))
             return
         self._saving_mode = True
-        self.query_one(SubmitTextArea).disabled = True
+        self.query_one("#input", Input).disabled = True
         self._show_thinking(True)
         threading.Thread(target=self._save_and_exit, daemon=True).start()
 
