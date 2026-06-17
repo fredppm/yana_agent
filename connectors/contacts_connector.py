@@ -238,3 +238,30 @@ class ContactsConnector(Connector):
         self._registry._named_channels.append(nc)
         self._registry.save()
         return True
+
+    @command(
+        description=(
+            "Set the preferred contact channel for a persona. "
+            "After this, get_contact without a channel will return this channel. "
+            "Returns error='not_found' if persona has no contacts. "
+            "Returns error='no_channel' if the persona has no contact on that channel."
+        ),
+        params={
+            "persona_id": {"type": "string", "required": True},
+            "channel": {"type": "string", "required": True},
+        },
+        returns={"type": "boolean"},
+    )
+    def set_preferred_contact(self, persona_id: str, channel: str) -> bool:
+        persona_contacts = [c for c in self._registry._contacts if c.persona_id == persona_id]
+        if not persona_contacts:
+            raise ValueError(f"not_found: no contacts for persona {persona_id}")
+
+        target = [c for c in persona_contacts if c.channel == channel]
+        if not target:
+            raise ValueError(f"no_channel: {persona_id} has no {channel} contact")
+
+        for c in persona_contacts:
+            c.preferred = c.channel == channel
+        self._registry.save()
+        return True
