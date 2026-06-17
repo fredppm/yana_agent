@@ -227,8 +227,8 @@ class GoogleContactsConnector(Connector):
                 existing = self._registry._personas.get(persona_id)
 
             if existing is not None:
-                # Update base data only — never touch aliases, context, tags
-                existing.name = display
+                # YANA is source of truth — never overwrite name or enrichment
+                # Only add new source reference if missing
                 if not any(s.get("source_id") == source_id for s in existing.sources):
                     existing.sources.append({"provider": "google", "source_id": source_id})
                 updated_personas += 1
