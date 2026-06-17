@@ -7,6 +7,7 @@ subprocess.run patches. Safe to run anywhere.
 
 from __future__ import annotations
 
+import itertools
 import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -22,7 +23,6 @@ from sandbox import (
     load_runtime,
     run,
 )
-
 
 # ---------------------------------------------------------------------------
 # ExecutionResult
@@ -159,20 +159,22 @@ class TestDockerRuntimeNetwork:
 
     def test_install_phase_has_no_network_none_flag(self) -> None:
         rt = self._make()
-        calls = []
-        with patch("subprocess.run", return_value=self._run_mock()) as mock_run:
-            mock_run.side_effect = lambda cmd, **_: (
-                calls.append(cmd) or self._run_mock()
-            )
+        calls: list[list[str]] = []
+
+        def _capture(cmd: list[str], **_: object) -> MagicMock:
+            calls.append(cmd)
+            return self._run_mock()
+
+        with patch("subprocess.run", side_effect=_capture):
             rt.run(code="import numpy", deps=["numpy"])
 
         install_cmd = calls[0]
         exec_cmd = calls[1]
         # install phase must not have --network none
-        install_pairs = list(zip(install_cmd, install_cmd[1:]))
+        install_pairs = list(itertools.pairwise(install_cmd))
         assert ("--network", "none") not in install_pairs
         # exec phase must have --network none
-        exec_pairs = list(zip(exec_cmd, exec_cmd[1:]))
+        exec_pairs = list(itertools.pairwise(exec_cmd))
         assert ("--network", "none") in exec_pairs
 
 

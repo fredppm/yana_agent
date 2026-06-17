@@ -60,7 +60,7 @@ class SandboxRuntime(ABC):
 # Docker / Podman runtime
 # ---------------------------------------------------------------------------
 
-_EXEC_TIMEOUT_FLOOR = 30   # seconds
+_EXEC_TIMEOUT_FLOOR = 30  # seconds
 _INSTALL_TIMEOUT_FLOOR = 60
 _MEMORY_FLOOR = "256m"
 _CPU_FLOOR = "1"
@@ -85,9 +85,7 @@ class DockerRuntime(SandboxRuntime):
         for candidate in ("docker", "podman"):
             if shutil.which(candidate):
                 return candidate
-        raise RuntimeError(
-            "sandbox: neither docker nor podman found — cannot run sandbox"
-        )
+        raise RuntimeError("sandbox: neither docker nor podman found — cannot run sandbox")
 
     def run(
         self,
@@ -108,10 +106,15 @@ class DockerRuntime(SandboxRuntime):
 
     def _base_flags(self, tmp_path: Path) -> list[str]:
         return [
-            self._cmd, "run", "--rm",
-            "-v", f"{tmp_path}:/workspace",
-            "--memory", self.memory,
-            "--cpus", self.cpus,
+            self._cmd,
+            "run",
+            "--rm",
+            "-v",
+            f"{tmp_path}:/workspace",
+            "--memory",
+            self.memory,
+            "--cpus",
+            self.cpus,
         ]
 
     def _install(self, deps: list[str], tmp_path: Path) -> ExecutionResult:
@@ -119,7 +122,11 @@ class DockerRuntime(SandboxRuntime):
         cmd = [
             *self._base_flags(tmp_path),
             self.image,
-            "pip", "install", "--quiet", "--target", "/workspace/pkgs",
+            "pip",
+            "install",
+            "--quiet",
+            "--target",
+            "/workspace/pkgs",
             *deps,
         ]
         return self._run_cmd(cmd, timeout=self.install_timeout)
@@ -131,9 +138,11 @@ class DockerRuntime(SandboxRuntime):
             flags += ["--network", "none"]
         cmd = [
             *flags,
-            "-e", "PYTHONPATH=/workspace/pkgs",
+            "-e",
+            "PYTHONPATH=/workspace/pkgs",
             self.image,
-            "python", "/workspace/code.py",
+            "python",
+            "/workspace/code.py",
         ]
         return self._run_cmd(cmd, timeout=self.exec_timeout)
 
@@ -158,7 +167,7 @@ class DockerRuntime(SandboxRuntime):
                 exit_code=1,
                 timed_out=True,
             )
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             return ExecutionResult(
                 stdout="",
                 stderr=f"sandbox: runtime error — {exc}",
@@ -204,6 +213,7 @@ def load_runtime(config: dict | None = None) -> SandboxRuntime:
     """
     if config is None:
         from llm import load_providers
+
         config = load_providers()
 
     sandbox_cfg: dict = config.get("sandbox", {})
