@@ -91,7 +91,7 @@ class ContactRegistry:
     def _load_personas(self, path: Path) -> None:
         if not path.exists():
             return
-        with open(path) as f:
+        with open(path, encoding="utf-8") as f:
             data = yaml.safe_load(f) or {}
         for entry in data.get("personas", []):
             p = Persona(
@@ -108,7 +108,7 @@ class ContactRegistry:
     def _load_contacts(self, path: Path) -> None:
         if not path.exists():
             return
-        with open(path) as f:
+        with open(path, encoding="utf-8") as f:
             data = yaml.safe_load(f) or {}
         for entry in data.get("contacts", []):
             c = Contact(
@@ -247,10 +247,10 @@ class ContactRegistry:
     def save(self) -> None:
         """Persist current state back to the YAML files loaded via load()."""
         if self._personas_path is not None:
-            with open(self._personas_path, "w") as f:
+            with open(self._personas_path, "w", encoding="utf-8") as f:
                 yaml.dump({"personas": self.all_personas()}, f, allow_unicode=True, sort_keys=False)
         if self._contacts_path is not None:
-            with open(self._contacts_path, "w") as f:
+            with open(self._contacts_path, "w", encoding="utf-8") as f:
                 yaml.dump(
                     {
                         "contacts": self.all_contacts(),
