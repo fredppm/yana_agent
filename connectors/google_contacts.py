@@ -120,9 +120,11 @@ class GoogleContactsConnector(Connector):
                 )
                 creds = flow.run_local_server(port=0)
             self._persona_token.parent.mkdir(parents=True, exist_ok=True)
-            self._persona_token.write_text(creds.to_json())
+            self._persona_token.write_text(creds.to_json(), encoding="utf-8")
 
-        self._service = build("people", "v1", credentials=creds)
+        # cache_discovery=False avoids httplib2 writing the discovery doc via
+        # the system locale (cp1252 on Windows), which breaks on non-ASCII chars.
+        self._service = build("people", "v1", credentials=creds, cache_discovery=False)
         return self._service
 
     # ------------------------------------------------------------------

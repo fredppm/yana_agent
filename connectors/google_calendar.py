@@ -225,7 +225,7 @@ class GoogleCalendarConnector(Connector):
             self._persona_token.parent.mkdir(parents=True, exist_ok=True)
             self._persona_token.write_text(creds.to_json())
 
-        return build("calendar", "v3", credentials=creds)
+        return build("calendar", "v3", credentials=creds, cache_discovery=False)
 
     @staticmethod
     def _ensure_tz(iso: str) -> str:

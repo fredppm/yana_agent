@@ -211,7 +211,7 @@ class GoogleTasksConnector(Connector):
             self._persona_token.parent.mkdir(parents=True, exist_ok=True)
             self._persona_token.write_text(creds.to_json())
 
-        return build("tasks", "v1", credentials=creds)
+        return build("tasks", "v1", credentials=creds, cache_discovery=False)
 
     def _format_tasklist(self, raw: dict) -> dict:
         return {
