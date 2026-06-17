@@ -60,7 +60,7 @@ def is_explicit_mode_switch(text: str) -> bool:
     """
     Return True if the input is an explicit mode-switch command.
 
-    YANA only accepts a mode switch when Fred explicitly signals it.
+    YANA only accepts a mode switch when the owner explicitly signals it.
     Unmarked input never triggers a switch — Design Principle 2.
 
     Recognised patterns (case-insensitive):
@@ -153,7 +153,7 @@ def _resolve_mode(text_flag: bool, voice_flag: bool) -> InteractionMode:
     Determine the interaction mode.
 
     Both set → text (unambiguous, text is the safe default).
-    Neither set → ask Fred interactively.
+    Neither set → ask the owner interactively.
     """
     from strings import t
 
@@ -162,7 +162,7 @@ def _resolve_mode(text_flag: bool, voice_flag: bool) -> InteractionMode:
     if voice_flag:
         return InteractionMode.VOICE
 
-    # Ask Fred
+    # Ask the owner
     while True:
         choice = input(t("programmer_choose_mode")).strip().lower()
         if choice in ("v", "voice"):
