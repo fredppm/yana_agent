@@ -232,13 +232,16 @@ class GoogleContactsConnector(Connector):
             "owner: persona owner label (usually 'fred'). "
             "email_connector_id: connector to use for email contacts (e.g. 'gmail_fred_personal'). "
             "phone_connector_id: connector to use for phone contacts (e.g. 'whatsapp'). "
-            "channel_for_phone: 'whatsapp' or 'sms' — defaults to 'whatsapp'."
+            "channel_for_phone: 'whatsapp' or 'sms' — defaults to 'whatsapp'. "
+            "force_update_names: if true, overwrite the stored name with the current Google name "
+            "for existing personas — use this to fix contacts imported with wrong names."
         ),
         params={
             "owner": {"type": "string", "required": True},
             "email_connector_id": {"type": "string", "required": True},
             "phone_connector_id": {"type": "string", "required": False},
             "channel_for_phone": {"type": "string", "required": False},
+            "force_update_names": {"type": "boolean", "required": False},
         },
         returns={"type": "object"},
     )
@@ -248,6 +251,7 @@ class GoogleContactsConnector(Connector):
         email_connector_id: str,
         phone_connector_id: str | None = None,
         channel_for_phone: str = "whatsapp",
+        force_update_names: bool = False,
     ) -> dict[str, Any]:
         raw, fetch_errors = self._fetch_contacts(max_results=1000)
 
@@ -281,10 +285,21 @@ class GoogleContactsConnector(Connector):
                 existing = self._registry._personas.get(persona_id)
 
             if existing is not None:
-                # YANA is source of truth — never overwrite name or enrichment
                 # Only add new source reference if missing
                 if not any(s.get("source_id") == source_id for s in existing.sources):
                     existing.sources.append({"provider": "google", "source_id": source_id})
+                # force_update_names: correct personas imported with wrong names
+                if force_update_names and existing.name != display:
+                    old_name = existing.name
+                    log.warning(
+                        "google_contacts: force-updating name %r → %r for %s",
+                        old_name, display, existing.id,
+                    )
+                    existing.name = display
+                    # Replace the auto-generated alias that matches the old name
+                    existing.aliases = [
+                        display if a == old_name else a for a in existing.aliases
+                    ]
                 updated_personas += 1
                 persona_id = existing.id
             else:
