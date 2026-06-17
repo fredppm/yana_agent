@@ -528,7 +528,7 @@ class YANAApp(App[TuiResult]):
 
     #chat {
         height: 1fr;
-        padding: 0 3;
+        padding: 0;
         background: transparent;
         scrollbar-color: #787878;
         scrollbar-background: transparent;
@@ -542,7 +542,7 @@ class YANAApp(App[TuiResult]):
         background: #0a0a0a;
         border-top: solid #383838;
         align: left bottom;
-        padding: 0 2;
+        padding: 0;
     }
 
     #prompt-label {
@@ -566,7 +566,7 @@ class YANAApp(App[TuiResult]):
 
     #thinking {
         height: 1;
-        padding: 0 3;
+        padding: 0;
         color: #909090;
         content-align: left middle;
         display: none;
@@ -576,7 +576,7 @@ class YANAApp(App[TuiResult]):
 
     #chat-hint {
         height: 1;
-        padding: 0 3;
+        padding: 0;
         color: #505050;
     }
     """
@@ -875,7 +875,7 @@ class YANAApp(App[TuiResult]):
             hints.append(t("chat_hint_voice"))
         if self._profiles:
             hints.append(t("chat_hint_sessions"))
-        self.query_one("#chat-hint", Label).update(f"  {'   '.join(hints)}")
+        self.query_one("#chat-hint", Label).update("   ".join(hints))
         if self._session_history:
             self._write_history(chat)
         if self._voice_mode:
@@ -1085,7 +1085,7 @@ class YANAApp(App[TuiResult]):
     def _flash_hint(self, msg: str, duration: float = 1.5) -> None:
         """Briefly show *msg* in the hint bar, then restore the normal hints."""
         hint = self.query_one("#chat-hint", Label)
-        hint.update(f"  {msg}")
+        hint.update(msg)
         self.set_timer(duration, self._restore_hint)
 
     def _restore_hint(self) -> None:
@@ -1095,7 +1095,7 @@ class YANAApp(App[TuiResult]):
             hints.append(t("chat_hint_voice"))
         if self._profiles:
             hints.append(t("chat_hint_sessions"))
-        self.query_one("#chat-hint", Label).update(f"  {'   '.join(hints)}")
+        self.query_one("#chat-hint", Label).update("   ".join(hints))
 
     def on_mouse_scroll_up(self, event: MouseScrollUp) -> None:
         """Forward mouse wheel up to the chat log regardless of where the mouse is."""
