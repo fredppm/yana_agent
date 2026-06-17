@@ -673,8 +673,9 @@ class YANAApp(App[TuiResult]):
         if choice != _NEW:
             import core
 
-            self._messages = core.load_session_messages(choice)
-            self._session_history = list(self._messages)
+            all_msgs = core.load_session_messages(choice)
+            self._session_history = all_msgs
+            self._messages = [m for m in all_msgs if m.get("role") in ("user", "assistant")]
             self._chosen_session = choice
         self._start_chat()
 
@@ -834,23 +835,45 @@ class YANAApp(App[TuiResult]):
         return _cb
 
     def _history_line(self, chat: RichLog, m: dict, truncate: int | None = 80) -> None:
+        if m["role"] == "tool":
+            # Always render tool events fully — no truncation concept
+            self._write_tool_event(
+                chat,
+                m.get("content", ""),
+                m.get("tool_op", ""),
+                m.get("error"),
+                m.get("payload"),
+                m.get("ts", ""),
+            )
+            return
         if m["role"] == "user":
             raw = m["content"].replace("\n", " ")
             if truncate is not None:
                 text = raw[:truncate] + ("…" if len(raw) > truncate else "")
             else:
                 text = raw
-            self._write_user_bg(chat, text, ts=self._session_ts())
+            self._write_user_bg(chat, text, ts=m.get("ts", self._session_ts()))
         else:
+            ts = m.get("ts", self._session_ts())
             if truncate is None:
                 # Expanded: full markdown with icon + ts header
-                self._write_yana(chat, m["content"], ts=self._session_ts())
+                self._write_yana(chat, m["content"], ts=ts)
             else:
                 # Collapsed: ● icon + truncated text (normal color)
                 raw = m["content"].replace("\n", " ")
                 text = raw[:truncate] + ("…" if len(raw) > truncate else "")
                 chat.write(f"●  {escape(text)}")
                 chat.write("")
+
+    def _build_storable_messages(self) -> list[dict]:
+        """Merge _new_messages (user + assistant + tool events) into a flat list for storage."""
+        result = []
+        for ts, m in self._new_messages:
+            entry = dict(m)
+            if ts:
+                entry.setdefault("ts", ts)
+            result.append(entry)
+        return result or list(self._messages)
 
     def _session_ts(self) -> str:
         """Return HH:MM:SS from the chosen session ID, or empty string."""
@@ -1123,7 +1146,7 @@ class YANAApp(App[TuiResult]):
             import threading as _threading
 
             _session_id = self._chosen_session or datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-            _msgs = list(self._messages)
+            _msgs = self._build_storable_messages()
             _on_exit = self._on_exit
             _threading.Thread(
                 target=lambda: _on_exit(_msgs, _session_id),
@@ -1154,8 +1177,9 @@ class YANAApp(App[TuiResult]):
         self._history_expanded = False
         self._busy = False
         if choice != _NEW:
-            self._messages = _core.load_session_messages(choice)
-            self._session_history = list(self._messages)
+            all_msgs = _core.load_session_messages(choice)
+            self._session_history = all_msgs
+            self._messages = [m for m in all_msgs if m.get("role") in ("user", "assistant")]
             self._chosen_session = choice
         self.query_one("#chat", RichLog).clear()
         self._chat_started = False
@@ -1254,10 +1278,10 @@ class YANAApp(App[TuiResult]):
         if self._saving_mode:
             # Second Ctrl+C — force exit immediately; daemon thread dies with the process
             self._force_exited = True
-            self.exit((self._messages, self._chosen_session))
+            self.exit((self._build_storable_messages(), self._chosen_session))
             return
         if self._on_exit is None or not self._messages:
-            self.exit((self._messages, self._chosen_session))
+            self.exit((self._build_storable_messages(), self._chosen_session))
             return
         self._saving_mode = True
         self.query_one("#input", Input).disabled = True
@@ -1267,7 +1291,7 @@ class YANAApp(App[TuiResult]):
     def _save_and_exit(self) -> None:
         try:
             if self._on_exit is not None:
-                self._on_exit(list(self._messages), self._chosen_session)
+                self._on_exit(self._build_storable_messages(), self._chosen_session)
         except Exception:
             pass
         if not self._force_exited:
