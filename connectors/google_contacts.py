@@ -219,6 +219,7 @@ class GoogleContactsConnector(Connector):
         updated_personas = 0
         added_contacts = 0
         skipped = 0
+        skipped_names: list[str] = []
 
         existing_contact_ids = {c.id for c in self._registry._contacts}
 
@@ -230,6 +231,7 @@ class GoogleContactsConnector(Connector):
 
             if not display.strip():
                 skipped += 1
+                skipped_names.append(f"(sem nome / source_id={source_id})")
                 continue
 
             # Find existing persona by source_id (reliable) or fall back to slugified name
@@ -238,6 +240,7 @@ class GoogleContactsConnector(Connector):
                 persona_id = _slugify(display)
                 if not persona_id:
                     skipped += 1
+                    skipped_names.append(f"{display!r} (slug vazio / source_id={source_id})")
                     continue
                 existing = self._registry._personas.get(persona_id)
 
@@ -252,6 +255,7 @@ class GoogleContactsConnector(Connector):
                 persona_id = _slugify(display)
                 if not persona_id:
                     skipped += 1
+                    skipped_names.append(f"{display!r} (slug vazio / source_id={source_id})")
                     continue
                 p = Persona(
                     id=persona_id,
@@ -298,10 +302,13 @@ class GoogleContactsConnector(Connector):
                         added_contacts += 1
 
         self._registry.save()
-        return {
+        result: dict[str, Any] = {
             "added_personas": added_personas,
             "updated_personas": updated_personas,
             "added_contacts": added_contacts,
             "skipped": skipped,
             "total_processed": len(raw),
         }
+        if skipped_names:
+            result["skipped_names"] = skipped_names
+        return result

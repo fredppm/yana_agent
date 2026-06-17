@@ -162,13 +162,29 @@ class ContactRegistry:
 
     def find_persona_ambiguous(self, name: str) -> list[Persona]:
         """
-        Return all Personas whose aliases match *name*.
-        Used to detect ambiguity — if len > 1, YANA should ask for clarification.
+        Return all Personas whose id or aliases match *name*.
+
+        Resolution order:
+        1. Exact id or alias match (case-insensitive) — highest priority.
+        2. If no exact matches, fall back to "first-word" match: any persona
+           whose first alias word equals *name* (e.g. "Fernanda" matches
+           "Fernanda Silva", "Fernanda Santos").
+
+        If len > 1, YANA should ask the user for clarification.
         """
         needle = name.strip().lower()
-        return [
+
+        exact = [
             p for p in self._personas.values()
             if p.id == needle or any(a.lower() == needle for a in p.aliases)
+        ]
+        if exact:
+            return exact
+
+        # First-word fallback: "Fernanda" → any alias whose first word is "fernanda"
+        return [
+            p for p in self._personas.values()
+            if any(a.split()[0].lower() == needle for a in p.aliases if a.split())
         ]
 
     def get_contact(
