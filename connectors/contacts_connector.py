@@ -72,6 +72,37 @@ class ContactsConnector(Connector):
 
     @query(
         description=(
+            "List all personas in the registry, optionally filtered by a name fragment. "
+            "Use this to inspect what contacts are stored, debug unexpected results, "
+            "or find a contact when the exact name is unknown. "
+            "filter: case-insensitive substring matched against id, name, and aliases. "
+            "Returns a list of {id, name, aliases, sources} objects."
+        ),
+        params={"filter": {"type": "string", "required": False}},
+        returns={"type": "list"},
+    )
+    def list_personas(self, filter: str = "") -> list[dict[str, Any]]:
+        needle = filter.strip().lower()
+        results = []
+        for p in self._registry._personas.values():
+            if needle:
+                in_id = needle in p.id.lower()
+                in_name = needle in p.name.lower()
+                in_aliases = any(needle in a.lower() for a in p.aliases)
+                if not (in_id or in_name or in_aliases):
+                    continue
+            results.append({
+                "id": p.id,
+                "name": p.name,
+                "aliases": p.aliases,
+                "context": p.context,
+                "sources": p.sources,
+            })
+        results.sort(key=lambda x: x["name"].lower())
+        return results
+
+    @query(
+        description=(
             "Find a persona by name or alias. "
             "Returns persona info if exactly one match. "
             "Returns error='ambiguous' with a list of candidates if the name is ambiguous — "
