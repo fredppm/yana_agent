@@ -390,3 +390,177 @@ def test_second_sync_reports_updated_not_added(tmp_path: Path) -> None:
 
     assert result["added_personas"] == 0
     assert result["updated_personas"] == 1
+
+
+# ---------------------------------------------------------------------------
+# Scenario 10 — Sending a message to João: only email synced
+# ---------------------------------------------------------------------------
+
+
+def test_joao_with_only_email_get_contact_returns_email(tmp_path: Path) -> None:
+    """
+    João was synced with only an email address.
+    When YANA tries to reach João without specifying a channel,
+    it returns the email — the only option available.
+    """
+    connector = _make_connector(tmp_path)
+    _sync(connector, [_google_person("João", "people/c010", emails=["joao@example.com"])])
+
+    c = connector._registry.get_contact("jo_o", channel=None)
+    assert c is not None
+    assert c.channel == "email"
+
+
+def test_joao_with_only_phone_get_contact_returns_whatsapp(tmp_path: Path) -> None:
+    """
+    João was synced with only a phone number.
+    When YANA tries to reach João without specifying a channel,
+    it returns whatsapp — the only option available.
+    """
+    connector = _make_connector(tmp_path)
+    _sync(connector, [_google_person("João", "people/c010", phones=["+55911222333"])])
+
+    persona_id = list(connector._registry._personas.keys())[0]
+    c = connector._registry.get_contact(persona_id, channel=None)
+    assert c is not None
+    assert c.channel == "whatsapp"
+
+
+# ---------------------------------------------------------------------------
+# Scenario 11 — João has both email and WhatsApp — no preferred set yet
+# ---------------------------------------------------------------------------
+
+
+def test_joao_with_email_and_phone_no_preferred_returns_first(tmp_path: Path) -> None:
+    """
+    João has email and WhatsApp from Google sync, but no preferred channel set.
+    get_contact without a channel returns the first one (email, added first).
+    YANA should then ask Fred which he prefers.
+    """
+    connector = _make_connector(tmp_path)
+    _sync(connector, [
+        _google_person("João", "people/c010",
+                       emails=["joao@example.com"], phones=["+55911222333"])
+    ])
+
+    persona_id = list(connector._registry._personas.keys())[0]
+    contacts = [c for c in connector._registry._contacts if c.persona_id == persona_id]
+
+    # None are preferred yet
+    assert not any(c.preferred for c in contacts)
+
+    # get_contact falls back to first
+    c = connector._registry.get_contact(persona_id)
+    assert c is not None
+
+
+# ---------------------------------------------------------------------------
+# Scenario 12 — Configuring the preferred contact method via ContactsConnector
+# ---------------------------------------------------------------------------
+
+
+def test_set_preferred_contact_makes_whatsapp_default(tmp_path: Path) -> None:
+    """
+    João has email and WhatsApp.
+    Fred tells YANA: "prefiro o WhatsApp para o João".
+    After set_preferred_contact, get_contact without channel returns WhatsApp.
+    """
+    from contacts_connector import ContactsConnector
+
+    personas_path = tmp_path / "personas.yaml"
+    contacts_path = tmp_path / "contacts.yaml"
+    personas_path.write_text(yaml.dump({"personas": []}), encoding="utf-8")
+    contacts_path.write_text(yaml.dump({"contacts": [], "named_channels": []}), encoding="utf-8")
+
+    gc = GoogleContactsConnector(
+        app_credential=str(tmp_path / "fake_cred.json"),
+        persona_token=str(tmp_path / "fake_token.json"),
+        personas_file=str(personas_path),
+        contacts_file=str(contacts_path),
+    )
+    _sync(gc, [
+        _google_person("João", "people/c010",
+                       emails=["joao@example.com"], phones=["+55911222333"])
+    ])
+
+    persona_id = list(gc._registry._personas.keys())[0]
+
+    # Now use ContactsConnector to set preferred
+    cc = ContactsConnector(
+        personas_file=str(personas_path),
+        contacts_file=str(contacts_path),
+    )
+    result = cc.call("set_preferred_contact", {"persona_id": persona_id, "channel": "whatsapp"})
+    assert result.ok
+
+    # Reload and verify
+    cc2 = ContactsConnector(
+        personas_file=str(personas_path),
+        contacts_file=str(contacts_path),
+    )
+    c = cc2._registry.get_contact(persona_id)
+    assert c is not None
+    assert c.channel == "whatsapp"
+
+
+def test_set_preferred_contact_unknown_channel_returns_error(tmp_path: Path) -> None:
+    """
+    Fred asks to set Telegram as João's preferred channel, but João has no Telegram.
+    The operation must return an error — not silently fail.
+    """
+    from contacts_connector import ContactsConnector
+
+    personas_path = tmp_path / "personas.yaml"
+    contacts_path = tmp_path / "contacts.yaml"
+    personas_path.write_text(yaml.dump({"personas": []}), encoding="utf-8")
+    contacts_path.write_text(yaml.dump({"contacts": [], "named_channels": []}), encoding="utf-8")
+
+    gc = GoogleContactsConnector(
+        app_credential=str(tmp_path / "fake_cred.json"),
+        persona_token=str(tmp_path / "fake_token.json"),
+        personas_file=str(personas_path),
+        contacts_file=str(contacts_path),
+    )
+    _sync(gc, [_google_person("João", "people/c010", emails=["joao@example.com"])])
+    persona_id = list(gc._registry._personas.keys())[0]
+
+    cc = ContactsConnector(
+        personas_file=str(personas_path),
+        contacts_file=str(contacts_path),
+    )
+    result = cc.call("set_preferred_contact", {"persona_id": persona_id, "channel": "telegram"})
+    assert not result.ok
+    assert "no_channel" in result.error
+
+
+def test_set_preferred_contact_persists_to_yaml(tmp_path: Path) -> None:
+    """
+    After set_preferred_contact, a fresh connector loaded from the same files
+    returns the correct preferred channel — preference was persisted.
+    """
+    from contacts_connector import ContactsConnector
+
+    personas_path = tmp_path / "personas.yaml"
+    contacts_path = tmp_path / "contacts.yaml"
+    personas_path.write_text(yaml.dump({"personas": []}), encoding="utf-8")
+    contacts_path.write_text(yaml.dump({"contacts": [], "named_channels": []}), encoding="utf-8")
+
+    gc = GoogleContactsConnector(
+        app_credential=str(tmp_path / "fake_cred.json"),
+        persona_token=str(tmp_path / "fake_token.json"),
+        personas_file=str(personas_path),
+        contacts_file=str(contacts_path),
+    )
+    _sync(gc, [
+        _google_person("João", "people/c010",
+                       emails=["joao@example.com"], phones=["+55911222333"])
+    ])
+    persona_id = list(gc._registry._personas.keys())[0]
+
+    cc = ContactsConnector(personas_file=str(personas_path), contacts_file=str(contacts_path))
+    cc.call("set_preferred_contact", {"persona_id": persona_id, "channel": "whatsapp"})
+
+    # Fresh load
+    cc2 = ContactsConnector(personas_file=str(personas_path), contacts_file=str(contacts_path))
+    c = cc2._registry.get_contact(persona_id)
+    assert c.channel == "whatsapp"

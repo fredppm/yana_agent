@@ -330,4 +330,5 @@ def test_connector_operations_declared() -> None:
         "get_named_channel",
         "upsert_persona",
         "upsert_named_channel",
+        "set_preferred_contact",
     }
