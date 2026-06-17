@@ -596,6 +596,7 @@ class YANAApp(App[TuiResult]):
         Binding("ctrl+c", "quit_app", "Quit", priority=True),
         Binding("ctrl+d", "quit_app", "End session", show=True, priority=True),
         Binding("ctrl+o", "toggle_history", "History", show=False),
+        Binding("ctrl+y", "copy_last", "Copy last reply", show=False),
         Binding("ctrl+t", "toggle_voice", "Voice", show=True),
         Binding("ctrl+b", "switch_session", "Sessions", show=False),
         Binding("pageup", "scroll_chat_up", "Scroll up", show=False, priority=True),
@@ -647,6 +648,7 @@ class YANAApp(App[TuiResult]):
         self._chat_started: bool = (
             False  # True once _start_chat() completes — guards on_input_submitted
         )
+        self._last_yana_reply: str = ""  # for ctrl+y copy
 
     # ------------------------------------------------------------------
     # Layout
@@ -885,7 +887,7 @@ class YANAApp(App[TuiResult]):
         self.query_one(SubmitTextArea).clear()  # flush any text buffered during screen transitions
         self._chat_started = True  # gate: discard events before this point
         # Hint bar
-        hints = [t("chat_hint_end"), t("chat_hint_history")]
+        hints = [t("chat_hint_end"), t("chat_hint_history"), t("chat_hint_copy")]
         if self._listen_fn:
             hints.append(t("chat_hint_voice"))
         if self._profiles:
@@ -968,6 +970,8 @@ class YANAApp(App[TuiResult]):
         self._messages.append(trigger)
         self._messages.append({"role": "assistant", "content": reply})
         self._new_messages.append((reply_ts, {"role": "assistant", "content": reply}))
+        if reply:
+            self._last_yana_reply = reply
 
         self.call_from_thread(self._show_thinking, False)
         if reply:
@@ -1026,6 +1030,8 @@ class YANAApp(App[TuiResult]):
         reply_ts = datetime.now().strftime("%H:%M:%S")
         self._messages.append({"role": "assistant", "content": reply})
         self._new_messages.append((reply_ts, {"role": "assistant", "content": reply}))
+        if reply:
+            self._last_yana_reply = reply
 
         self.call_from_thread(self._show_thinking, False)
         if reply:
@@ -1084,6 +1090,29 @@ class YANAApp(App[TuiResult]):
     def action_scroll_chat_down(self) -> None:
         """Scroll the chat log down by one page (PageDown while input is focused)."""
         self.query_one("#chat", RichLog).scroll_page_down(animate=False)
+
+    def action_copy_last(self) -> None:
+        """Copy the last YANA reply to the system clipboard (ctrl+y)."""
+        if not self._last_yana_reply:
+            self._flash_hint(t("chat_nothing_to_copy"))
+            return
+        self.copy_to_clipboard(self._last_yana_reply)
+        self._flash_hint(t("chat_copied"))
+
+    def _flash_hint(self, msg: str, duration: float = 1.5) -> None:
+        """Briefly show *msg* in the hint bar, then restore the normal hints."""
+        hint = self.query_one("#chat-hint", Label)
+        hint.update(f"  {msg}")
+        self.set_timer(duration, self._restore_hint)
+
+    def _restore_hint(self) -> None:
+        """Restore the normal hint bar content after a flash."""
+        hints = [t("chat_hint_end"), t("chat_hint_history"), t("chat_hint_copy")]
+        if self._listen_fn:
+            hints.append(t("chat_hint_voice"))
+        if self._profiles:
+            hints.append(t("chat_hint_sessions"))
+        self.query_one("#chat-hint", Label).update(f"  {'   '.join(hints)}")
 
     def on_mouse_scroll_up(self, event: MouseScrollUp) -> None:
         """Forward mouse wheel up to the chat log regardless of where the mouse is."""
@@ -1184,6 +1213,8 @@ class YANAApp(App[TuiResult]):
         reply_ts = datetime.now().strftime("%H:%M:%S")
         self._messages.append({"role": "assistant", "content": reply})
         self._new_messages.append((reply_ts, {"role": "assistant", "content": reply}))
+        if reply:
+            self._last_yana_reply = reply
 
         self.call_from_thread(self._show_thinking, False)
         if reply:
