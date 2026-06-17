@@ -43,7 +43,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 import core
 import profiles as _profiles
 from strings import t
-from textual.widgets import Input, Label, TextArea
+from textual.widgets import Input, Label
 from tui import (
     _NEW,
     NewProfileScreen,

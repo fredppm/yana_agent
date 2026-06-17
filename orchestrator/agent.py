@@ -53,7 +53,7 @@ def call_with_tool_loop(
     text_mode: bool = True,
     clear_line: bool = False,
     silent: bool = False,
-    on_tool_event: Callable[[str, str, "str | None"], None] | None = None,
+    on_tool_event: Callable[[str, str, str | None], None] | None = None,
 ) -> str:
     """
     Run one conversation turn handling any connector tool calls.

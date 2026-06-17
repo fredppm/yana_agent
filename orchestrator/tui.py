@@ -32,9 +32,9 @@ from textual.app import App, ComposeResult
 from textual.binding import Binding, BindingType
 from textual.containers import Container, Horizontal
 from textual.events import MouseScrollDown, MouseScrollUp
+from textual.message import Message
 from textual.screen import ModalScreen, Screen
 from textual.timer import Timer
-from textual.message import Message
 from textual.widgets import Input, Label, RichLog, TextArea
 
 _NEW = "__new__"
@@ -56,11 +56,11 @@ class SubmitTextArea(TextArea):
     class Submit(Message):
         """Posted when the user presses Enter to submit."""
 
-        def __init__(self, text_area: "SubmitTextArea") -> None:
+        def __init__(self, text_area: SubmitTextArea) -> None:
             super().__init__()
             self.text_area = text_area
 
-    async def _on_key(self, event) -> None:  # type: ignore[override]
+    async def _on_key(self, event) -> None:
         if event.key in ("enter", "ctrl+j"):
             event.prevent_default()
             event.stop()
@@ -616,7 +616,7 @@ class YANAApp(App[TuiResult]):
         auto_greet: bool = False,
         profiles: list[dict] | None = None,
         active_profile_id: str = "",
-        make_tool_event_cb: "Callable[[ToolEventCallback], TurnCallback] | None" = None,
+        make_tool_event_cb: Callable[[ToolEventCallback], TurnCallback] | None = None,
     ) -> None:
         super().__init__()
         self._sessions = sessions
@@ -1226,7 +1226,7 @@ def run_tui(
     auto_greet: bool = False,
     profiles: list[dict] | None = None,
     active_profile_id: str = "",
-    make_tool_event_cb: "Callable[[ToolEventCallback], TurnCallback] | None" = None,
+    make_tool_event_cb: Callable[[ToolEventCallback], TurnCallback] | None = None,
 ) -> TuiResult:
     """
     Launch the YANA TUI. Blocks until the user exits (and on_exit completes).
