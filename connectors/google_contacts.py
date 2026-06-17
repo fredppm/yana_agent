@@ -152,20 +152,33 @@ class GoogleContactsConnector(Connector):
         )
         contacts = []
         for person in result.get("connections", []):
-            names = person.get("names", [])
-            emails = [e["value"] for e in person.get("emailAddresses", [])]
-            phones = [p["value"] for p in person.get("phoneNumbers", [])]
-            display = names[0]["displayName"] if names else None
-            resource_name = person.get("resourceName", "")
-            if display:
+            try:
+                names = person.get("names", [])
+                display = names[0]["displayName"] if names else None
+                if not display:
+                    continue
+                # Encode/decode round-trip to surface and drop invalid characters
+                display = display.encode("utf-8", errors="replace").decode("utf-8")
+                emails = [
+                    e["value"].encode("utf-8", errors="replace").decode("utf-8")
+                    for e in person.get("emailAddresses", [])
+                ]
+                phones = [
+                    p["value"].encode("utf-8", errors="replace").decode("utf-8")
+                    for p in person.get("phoneNumbers", [])
+                ]
+                resource_name = person.get("resourceName", "")
                 contacts.append(
                     {
                         "name": display,
                         "emails": emails,
                         "phones": phones,
-                        "source_id": resource_name,  # e.g. "people/c1234567"
+                        "source_id": resource_name,
                     }
                 )
+            except Exception:
+                # Skip any contact that fails to parse — don't abort the whole sync
+                continue
         return contacts
 
     # ------------------------------------------------------------------
