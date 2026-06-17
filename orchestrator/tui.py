@@ -775,18 +775,20 @@ class YANAApp(App[TuiResult]):
         operation: str,
         error: str | None = None,
         payload: dict | None = None,
+        ts: str = "",
     ) -> None:
         """Render a tool call/result event in the chat log (dim, muted style)."""
         if operation == "run_code" and payload is not None:
-            self._write_sandbox_event(chat, payload)
+            self._write_sandbox_event(chat, payload, ts=ts)
             return
         label = escape(f"{instance}/{operation}") if instance else escape(operation)
+        ts_mk = f"[dim]  {ts}[/dim]" if ts else ""
         if error:
-            chat.write(f"[dim]  ⚙ {label}  ✗ {escape(error)}[/dim]")
+            chat.write(f"[dim]  ⚙ {label}  ✗ {escape(error)}[/dim]{ts_mk}")
         else:
-            chat.write(f"[dim]  ⚙ {label}[/dim]")
+            chat.write(f"[dim]  ⚙ {label}[/dim]{ts_mk}")
 
-    def _write_sandbox_event(self, chat: RichLog, payload: dict) -> None:
+    def _write_sandbox_event(self, chat: RichLog, payload: dict, ts: str = "") -> None:
         """Render a sandbox run_code event — shows code sent and output received."""
         code: str = payload.get("code", "")
         deps: list = payload.get("deps") or []
@@ -798,7 +800,8 @@ class YANAApp(App[TuiResult]):
         # Header line
         status = "[red]✗[/red]" if exit_code != 0 or timed_out else "[green]✓[/green]"
         deps_hint = f"  {', '.join(deps)}" if deps else ""
-        chat.write(f"[dim]  {escape(t('sandbox_label'))} {status}[/dim][dim]{escape(deps_hint)}[/dim]")
+        ts_mk = f"[dim]  {ts}[/dim]" if ts else ""
+        chat.write(f"[dim]  {escape(t('sandbox_label'))} {status}[/dim][dim]{escape(deps_hint)}[/dim]{ts_mk}")
 
         # Code block — full, no truncation
         for line in code.splitlines():
@@ -818,13 +821,14 @@ class YANAApp(App[TuiResult]):
         """Return a thread-safe callback that writes tool events to *chat*."""
 
         def _cb(instance: str, operation: str, error: str | None, payload: dict | None = None) -> None:
+            ts = datetime.now().strftime("%H:%M:%S")
             msg: dict = {"role": "tool", "content": instance, "tool_op": operation}
             if error:
                 msg["error"] = error
             if payload:
                 msg["payload"] = payload
-            self._new_messages.append(("", msg))
-            self.call_from_thread(self._write_tool_event, chat, instance, operation, error, payload)
+            self._new_messages.append((ts, msg))
+            self.call_from_thread(self._write_tool_event, chat, instance, operation, error, payload, ts)
 
         return _cb
 
