@@ -46,7 +46,6 @@ def build_registry() -> ConnectorRegistry:
         return registry
 
     db_rows = store.list_connectors_sync(profile_id)
-    db_ids = {row["instance_id"] for row in db_rows}
 
     # Sync YAML → DB: upsert all entries so config changes in YAML propagate to DB
     manifest = _HERE / "config" / "connectors.yaml"

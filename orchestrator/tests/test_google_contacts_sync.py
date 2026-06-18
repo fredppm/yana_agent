@@ -22,9 +22,8 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
-import pytest
 import yaml
 
 # Make connectors/ importable
@@ -33,7 +32,6 @@ if str(_CONNECTORS_DIR) not in sys.path:
     sys.path.insert(0, str(_CONNECTORS_DIR))
 
 from google_contacts import GoogleContactsConnector  # noqa: E402
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -45,9 +43,7 @@ def _make_connector(tmp_path: Path) -> GoogleContactsConnector:
     personas_path = tmp_path / "personas.yaml"
     contacts_path = tmp_path / "contacts.yaml"
     personas_path.write_text(yaml.dump({"personas": []}), encoding="utf-8")
-    contacts_path.write_text(
-        yaml.dump({"contacts": [], "named_channels": []}), encoding="utf-8"
-    )
+    contacts_path.write_text(yaml.dump({"contacts": [], "named_channels": []}), encoding="utf-8")
     return GoogleContactsConnector(
         app_credential=str(tmp_path / "fake_cred.json"),
         persona_token=str(tmp_path / "fake_token.json"),
@@ -89,9 +85,10 @@ def test_first_sync_creates_persona(tmp_path: Path) -> None:
     After sync, YANA has Ana as a Persona.
     """
     connector = _make_connector(tmp_path)
-    _sync(connector, [
-        _google_person("Ana", "people/c001", emails=["ana@example.com"], phones=["+55999"])
-    ])
+    _sync(
+        connector,
+        [_google_person("Ana", "people/c001", emails=["ana@example.com"], phones=["+55999"])],
+    )
 
     p = connector._registry.find_persona("Ana")
     assert p is not None
@@ -104,9 +101,7 @@ def test_first_sync_stores_google_source_id(tmp_path: Path) -> None:
     This allows future syncs to find the same person reliably.
     """
     connector = _make_connector(tmp_path)
-    _sync(connector, [
-        _google_person("Ana", "people/c001", emails=["ana@example.com"])
-    ])
+    _sync(connector, [_google_person("Ana", "people/c001", emails=["ana@example.com"])])
 
     p = connector._registry.find_by_source("google", "people/c001")
     assert p is not None
@@ -118,9 +113,7 @@ def test_first_sync_creates_email_contact(tmp_path: Path) -> None:
     Ana's email from Google becomes a Contact entry in YANA with google source tracking.
     """
     connector = _make_connector(tmp_path)
-    _sync(connector, [
-        _google_person("Ana", "people/c001", emails=["ana@example.com"])
-    ])
+    _sync(connector, [_google_person("Ana", "people/c001", emails=["ana@example.com"])])
 
     c = connector._registry.get_contact("ana", channel="email")
     assert c is not None
@@ -134,9 +127,7 @@ def test_first_sync_creates_phone_contact(tmp_path: Path) -> None:
     Google doesn't tell us if it's WhatsApp or SMS — that must be confirmed separately.
     """
     connector = _make_connector(tmp_path)
-    _sync(connector, [
-        _google_person("Ana", "people/c001", phones=["+55999111222"])
-    ])
+    _sync(connector, [_google_person("Ana", "people/c001", phones=["+55999111222"])])
 
     c = connector._registry.get_contact("ana", channel="phone")
     assert c is not None
@@ -150,10 +141,13 @@ def test_first_sync_returns_counts(tmp_path: Path) -> None:
     sync_contacts reports how many personas and contacts were added.
     """
     connector = _make_connector(tmp_path)
-    result = _sync(connector, [
-        _google_person("Ana", "people/c001", emails=["ana@example.com"], phones=["+55999"]),
-        _google_person("João", "people/c002", emails=["joao@example.com"]),
-    ])
+    result = _sync(
+        connector,
+        [
+            _google_person("Ana", "people/c001", emails=["ana@example.com"], phones=["+55999"]),
+            _google_person("João", "people/c002", emails=["joao@example.com"]),
+        ],
+    )
 
     assert result["added_personas"] == 2
     assert result["added_contacts"] == 3  # ana email + ana phone + joao email
@@ -195,7 +189,10 @@ def test_second_sync_adds_new_email(tmp_path: Path) -> None:
     """
     connector = _make_connector(tmp_path)
     _sync(connector, [_google_person("Ana", "people/c001", phones=["+55999"])])
-    _sync(connector, [_google_person("Ana", "people/c001", phones=["+55999"], emails=["ana@work.com"])])
+    _sync(
+        connector,
+        [_google_person("Ana", "people/c001", phones=["+55999"], emails=["ana@work.com"])],
+    )
 
     contacts = [c for c in connector._registry._contacts if c.persona_id == "ana"]
     channels = {c.channel for c in contacts}
@@ -261,10 +258,13 @@ def test_new_person_in_google_appears_after_sync(tmp_path: Path) -> None:
 
     assert connector._registry.find_persona("contador") is None
 
-    _sync(connector, [
-        _google_person("Ana", "people/c001", emails=["ana@example.com"]),
-        _google_person("Dr. Ribeiro", "people/c099", emails=["ribeiro@contabil.com"]),
-    ])
+    _sync(
+        connector,
+        [
+            _google_person("Ana", "people/c001", emails=["ana@example.com"]),
+            _google_person("Dr. Ribeiro", "people/c099", emails=["ribeiro@contabil.com"]),
+        ],
+    )
 
     p = connector._registry.find_persona("Dr. Ribeiro")
     assert p is not None
@@ -305,10 +305,13 @@ def test_two_joaos_get_distinct_ids(tmp_path: Path) -> None:
     Both should be created with distinct persona IDs so neither shadows the other.
     """
     connector = _make_connector(tmp_path)
-    result = _sync(connector, [
-        _google_person("João Personal Trainer", "people/c010", phones=["+55911"]),
-        _google_person("João Contador", "people/c011", emails=["joao.cont@example.com"]),
-    ])
+    result = _sync(
+        connector,
+        [
+            _google_person("João Personal Trainer", "people/c010", phones=["+55911"]),
+            _google_person("João Contador", "people/c011", emails=["joao.cont@example.com"]),
+        ],
+    )
 
     assert result["added_personas"] == 2
     ids = list(connector._registry._personas.keys())
@@ -327,10 +330,13 @@ def test_find_by_source_returns_correct_persona(tmp_path: Path) -> None:
     This is how future syncs find the right persona even if the name changed.
     """
     connector = _make_connector(tmp_path)
-    _sync(connector, [
-        _google_person("Ana", "people/c001"),
-        _google_person("João", "people/c002"),
-    ])
+    _sync(
+        connector,
+        [
+            _google_person("Ana", "people/c001"),
+            _google_person("João", "people/c002"),
+        ],
+    )
 
     p = connector._registry.find_by_source("google", "people/c002")
     assert p is not None
@@ -418,7 +424,7 @@ def test_joao_with_only_phone_get_contact_returns_phone(tmp_path: Path) -> None:
     connector = _make_connector(tmp_path)
     _sync(connector, [_google_person("João", "people/c010", phones=["+55911222333"])])
 
-    persona_id = list(connector._registry._personas.keys())[0]
+    persona_id = next(iter(connector._registry._personas.keys()))
     c = connector._registry.get_contact(persona_id, channel=None)
     assert c is not None
     assert c.channel == "phone"  # not routable yet — delivery method unknown
@@ -436,12 +442,16 @@ def test_joao_with_email_and_phone_no_preferred_returns_first(tmp_path: Path) ->
     YANA should then ask Fred which he prefers.
     """
     connector = _make_connector(tmp_path)
-    _sync(connector, [
-        _google_person("João", "people/c010",
-                       emails=["joao@example.com"], phones=["+55911222333"])
-    ])
+    _sync(
+        connector,
+        [
+            _google_person(
+                "João", "people/c010", emails=["joao@example.com"], phones=["+55911222333"]
+            )
+        ],
+    )
 
-    persona_id = list(connector._registry._personas.keys())[0]
+    persona_id = next(iter(connector._registry._personas.keys()))
     contacts = [c for c in connector._registry._contacts if c.persona_id == persona_id]
 
     # None are preferred yet
@@ -476,21 +486,28 @@ def test_set_preferred_contact_makes_whatsapp_default(tmp_path: Path) -> None:
         personas_file=str(personas_path),
         contacts_file=str(contacts_path),
     )
-    _sync(gc, [
-        _google_person("João", "people/c010",
-                       emails=["joao@example.com"], phones=["+55911222333"])
-    ])
+    _sync(
+        gc,
+        [
+            _google_person(
+                "João", "people/c010", emails=["joao@example.com"], phones=["+55911222333"]
+            )
+        ],
+    )
 
-    persona_id = list(gc._registry._personas.keys())[0]
+    persona_id = next(iter(gc._registry._personas.keys()))
 
     # YANA learns João is on WhatsApp: upsert_contact promotes the raw phone to whatsapp
     cc = ContactsConnector(personas_file=str(personas_path), contacts_file=str(contacts_path))
-    r = cc.call("upsert_contact", {
-        "persona_id": persona_id,
-        "channel": "whatsapp",
-        "address": "+55911222333",
-        "preferred": False,
-    })
+    r = cc.call(
+        "upsert_contact",
+        {
+            "persona_id": persona_id,
+            "channel": "whatsapp",
+            "address": "+55911222333",
+            "preferred": False,
+        },
+    )
     assert r.ok
 
     # Now set whatsapp as preferred
@@ -523,7 +540,7 @@ def test_set_preferred_contact_unknown_channel_returns_error(tmp_path: Path) -> 
         contacts_file=str(contacts_path),
     )
     _sync(gc, [_google_person("João", "people/c010", emails=["joao@example.com"])])
-    persona_id = list(gc._registry._personas.keys())[0]
+    persona_id = next(iter(gc._registry._personas.keys()))
 
     cc = ContactsConnector(
         personas_file=str(personas_path),
@@ -552,20 +569,27 @@ def test_set_preferred_contact_persists_to_yaml(tmp_path: Path) -> None:
         personas_file=str(personas_path),
         contacts_file=str(contacts_path),
     )
-    _sync(gc, [
-        _google_person("João", "people/c010",
-                       emails=["joao@example.com"], phones=["+55911222333"])
-    ])
-    persona_id = list(gc._registry._personas.keys())[0]
+    _sync(
+        gc,
+        [
+            _google_person(
+                "João", "people/c010", emails=["joao@example.com"], phones=["+55911222333"]
+            )
+        ],
+    )
+    persona_id = next(iter(gc._registry._personas.keys()))
 
     # Promote raw phone to whatsapp first
     cc = ContactsConnector(personas_file=str(personas_path), contacts_file=str(contacts_path))
-    cc.call("upsert_contact", {
-        "persona_id": persona_id,
-        "channel": "whatsapp",
-        "address": "+55911222333",
-        "preferred": False,
-    })
+    cc.call(
+        "upsert_contact",
+        {
+            "persona_id": persona_id,
+            "channel": "whatsapp",
+            "address": "+55911222333",
+            "preferred": False,
+        },
+    )
     cc.call("set_preferred_contact", {"persona_id": persona_id, "channel": "whatsapp"})
 
     # Fresh load
@@ -611,9 +635,10 @@ def test_purge_removed_also_removes_contacts(tmp_path: Path) -> None:
     Purging an orphaned persona also removes its contacts.
     """
     connector = _make_connector(tmp_path)
-    _sync(connector, [
-        _google_person("Ana", "people/c001", emails=["ana@example.com"], phones=["+55999"])
-    ])
+    _sync(
+        connector,
+        [_google_person("Ana", "people/c001", emails=["ana@example.com"], phones=["+55999"])],
+    )
     contacts_before = len(connector._registry._contacts)
     assert contacts_before == 2  # email + phone (raw)
 
@@ -663,8 +688,8 @@ def test_purge_removed_result_includes_purged_count(tmp_path: Path) -> None:
     _sync(connector, [_google_person("Ana", "people/c001", emails=["ana@example.com"])])
 
     # Re-sync with Ana still present — nothing purged
-    result = _sync_purge(connector, [
-        _google_person("Ana", "people/c001", emails=["ana@example.com"])
-    ])
+    result = _sync_purge(
+        connector, [_google_person("Ana", "people/c001", emails=["ana@example.com"])]
+    )
     assert result["purged_personas"] == 0
     assert "purged_names" not in result
