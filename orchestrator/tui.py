@@ -876,14 +876,23 @@ class YANAApp(App[TuiResult]):
                 chat.write("")
 
     def _build_storable_messages(self) -> list[dict]:
-        """Merge _new_messages (user + assistant + tool events) into a flat list for storage."""
-        result = []
+        """Merge history + new messages (with tool events) into a flat list for storage.
+
+        For a resumed session (_chosen_session set), prepend _session_history so the
+        full prior history (including old tool events) is preserved alongside new turns.
+        For a fresh session, return only _new_messages (or fall back to _messages).
+        """
+        new_result = []
         for ts, m in self._new_messages:
             entry = dict(m)
             if ts:
                 entry.setdefault("ts", ts)
-            result.append(entry)
-        return result or list(self._messages)
+            new_result.append(entry)
+
+        if self._chosen_session:
+            # Resumed session: full old history + new turns
+            return list(self._session_history) + new_result
+        return new_result or list(self._messages)
 
     def _session_ts(self) -> str:
         """Return HH:MM:SS from the chosen session ID, or empty string."""
