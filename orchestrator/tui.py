@@ -782,12 +782,16 @@ class YANAApp(App[TuiResult]):
         if operation == "run_code" and payload is not None:
             self._write_sandbox_event(chat, payload, ts=ts)
             return
-        label = escape(f"{instance}/{operation}") if instance else escape(operation)
-        ts_mk = f"[dim]  {ts}[/dim]" if ts else ""
+        w = self._chat_width()
+        label = f"{instance}/{operation}" if instance else operation
         if error:
-            chat.write(f"[dim]  ⚙ {label}  ✗ {escape(error)}[/dim]{ts_mk}")
-        else:
-            chat.write(f"[dim]  ⚙ {label}[/dim]{ts_mk}")
+            label = f"{label}  ✗ {error}"
+        ts_str = f"  {ts}" if ts else ""
+        ts_len = cell_len(ts_str)
+        gap = max(0, w - 2 - cell_len(label) - ts_len)
+        ts_mk = f"[dim]{escape(ts_str)}[/dim]" if ts_str else ""
+        chat.write(f"[dim]  {escape(label)}{' ' * gap}{ts_mk}[/dim]")
+        chat.write("")
 
     def _write_sandbox_event(self, chat: RichLog, payload: dict, ts: str = "") -> None:
         """Render a sandbox run_code event — shows code sent and output received."""
