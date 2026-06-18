@@ -151,3 +151,106 @@ def test_first_breath_pipeline_missing_owner_name(db):
     with db.Session(db._get_engine()) as s:
         owner = s.get(db.Owner, owner_id)
     assert owner.name == "User"
+
+
+# ---------------------------------------------------------------------------
+# _parse_title_response
+# ---------------------------------------------------------------------------
+
+
+class TestParseTitleResponse:
+    def test_valid_title_and_summary(self):
+        response = (
+            "<<<TITLE>>>\nDiscussed project architecture and deployment strategy\n<<<END>>>\n"
+            "<<<SUMMARY>>>\nWe reviewed the microservices layout. "
+            "Pending: decide on message broker.\n<<<END>>>"
+        )
+        result = sanctum_writer._parse_title_response(response)
+        assert "title" in result
+        assert "summary" in result
+        assert "architecture" in result["title"]
+        assert "message broker" in result["summary"]
+
+    def test_title_only_no_summary(self):
+        response = "<<<TITLE>>>\nQuick check-in about weekend plans\n<<<END>>>"
+        result = sanctum_writer._parse_title_response(response)
+        assert "title" in result
+        assert "summary" not in result
+
+    def test_empty_response_returns_empty(self):
+        result = sanctum_writer._parse_title_response("")
+        assert result == {}
+
+    def test_no_blocks_returns_empty(self):
+        result = sanctum_writer._parse_title_response("Here is some text without blocks.")
+        assert result == {}
+
+    def test_empty_title_returns_empty(self):
+        response = "<<<TITLE>>>\n\n<<<END>>>"
+        result = sanctum_writer._parse_title_response(response)
+        assert result == {}
+
+    def test_empty_summary_excluded(self):
+        response = "<<<TITLE>>>\nValid title here\n<<<END>>>\n<<<SUMMARY>>>\n\n<<<END>>>"
+        result = sanctum_writer._parse_title_response(response)
+        assert "title" in result
+        assert "summary" not in result
+
+    def test_title_truncated_to_200_chars(self):
+        long_title = "x" * 300
+        response = f"<<<TITLE>>>\n{long_title}\n<<<END>>>"
+        result = sanctum_writer._parse_title_response(response)
+        assert len(result["title"]) == 200
+
+    def test_multiline_summary_preserved(self):
+        response = (
+            "<<<TITLE>>>\nProject review session\n<<<END>>>\n"
+            "<<<SUMMARY>>>\nLine one.\nLine two.\nLine three.\n<<<END>>>"
+        )
+        result = sanctum_writer._parse_title_response(response)
+        assert "Line one." in result["summary"]
+        assert "Line two." in result["summary"]
+
+    def test_surrounding_text_ignored(self):
+        response = (
+            "Here is my analysis:\n\n"
+            "<<<TITLE>>>\nThe real title\n<<<END>>>\n"
+            "And some more text\n"
+            "<<<SUMMARY>>>\nThe real summary\n<<<END>>>\n"
+            "Done!"
+        )
+        result = sanctum_writer._parse_title_response(response)
+        assert result["title"] == "The real title"
+        assert result["summary"] == "The real summary"
+
+
+class TestWriteSessionTitle:
+    def test_returns_empty_dict_on_empty_messages(self):
+        result = sanctum_writer.write_session_title([])
+        assert result == {}
+
+    def test_returns_empty_dict_on_exception(self, monkeypatch):
+        """write_session_title never raises — returns empty dict on any error."""
+        monkeypatch.setattr(
+            sanctum_writer.prov,
+            "call_llm",
+            lambda *a, **kw: (_ for _ in ()).throw(RuntimeError("boom")),
+        )
+        result = sanctum_writer.write_session_title(
+            [{"role": "user", "content": "hello"}],
+            config={"litellm_url": "http://test", "models": {"conversation_fast": "test"}},
+        )
+        assert result == {}
+
+    def test_parses_valid_llm_response(self, monkeypatch):
+        fake_response = (
+            "<<<TITLE>>>\nDiscussing weekend hiking plans\n<<<END>>>\n"
+            "<<<SUMMARY>>>\nWe decided on the mountain trail.\n<<<END>>>"
+        )
+        monkeypatch.setattr(sanctum_writer.prov, "call_llm", lambda *a, **kw: fake_response)
+        result = sanctum_writer.write_session_title(
+            [{"role": "user", "content": "hello"}],
+            config={"litellm_url": "http://test", "models": {"conversation_fast": "test"}},
+        )
+        assert result["title"] == "Discussing weekend hiking plans"
+        assert result["summary"] == "We decided on the mountain trail."

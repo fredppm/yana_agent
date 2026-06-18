@@ -236,7 +236,7 @@ def _build_session_entries(
     today = datetime.now().date()
     entries: list[tuple[str, str]] = [(_NEW, t("sessions_new"))]
     _DATE_COL = 9  # "yesterday" and "há N dias" are both ≤9 chars
-    for sid, dt, preview in sessions:
+    for sid, dt, title in sessions:
         delta = (today - dt.date()).days
         if delta == 0:
             date_label = t("session_today")
@@ -247,8 +247,8 @@ def _build_session_entries(
         else:
             date_label = dt.strftime("%d/%m")
         label = f"{date_label:<{_DATE_COL}}  {dt.strftime('%H:%M')}"
-        if preview:
-            label += f"  ·  {preview}"
+        if title:
+            label += f"  ·  {title}"
         entries.append((sid, label))
     return entries
 
@@ -296,6 +296,13 @@ class ProfileSessionScreen(Screen[str | None]):
         scrollbar-background: transparent;
         scrollbar-size: 1 1;
     }
+    #session-summary {
+        height: auto;
+        max-height: 3;
+        padding: 0 7;
+        color: #787878;
+        display: none;
+    }
     #session-hint {
         height: 1;
         padding: 0;
@@ -321,15 +328,18 @@ class ProfileSessionScreen(Screen[str | None]):
         self._spinner_idx = 0
         self._flash_ticks: int = 0  # countdown for temporary hint messages
         self._flash_msg: str = ""
+        self._summary_cache: dict[str, str | None] = {}  # session_id -> summary
 
     def compose(self) -> ComposeResult:
         yield Label("", id="profile-bar")
         yield RichLog(id="session-list", highlight=False, markup=True)
+        yield Label("", id="session-summary")
         yield Label("", id="session-hint")
 
     def on_mount(self) -> None:
         self._render_profile_bar()
         self._render_list()
+        self._update_summary()
         self._update_hint()
         self.set_interval(0.12, self._tick_spinner)
 
@@ -370,6 +380,34 @@ class ProfileSessionScreen(Screen[str | None]):
             else:
                 lst.write(f"     [dim]{escape(label)}[/dim]")
         lst.write("")
+
+    # ------------------------------------------------------------------
+    # Session summary
+
+    def _update_summary(self) -> None:
+        """Show or hide the summary label based on the currently focused session."""
+        summary_label = self.query_one("#session-summary", Label)
+        if self._cursor < len(self._entries):
+            sid = self._entries[self._cursor][0]
+            if sid == _NEW:
+                summary_label.display = False
+                return
+            # Load summary from cache or DB
+            if sid not in self._summary_cache:
+                try:
+                    import store
+
+                    self._summary_cache[sid] = store.load_session_summary_sync(sid)
+                except Exception:
+                    self._summary_cache[sid] = None
+            summary = self._summary_cache.get(sid)
+            if summary:
+                summary_label.update(f"  {escape(summary)}")
+                summary_label.display = True
+            else:
+                summary_label.display = False
+        else:
+            summary_label.display = False
 
     # ------------------------------------------------------------------
     # Hint bar
@@ -427,16 +465,20 @@ class ProfileSessionScreen(Screen[str | None]):
             new_sessions = core.list_sessions()
             self._entries = _build_session_entries(new_sessions)
             self._cursor = 0
+            self._summary_cache.clear()
             self._render_list()
+            self._update_summary()
         self._render_profile_bar()
 
     def action_cursor_up(self) -> None:
         self._cursor = max(0, self._cursor - 1)
         self._render_list()
+        self._update_summary()
 
     def action_cursor_down(self) -> None:
         self._cursor = min(len(self._entries) - 1, self._cursor + 1)
         self._render_list()
+        self._update_summary()
 
     def action_confirm(self) -> None:
         self.dismiss(self._entries[self._cursor][0])

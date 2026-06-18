@@ -109,6 +109,79 @@ def _once_execute(task: PulseTask, registry: ConnectorRegistry, tasks_file: Path
 
 
 # ---------------------------------------------------------------------------
+# Session title backfill
+# ---------------------------------------------------------------------------
+
+
+def _schedule_title_backfill(scheduler: BackgroundScheduler) -> None:
+    """Add a periodic job to generate titles for untitled sessions.
+
+    Runs every 10 minutes. Only processes sessions when pulse_config.quiet_minutes
+    is set (non-None). Respects quiet hours.
+    """
+    from apscheduler.triggers.interval import IntervalTrigger
+
+    scheduler.add_job(
+        _backfill_session_titles,
+        IntervalTrigger(minutes=10),
+        id="__session_title_backfill",
+        replace_existing=True,
+        name="pulse:session_title_backfill",
+    )
+    output.status("[pulse] session title backfill scheduled (every 10 min)")
+
+
+def _backfill_session_titles() -> None:
+    """Generate titles for sessions that don't have one yet.
+
+    Skipped if:
+    - quiet_minutes is not configured in pulse_config
+    - Currently in quiet hours
+    """
+    try:
+        import profiles
+        import store
+        from core import load_pulse_config
+
+        if is_quiet_hours():
+            output.debug("[pulse] quiet hours — skipping title backfill")
+            return
+
+        pulse_config = load_pulse_config()
+        quiet_minutes = pulse_config.get("quiet_minutes")
+        if quiet_minutes is None:
+            return  # feature disabled
+
+        active = profiles.get_active_profile()
+        if not active:
+            return
+
+        untitled = store.list_untitled_sessions_sync(active, limit=5)
+        if not untitled:
+            return
+
+        import sanctum_writer as sw
+
+        for session_id, _started_at in untitled:
+            try:
+                messages = store.load_session_messages_sync(session_id)
+                if not messages:
+                    continue
+                title_data = sw.write_session_title(messages)
+                if title_data:
+                    store.update_session_title_sync(
+                        session_id,
+                        title_data.get("title", ""),
+                        title_data.get("summary"),
+                    )
+                    output.status(f"[pulse] generated title for session {session_id[:20]}...")
+            except Exception as exc:
+                output.debug(f"[pulse] title backfill failed for {session_id}: {exc}")
+    except Exception as exc:
+        output.debug(f"[pulse] title backfill error: {exc}")
+
+
+# ---------------------------------------------------------------------------
 # Main entry point
 # ---------------------------------------------------------------------------
 
@@ -135,6 +208,10 @@ def main(host: str = "127.0.0.1", port: int = 7891, connectors_dir: Path | None 
 
     tasks_file = sanctum_path() / "pulse-tasks.yaml"
     scheduler = build_scheduler(tasks_file, registry)
+
+    # Schedule session title backfill — generates titles for untitled sessions
+    _schedule_title_backfill(scheduler)
+
     scheduler.start()
     output.status(f"[pulse] scheduler started — {len(scheduler.get_jobs())} job(s)")
 

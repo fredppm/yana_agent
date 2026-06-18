@@ -278,6 +278,19 @@ def _run_tui_conversation(
             # Regular session: store in Graphiti in background — TUI closes immediately
             mem.store_session_background(final_messages, session_id)
 
+        # Generate session title + summary (non-blocking, best-effort)
+        if final_messages:
+            try:
+                title_data = sw.write_session_title(final_messages, config=providers_config)
+                if title_data:
+                    store.update_session_title_sync(
+                        session_id,
+                        title_data.get("title", ""),
+                        title_data.get("summary"),
+                    )
+            except Exception:
+                pass  # best-effort — never block exit
+
     run_tui(
         _sessions,
         on_turn=on_turn,

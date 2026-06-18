@@ -14,7 +14,7 @@ def create_session_sync(
     session_id: str,
     profile_id: str,
     started_at: str,
-    preview: str,
+    title: str,
     messages_json: str,
 ) -> None:
     with Session(_get_engine()) as db:
@@ -22,17 +22,19 @@ def create_session_sync(
         if record is None:
             record = SessionRecord(id=session_id, profile_id=profile_id, started_at=started_at)
             db.add(record)
-        record.preview = preview
+        record.title = title
         record.messages_json = messages_json
         db.commit()
 
 
-def update_session_preview_sync(session_id: str, preview: str) -> None:
-    """Update the preview/title of an existing session."""
+def update_session_title_sync(session_id: str, title: str, summary: str | None = None) -> None:
+    """Update the title (and optionally summary) of an existing session."""
     with Session(_get_engine()) as db:
         record = db.get(SessionRecord, session_id)
         if record:
-            record.preview = preview[:80]
+            record.title = title[:200]
+            if summary is not None:
+                record.summary = summary
             db.commit()
 
 
@@ -45,7 +47,7 @@ def list_sessions_sync(profile_id: str, limit: int = 20) -> list[tuple[str, date
             .order_by(SessionRecord.started_at.desc())
             .limit(limit)
         ).all()
-    return [(r.id, datetime.fromisoformat(r.started_at), r.preview or "") for r in records]
+    return [(r.id, datetime.fromisoformat(r.started_at), r.title or "") for r in records]
 
 
 def load_session_messages_sync(session_id: str) -> list[dict]:
@@ -55,3 +57,32 @@ def load_session_messages_sync(session_id: str) -> list[dict]:
     if not record or not record.messages_json:
         return []
     return json.loads(record.messages_json)
+
+
+def load_session_summary_sync(session_id: str) -> str | None:
+    """Load the summary for a session. Returns None if not found."""
+    with Session(_get_engine()) as db:
+        record = db.get(SessionRecord, session_id)
+    if not record:
+        return None
+    return record.summary
+
+
+def list_untitled_sessions_sync(profile_id: str, limit: int = 50) -> list[tuple[str, str]]:
+    """Return (session_id, started_at) for sessions without a generated title.
+
+    A session is considered "untitled" when title is NULL or starts with the
+    first 80 chars of the first assistant message (the old preview fallback).
+    For simplicity, we check for NULL or empty title only.
+    """
+    with Session(_get_engine()) as db:
+        records = db.scalars(
+            select(SessionRecord)
+            .where(
+                SessionRecord.profile_id == profile_id,
+                (SessionRecord.title.is_(None)) | (SessionRecord.title == ""),
+            )
+            .order_by(SessionRecord.started_at.desc())
+            .limit(limit)
+        ).all()
+    return [(r.id, r.started_at) for r in records]
