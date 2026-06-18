@@ -782,12 +782,18 @@ class YANAApp(App[TuiResult]):
         if operation == "run_code" and payload is not None:
             self._write_sandbox_event(chat, payload, ts=ts)
             return
-        label = escape(f"{instance}/{operation}") if instance else escape(operation)
-        ts_mk = f"[dim]  {ts}[/dim]" if ts else ""
+        w = self._chat_width()
+        op = f"{instance}/{operation}" if instance else operation
+        label = f"{t('tool_prefix')} {op}"
+        status = "  ✗" if error else "  ✓"
+        ts_str = f"  {ts}" if ts else ""
+        ts_len = cell_len(ts_str)
+        gap = max(0, w - self._GUTTER - cell_len(label) - cell_len(status) - ts_len)
+        ts_mk = f"[dim]{escape(ts_str)}[/dim]" if ts_str else ""
+        chat.write(f"[dim]▸  {escape(label)}{escape(status)}{' ' * gap}{ts_mk}[/dim]")
         if error:
-            chat.write(f"[dim]  ⚙ {label}  ✗ {escape(error)}[/dim]{ts_mk}")
-        else:
-            chat.write(f"[dim]  ⚙ {label}[/dim]{ts_mk}")
+            chat.write(f"[dim]   {escape(error)}[/dim]")
+        chat.write("")
 
     def _write_sandbox_event(self, chat: RichLog, payload: dict, ts: str = "") -> None:
         """Render a sandbox run_code event — shows code sent and output received."""
@@ -872,14 +878,23 @@ class YANAApp(App[TuiResult]):
                 chat.write("")
 
     def _build_storable_messages(self) -> list[dict]:
-        """Merge _new_messages (user + assistant + tool events) into a flat list for storage."""
-        result = []
+        """Merge history + new messages (with tool events) into a flat list for storage.
+
+        For a resumed session (_chosen_session set), prepend _session_history so the
+        full prior history (including old tool events) is preserved alongside new turns.
+        For a fresh session, return only _new_messages (or fall back to _messages).
+        """
+        new_result = []
         for ts, m in self._new_messages:
             entry = dict(m)
             if ts:
                 entry.setdefault("ts", ts)
-            result.append(entry)
-        return result or list(self._messages)
+            new_result.append(entry)
+
+        if self._chosen_session:
+            # Resumed session: full old history + new turns
+            return list(self._session_history) + new_result
+        return new_result or list(self._messages)
 
     def _session_ts(self) -> str:
         """Return HH:MM:SS from the chosen session ID, or empty string."""

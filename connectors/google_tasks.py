@@ -15,8 +15,8 @@ Setup:
            instance_id="tasks_fred",
            name="Fred's Tasks",
            owner="fred",
-           credentials_file="~/.yana/google_credentials.json",
-           token_file="~/.yana/tokens/tasks_fred.json",
+           app_credential="~/.yana/google_credentials.json",
+           persona_token="~/.yana/tokens/tasks_fred.json",
        )
      Or set GOOGLE_CREDENTIALS_FILE / GOOGLE_TASKS_TOKEN_FILE env vars.
 """
@@ -39,15 +39,15 @@ class GoogleTasksConnector(Connector):
 
     def __init__(
         self,
-        credentials_file: str | None = None,
-        token_file: str | None = None,
+        app_credential: str | None = None,
+        persona_token: str | None = None,
     ) -> None:
-        self._credentials_file = Path(
-            credentials_file
+        self._app_credential = Path(
+            app_credential
             or os.environ.get("GOOGLE_CREDENTIALS_FILE", "~/.yana/google_credentials.json")
         ).expanduser()
-        self._token_file = Path(
-            token_file
+        self._persona_token = Path(
+            persona_token
             or os.environ.get("GOOGLE_TASKS_TOKEN_FILE", "~/.yana/tokens/google_tasks.json")
         ).expanduser()
         self._service = None  # lazy — built on first call
@@ -197,21 +197,21 @@ class GoogleTasksConnector(Connector):
         from googleapiclient.discovery import build
 
         creds = None
-        if self._token_file.exists():
-            creds = Credentials.from_authorized_user_file(str(self._token_file), _SCOPES)
+        if self._persona_token.exists():
+            creds = Credentials.from_authorized_user_file(str(self._persona_token), _SCOPES)
 
         if not creds or not creds.valid:
             if creds and creds.expired and creds.refresh_token:
                 creds.refresh(Request())
             else:
                 flow = InstalledAppFlow.from_client_secrets_file(
-                    str(self._credentials_file), _SCOPES
+                    str(self._app_credential), _SCOPES
                 )
                 creds = flow.run_local_server(port=0)
-            self._token_file.parent.mkdir(parents=True, exist_ok=True)
-            self._token_file.write_text(creds.to_json())
+            self._persona_token.parent.mkdir(parents=True, exist_ok=True)
+            self._persona_token.write_text(creds.to_json())
 
-        return build("tasks", "v1", credentials=creds)
+        return build("tasks", "v1", credentials=creds, cache_discovery=False)
 
     def _format_tasklist(self, raw: dict) -> dict:
         return {

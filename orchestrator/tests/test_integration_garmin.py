@@ -13,8 +13,8 @@ First-time setup:
            import sys; sys.path.insert(0, 'orchestrator')
            from connectors.garmin import GarminActivityConnector
            c = GarminActivityConnector(
-               credentials_file='~/.yana/credentials/garmin_fred.json',
-               token_dir='~/.yana/tokens/garmin_fred',
+               persona_credentials='~/.yana/credentials/garmin_fred.json',
+               persona_token_dir='~/.yana/tokens/garmin_fred',
            )
            c._svc()
            print('tokens saved to ~/.yana/tokens/garmin_fred')

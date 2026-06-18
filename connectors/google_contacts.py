@@ -1,0 +1,430 @@
+"""
+connectors/google_contacts.py — Google Contacts (People API) connector.
+
+Two operations:
+  list_contacts(max_results?)          → raw Google contact data (query)
+  import_contacts(owner, email_via_connector, phone_via_connector?, channel_for_phone?)
+                                       → upserts Personas + Contacts into the registry (command)
+
+import_contacts is designed to be run once (or periodically) to seed the registry.
+Personas that already exist (by id) are merged — aliases and context are updated,
+existing entries are not overwritten.
+
+Setup:
+  1. Enable the People API in your Google Cloud project
+  2. Add scope 'https://www.googleapis.com/auth/contacts.readonly' to your OAuth consent
+  3. Configure in connectors.yaml:
+
+       - type: GoogleContactsConnector
+         id: google_contacts
+         name: "Google Contacts"
+         description: "Import contacts from Google into YANA's registry"
+         config:
+           app_credential: "~/.yana/google_credentials.json"
+           persona_token: "~/.yana/tokens/google_contacts.json"
+
+  Optional — pass personas_file/contacts_file to use YAML mode (tests / legacy):
+           personas_file: "orchestrator/config/personas.yaml"
+           contacts_file: "orchestrator/config/contacts.yaml"
+"""
+
+from __future__ import annotations
+
+import logging
+import os
+import re
+import sys
+import importlib.util as _ilu
+from pathlib import Path
+from typing import Any
+
+log = logging.getLogger(__name__)
+
+from connectors import Connector, command, query
+
+# Reuse the ContactRegistry from orchestrator/contacts.py
+_contacts_mod_path = Path(__file__).parent.parent / "orchestrator" / "contacts.py"
+if "orchestrator.contacts" not in sys.modules:
+    _spec = _ilu.spec_from_file_location("orchestrator.contacts", _contacts_mod_path)
+    _contacts_mod = _ilu.module_from_spec(_spec)  # type: ignore[arg-type]
+    sys.modules["orchestrator.contacts"] = _contacts_mod
+    _spec.loader.exec_module(_contacts_mod)  # type: ignore[union-attr]
+
+_contacts_mod = sys.modules["orchestrator.contacts"]
+ContactRegistry = _contacts_mod.ContactRegistry
+Contact = _contacts_mod.Contact
+Persona = _contacts_mod.Persona
+
+_SCOPES = ["https://www.googleapis.com/auth/contacts.readonly"]
+
+
+def _slugify(name: str) -> str:
+    """Turn a display name into a lowercase id safe for use as a persona id."""
+    slug = name.strip().lower()
+    slug = re.sub(r"[^a-z0-9]+", "_", slug)
+    return slug.strip("_")
+
+
+class GoogleContactsConnector(Connector):
+    connector_description = (
+        "Import contacts from Google Contacts into YANA's persona/contact registry"
+    )
+
+    def __init__(
+        self,
+        app_credential: str | None = None,
+        persona_token: str | None = None,
+        personas_file: str | None = None,
+        contacts_file: str | None = None,
+    ) -> None:
+        self._app_credential = Path(
+            app_credential
+            or os.environ.get("GOOGLE_CREDENTIALS_FILE", "~/.yana/google_credentials.json")
+        ).expanduser()
+        self._persona_token = Path(
+            persona_token
+            or os.environ.get("GOOGLE_TOKEN_FILE", "~/.yana/tokens/google_contacts.json")
+        ).expanduser()
+
+        self._registry = ContactRegistry()
+
+        if personas_file is not None:
+            # YAML mode — activated by tests or legacy config
+            personas_path = Path(personas_file)
+            contacts_path = Path(contacts_file) if contacts_file is not None else None
+            if not personas_path.is_absolute():
+                personas_path = Path(__file__).parent.parent / personas_path
+            if contacts_path is not None and not contacts_path.is_absolute():
+                contacts_path = Path(__file__).parent.parent / contacts_path
+            self._registry.load(personas_path, contacts_path)
+        else:
+            # DB mode — production
+            self._registry.load()
+
+        self._service = None  # lazy
+
+    # ------------------------------------------------------------------
+    # Auth helper
+    # ------------------------------------------------------------------
+
+    def _svc(self) -> Any:
+        if self._service is not None:
+            return self._service
+        from google.auth.transport.requests import Request
+        from google.oauth2.credentials import Credentials
+        from google_auth_oauthlib.flow import InstalledAppFlow
+        from googleapiclient.discovery import build
+
+        creds = None
+        if self._persona_token.exists():
+            creds = Credentials.from_authorized_user_file(str(self._persona_token), _SCOPES)
+
+        if not creds or not creds.valid:
+            if creds and creds.expired and creds.refresh_token:
+                creds.refresh(Request())
+            else:
+                flow = InstalledAppFlow.from_client_secrets_file(
+                    str(self._app_credential), _SCOPES
+                )
+                creds = flow.run_local_server(port=0)
+            self._persona_token.parent.mkdir(parents=True, exist_ok=True)
+            self._persona_token.write_text(creds.to_json(), encoding="utf-8")
+
+        # cache_discovery=False avoids httplib2 writing the discovery doc via
+        # the system locale (cp1252 on Windows), which breaks on non-ASCII chars.
+        self._service = build("people", "v1", credentials=creds, cache_discovery=False)
+        return self._service
+
+    # ------------------------------------------------------------------
+    # Queries
+    # ------------------------------------------------------------------
+
+    @query(
+        description=(
+            "List raw contacts from Google Contacts. "
+            "Returns display names, emails, and phone numbers. "
+            "Use import_contacts to upsert them into YANA's registry."
+        ),
+        params={"max_results": {"type": "number", "required": False}},
+        returns={"type": "list"},
+    )
+    def _fetch_contacts(
+        self, max_results: int
+    ) -> tuple[list[dict[str, Any]], list[str]]:
+        """Fetch and parse contacts from Google. Returns (contacts, failed_resource_names)."""
+        page_token: str | None = None
+        all_persons: list[dict] = []
+        page_size = min(max_results, 1000)
+
+        # Follow pagination — the API caps at 1000 per page.
+        while True:
+            kwargs: dict[str, Any] = dict(
+                resourceName="people/me",
+                pageSize=page_size,
+                personFields="names,emailAddresses,phoneNumbers",
+            )
+            if page_token:
+                kwargs["pageToken"] = page_token
+
+            page = (
+                self._svc()
+                .people()
+                .connections()
+                .list(**kwargs)
+                .execute()
+            )
+            all_persons.extend(page.get("connections", []))
+            page_token = page.get("nextPageToken")
+            if not page_token or len(all_persons) >= max_results:
+                break
+
+        contacts: list[dict[str, Any]] = []
+        parse_errors: list[str] = []
+        for person in all_persons:
+            resource_name = person.get("resourceName", "(unknown)")
+            try:
+                names = person.get("names", [])
+                display = names[0]["displayName"] if names else None
+                if not display:
+                    continue
+                # Encode/decode round-trip to replace any invalid characters
+                display = display.encode("utf-8", errors="replace").decode("utf-8")
+                emails = [
+                    e["value"].encode("utf-8", errors="replace").decode("utf-8")
+                    for e in person.get("emailAddresses", [])
+                ]
+                phones = [
+                    p["value"].encode("utf-8", errors="replace").decode("utf-8")
+                    for p in person.get("phoneNumbers", [])
+                ]
+                contacts.append(
+                    {
+                        "name": display,
+                        "emails": emails,
+                        "phones": phones,
+                        "source_id": resource_name,
+                    }
+                )
+            except Exception as exc:
+                log.warning(
+                    "google_contacts: failed to parse %s — %s: %s",
+                    resource_name, type(exc).__name__, exc,
+                )
+                parse_errors.append(resource_name)
+
+        if parse_errors:
+            log.warning(
+                "google_contacts: %d contact(s) could not be parsed: %s",
+                len(parse_errors), ", ".join(parse_errors),
+            )
+
+        return contacts, parse_errors
+
+    def list_contacts(self, max_results: int = 50) -> list[dict[str, Any]]:
+        contacts, _ = self._fetch_contacts(max_results)
+        return contacts
+
+    # ------------------------------------------------------------------
+    # Commands
+    # ------------------------------------------------------------------
+
+    @command(
+        description=(
+            "Sync Google Contacts into YANA's persona/contact registry (shadow copy). "
+            "New contacts are created. Existing ones (matched by Google source_id) have their "
+            "name and addresses updated — YANA enrichment (aliases, context, tags, preferred channel) "
+            "is never overwritten. Safe to run repeatedly. "
+            "owner: persona owner label (usually 'fred'). "
+            "Phone numbers from Google are always imported as channel='phone' (raw, delivery unknown). "
+            "Google doesn't tell us if a number has WhatsApp or SMS — that must be confirmed separately. "
+            "Once the user says 'Fernanda uses WhatsApp', call upsert_contact on contacts connector "
+            "with channel='whatsapp'. "
+            "force_update_names: if true, overwrite the stored name with the current Google name "
+            "for existing personas — use this to fix contacts imported with wrong names. "
+            "purge_removed: if true, delete any persona whose ONLY source is Google and whose "
+            "source_id is no longer in the current Google fetch — removes phantom contacts that "
+            "survived bad previous syncs. Use together with force_update_names for a full reset."
+        ),
+        params={
+            "owner": {"type": "string", "required": True},
+            "force_update_names": {"type": "boolean", "required": False},
+            "purge_removed": {"type": "boolean", "required": False},
+        },
+        returns={"type": "object"},
+    )
+    def sync_contacts(
+        self,
+        owner: str,
+        force_update_names: bool = False,
+        purge_removed: bool = False,
+    ) -> dict[str, Any]:
+        raw, fetch_errors = self._fetch_contacts(max_results=1000)
+
+        added_personas = 0
+        updated_personas = 0
+        added_contacts = 0
+        skipped = 0
+        skipped_names: list[str] = []
+
+        # Index existing contacts by id for O(1) dedup lookup
+        existing_contacts_by_id: dict[str, Contact] = {
+            c.id: c for c in self._registry._contacts
+        }
+
+        google_source = {"provider": "google", "source_id": ""}  # template
+
+        for entry in raw:
+            display: str = entry["name"]
+            emails: list[str] = entry["emails"]
+            phones: list[str] = entry["phones"]
+            source_id: str = entry["source_id"]
+
+            if not display.strip():
+                skipped += 1
+                skipped_names.append(f"(sem nome / source_id={source_id})")
+                continue
+
+            # Find existing persona by source_id (reliable) or fall back to slugified name
+            existing = self._registry.find_by_source("google", source_id) if source_id else None
+            if existing is None:
+                persona_id = _slugify(display)
+                if not persona_id:
+                    skipped += 1
+                    skipped_names.append(f"{display!r} (slug vazio / source_id={source_id})")
+                    continue
+                existing = self._registry._personas.get(persona_id)
+
+            if existing is not None:
+                # Only add new source reference if missing
+                if not any(s.get("source_id") == source_id for s in existing.sources):
+                    existing.sources.append({"provider": "google", "source_id": source_id})
+                # force_update_names: correct personas imported with wrong names
+                if force_update_names and existing.name != display:
+                    old_name = existing.name
+                    log.warning(
+                        "google_contacts: force-updating name %r → %r for %s",
+                        old_name, display, existing.id,
+                    )
+                    existing.name = display
+                    # Replace the auto-generated alias that matches the old name
+                    existing.aliases = [
+                        display if a == old_name else a for a in existing.aliases
+                    ]
+                updated_personas += 1
+                persona_id = existing.id
+            else:
+                persona_id = _slugify(display)
+                if not persona_id:
+                    skipped += 1
+                    skipped_names.append(f"{display!r} (slug vazio / source_id={source_id})")
+                    continue
+                p = Persona(
+                    id=persona_id,
+                    name=display,
+                    type="person",
+                    owner=owner,
+                    aliases=[display],
+                    context="",
+                    tags=[],
+                    sources=[{"provider": "google", "source_id": source_id}],
+                )
+                self._registry._personas[persona_id] = p
+                added_personas += 1
+
+            contact_source = {"provider": "google", "source_id": source_id}
+
+            # Sync email contacts — provenance tracked in sources
+            for email in emails:
+                contact_id = f"{persona_id}_email_{_slugify(email)}"
+                existing_c = existing_contacts_by_id.get(contact_id)
+                if existing_c is not None:
+                    # Merge source if not already recorded
+                    if not any(s.get("source_id") == source_id for s in existing_c.sources):
+                        existing_c.sources.append(contact_source)
+                else:
+                    new_c = Contact(
+                        id=contact_id,
+                        persona_id=persona_id,
+                        channel="email",
+                        address=email,
+                        preferred=len(emails) == 1 and not phones,
+                        sources=[contact_source],
+                    )
+                    self._registry._contacts.append(new_c)
+                    existing_contacts_by_id[contact_id] = new_c
+                    added_contacts += 1
+
+            # Sync phone numbers as channel="phone" — raw, delivery method unknown.
+            # Google Contacts doesn't tell us if a number has WhatsApp, SMS, or neither.
+            # Use upsert_contact on contacts connector to promote to channel="whatsapp"/"sms"
+            # once the user confirms the delivery method.
+            for phone in phones:
+                contact_id = f"{persona_id}_phone_{_slugify(phone)}"
+                existing_c = existing_contacts_by_id.get(contact_id)
+                if existing_c is not None:
+                    if not any(s.get("source_id") == source_id for s in existing_c.sources):
+                        existing_c.sources.append(contact_source)
+                else:
+                    new_c = Contact(
+                        id=contact_id,
+                        persona_id=persona_id,
+                        channel="phone",
+                        address=phone,
+                        preferred=False,  # phone entries are never auto-preferred
+                        sources=[contact_source],
+                    )
+                    self._registry._contacts.append(new_c)
+                    existing_contacts_by_id[contact_id] = new_c
+                    added_contacts += 1
+
+        # Purge personas whose Google source_id no longer exists in the current fetch.
+        # Only removes personas whose EVERY source is Google — personas with mixed sources
+        # (e.g. also in WhatsApp) are left alone.
+        purged_personas = 0
+        purged_names: list[str] = []
+        if purge_removed:
+            fetched_source_ids = {entry["source_id"] for entry in raw if entry.get("source_id")}
+            to_purge = []
+            for p in list(self._registry._personas.values()):
+                google_sources = [s for s in p.sources if s.get("provider") == "google"]
+                if not google_sources:
+                    continue  # Not a Google persona — skip
+                all_sources_are_google = all(
+                    s.get("provider") == "google" for s in p.sources
+                )
+                if not all_sources_are_google:
+                    continue  # Has non-Google sources — keep
+                orphaned = all(
+                    s.get("source_id") not in fetched_source_ids for s in google_sources
+                )
+                if orphaned:
+                    to_purge.append(p)
+            for p in to_purge:
+                log.warning(
+                    "google_contacts: purging orphaned persona %r (%s) — source_id not in Google",
+                    p.name, p.id,
+                )
+                del self._registry._personas[p.id]
+                self._registry._contacts = [
+                    c for c in self._registry._contacts if c.persona_id != p.id
+                ]
+                purged_personas += 1
+                purged_names.append(f"{p.name} ({p.id})")
+
+        self._registry.save()
+        result: dict[str, Any] = {
+            "added_personas": added_personas,
+            "updated_personas": updated_personas,
+            "added_contacts": added_contacts,
+            "purged_personas": purged_personas,
+            "skipped": skipped,
+            "total_processed": len(raw),
+            "fetch_errors": len(fetch_errors),
+        }
+        if skipped_names:
+            result["skipped_names"] = skipped_names
+        if purged_names:
+            result["purged_names"] = purged_names
+        if fetch_errors:
+            result["fetch_error_ids"] = fetch_errors
+        return result

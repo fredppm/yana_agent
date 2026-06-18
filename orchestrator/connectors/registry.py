@@ -20,7 +20,7 @@ from typing import Any
 
 import yaml
 
-from .base import Connector, ConnectorResult
+from .base import CommunicationChannel, Connector, ConnectorResult
 
 # ---------------------------------------------------------------------------
 # ConnectorInstance — manifest entry
@@ -110,7 +110,7 @@ class ConnectorRegistry:
         return instance
 
     def load_manifest(self, path: Path) -> None:
-        with open(path) as f:
+        with open(path, encoding="utf-8") as f:
             data = yaml.safe_load(f)
         for entry in data.get("connectors", []):
             self._load_entry(entry)
@@ -151,6 +151,10 @@ class ConnectorRegistry:
                 entry["owner"] = inst.owner
             cls = self._types.get(inst.type)
             if cls is not None:
+                # Expose the communication channel this connector handles, if any.
+                # Allows the LLM to validate routing before calling upsert_contact.
+                if issubclass(cls, CommunicationChannel) and cls.channel:
+                    entry["channel"] = cls.channel
                 ops = []
                 for name, meta in cls._operations.items():
                     if meta.kind not in ("query", "command"):
@@ -261,6 +265,23 @@ class ConnectorRegistry:
                 handler(payload)
 
         return dispatch
+
+    def channel_for_connector(self, instance_id: str) -> str | None:
+        """
+        Return the communication channel this connector handles, or None if it's not a
+        CommunicationChannel or has no channel declared.
+
+        Use this to validate routing before sending:
+            ch = registry.channel_for_connector("gmail_fred_personal")  # → "email"
+            ch = registry.channel_for_connector("garmin_fred")          # → None
+        """
+        try:
+            connector = self._get_connector(instance_id)
+        except Exception:
+            return None
+        if not isinstance(connector, CommunicationChannel):
+            return None
+        return connector.channel or None
 
     def evict(self, instance_id: str) -> None:
         """Remove a cached connector so it is re-initialized on the next call.

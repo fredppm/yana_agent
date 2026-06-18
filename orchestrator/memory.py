@@ -282,11 +282,19 @@ async def load_context(query: str | None = None) -> str:
     cfg = _load_config()
     client = _make_graphiti(cfg)
 
-    # Cancel the build_indices_and_constraints task that Graphiti.__init__ schedules
-    # via create_task — we don't need it for reads and it competes with the search.
+    # Cancel any background tasks Graphiti.__init__ may have scheduled
+    # (e.g. an earlier build_indices call) — we'll run it ourselves sequentially.
     for task in asyncio.all_tasks():
         if task != asyncio.current_task():
             task.cancel()
+
+    # Ensure fulltext indices exist before searching.
+    # This is fast (IF NOT EXISTS) when indices already exist, and necessary on
+    # a fresh Neo4j instance or after a container reset.
+    try:
+        await asyncio.wait_for(client.build_indices_and_constraints(), timeout=10.0)
+    except Exception as _idx_exc:
+        log.debug("memory: build_indices skipped in load_context (%s)", _idx_exc)
 
     profile_id = profiles.get_active_profile() or "yana-default"
     profile_gid = _to_group_id(profile_id)
@@ -306,6 +314,9 @@ async def load_context(query: str | None = None) -> str:
         _msg = str(e).lower()
         if any(k in _msg for k in ("401", "authentication", "credentials", "unauthorized")):
             log.warning("load_context: auth error — skipping (check LiteLLM/Bedrock credentials)")
+        elif "there is no such fulltext schema index" in _msg:
+            # Index build failed or was skipped — not yet initialised.
+            log.debug("load_context: fulltext index missing, skipping search (%s)", e)
         else:
             log.warning("load_context failed (%s: %s)", type(e).__name__, e)
         return ""

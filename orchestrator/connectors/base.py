@@ -5,6 +5,10 @@ Provides @query, @command, @event decorators and the Connector base class.
 ConnectorResult is the typed envelope returned by every call().
 
 Error strings: "timeout" | "auth" | "validation_error" | str(exc) for unexpected errors
+
+CommunicationChannel: optional interface for connectors that can send/receive messages.
+A connector that supports messaging implements both Connector and CommunicationChannel:
+    class GmailConnector(Connector, CommunicationChannel): ...
 """
 
 from __future__ import annotations
@@ -236,6 +240,61 @@ class Connector:
 
 # ---------------------------------------------------------------------------
 # Param validation
+# ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# CommunicationChannel interface
+# ---------------------------------------------------------------------------
+
+
+class CommunicationChannel:
+    """
+    Interface for connectors that can send and receive messages.
+
+    A connector that supports messaging declares both base classes AND sets `channel`:
+        class GmailConnector(Connector, CommunicationChannel):
+            channel = "email"
+            ...
+
+    Supported channel values: "email" | "whatsapp" | "sms" | "phone" | "slack" | "telegram"
+
+    The registry can:
+      - Discover communication-capable connectors: isinstance(connector, CommunicationChannel)
+      - Validate routing: connector.channel == contact.channel before sending
+      - Prevent mismatches (e.g. calling Gmail to send a WhatsApp message)
+
+    Credential naming convention for communication connectors:
+        app_credential  — OAuth Client ID/Secret or API key. YANA owns. Immutable.
+        persona_token   — Per-user OAuth token. Persona owns. Expires and refreshes.
+    """
+
+    channel: ClassVar[str] = ""  # must be overridden: "email" | "whatsapp" | "sms" | ...
+
+    def send_message(self, address: str, text: str) -> bool:
+        """
+        Send *text* to *address* on this channel.
+
+        *address* is channel-specific: an email address, a phone number,
+        a Slack user/channel ID, etc.
+
+        Returns True on successful delivery, False otherwise.
+        """
+        raise NotImplementedError
+
+    def get_messages(
+        self,
+        address: str | None = None,
+        limit: int = 10,
+    ) -> list[dict]:
+        """
+        Retrieve recent messages from *address* (or all inboxes if None).
+
+        Returns a list of message dicts. Schema is channel-specific but
+        should always include: {"from": str, "text": str, "timestamp": str}.
+        """
+        raise NotImplementedError
+
+
 # ---------------------------------------------------------------------------
 
 _TYPE_CHECKS: dict[str, Callable[[Any], bool]] = {

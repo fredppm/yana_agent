@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json  # noqa: F401 — used by helpers in store/contacts.py
+
 from sqlalchemy import Integer, PrimaryKeyConstraint, String, Text
 from sqlalchemy.orm import DeclarativeBase, MappedColumn, mapped_column
 
@@ -63,3 +65,39 @@ class SessionRecord(Base):
     started_at: MappedColumn[str] = mapped_column(String, nullable=False)
     preview: MappedColumn[str | None] = mapped_column(Text, nullable=True)
     messages_json: MappedColumn[str | None] = mapped_column(Text, nullable=True)
+
+
+class PersonaRecord(Base):
+    __tablename__ = "personas"
+
+    id: MappedColumn[str] = mapped_column(String, primary_key=True)
+    name: MappedColumn[str] = mapped_column(String, nullable=False)
+    type: MappedColumn[str] = mapped_column(String, nullable=False, default="person")
+    owner: MappedColumn[str] = mapped_column(String, nullable=False, default="")
+    aliases_json: MappedColumn[str] = mapped_column(Text, nullable=False, default="[]")
+    context: MappedColumn[str] = mapped_column(Text, nullable=False, default="")
+    tags_json: MappedColumn[str] = mapped_column(Text, nullable=False, default="[]")
+    sources_json: MappedColumn[str] = mapped_column(Text, nullable=False, default="[]")
+    vip: MappedColumn[int] = mapped_column(Integer, nullable=False, default=0)
+
+
+class ContactRecord(Base):
+    __tablename__ = "contacts"
+
+    id: MappedColumn[str] = mapped_column(String, primary_key=True)
+    persona_id: MappedColumn[str] = mapped_column(String, nullable=False)
+    channel: MappedColumn[str] = mapped_column(String, nullable=False)
+    address: MappedColumn[str] = mapped_column(String, nullable=False)
+    preferred: MappedColumn[int] = mapped_column(Integer, nullable=False, default=0)
+    sources_json: MappedColumn[str] = mapped_column(Text, nullable=False, default="[]")
+
+
+class NamedChannelRecord(Base):
+    __tablename__ = "named_channels"
+
+    id: MappedColumn[str] = mapped_column(String, primary_key=True)
+    name: MappedColumn[str] = mapped_column(String, nullable=False)
+    channel: MappedColumn[str] = mapped_column(String, nullable=False)
+    address: MappedColumn[str] = mapped_column(String, nullable=False)
+    via_connector: MappedColumn[str] = mapped_column(String, nullable=False)
+    aliases_json: MappedColumn[str] = mapped_column(Text, nullable=False, default="[]")

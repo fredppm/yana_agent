@@ -95,8 +95,8 @@ _EXPECTED_HR_ENTRY_KEYS = {"timestamp_ms", "bpm"}
 def _make_connector() -> tuple[Any, MagicMock]:
     """Return a connector with the Garmin client layer mocked out."""
     connector = GarminActivityConnector(
-        credentials_file="/dev/null",
-        token_dir="/dev/null",
+        persona_credentials="/dev/null",
+        persona_token_dir="/dev/null",
     )
     mock_client = MagicMock()
     connector._client = mock_client
