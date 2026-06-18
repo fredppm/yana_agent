@@ -183,6 +183,26 @@ def _make_client(config: dict):
 
 
 # ---------------------------------------------------------------------------
+# Message sanitisation
+# ---------------------------------------------------------------------------
+
+_MSG_KEYS = {"role", "content"}
+
+
+def _sanitize_messages(messages: list[dict]) -> list[dict]:
+    """Strip non-standard top-level fields (e.g. 'ts', 'payload') from messages.
+
+    The Anthropic API (and Bedrock via LiteLLM) only accepts 'role' and 'content'
+    at the message top level. Extra fields added by the TUI for display/storage
+    purposes must be removed before the API call.
+    """
+    return [
+        {k: v for k, v in m.items() if k in _MSG_KEYS}
+        for m in messages
+    ]
+
+
+# ---------------------------------------------------------------------------
 # LLM call
 # ---------------------------------------------------------------------------
 
@@ -203,6 +223,7 @@ def call_llm(
     task = _auto_task(messages, task)
     _, model = resolve_model(task, config)
     client = _make_client(config)
+    clean = _sanitize_messages(messages)
 
     import httpx
 
@@ -212,7 +233,7 @@ def call_llm(
             model=model,
             max_tokens=4096,
             system=system_prompt,
-            messages=messages,
+            messages=clean,
             timeout=httpx.Timeout(timeout, connect=10.0),
         ) as s:
             for text in s.text_stream:
@@ -224,7 +245,7 @@ def call_llm(
             model=model,
             max_tokens=4096,
             system=system_prompt,
-            messages=messages,
+            messages=clean,
             timeout=httpx.Timeout(timeout, connect=10.0),
         )
         block = response.content[0]
@@ -257,6 +278,7 @@ def call_llm_with_tools(
 
     _, model = resolve_model(task, config)
     client = _make_client(config)
+    clean = _sanitize_messages(messages)
 
     import httpx
 
@@ -264,7 +286,7 @@ def call_llm_with_tools(
         model=model,
         max_tokens=4096,
         system=system_prompt,
-        messages=messages,  # type: ignore[arg-type]
+        messages=clean,  # type: ignore[arg-type]
         tools=tools,  # type: ignore[arg-type]
         timeout=httpx.Timeout(timeout, connect=10.0),
     )
