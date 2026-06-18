@@ -231,21 +231,48 @@ class WhatsAppConnector(Connector):
 
 ---
 
-## Conclusão Final — Decisão de Não Implementar (2026-06-18)
+## Viabilidade Técnica — Pesquisa de Fontes Primárias (2026-06-18)
 
-**Motivo:** Não existe solução viável sem risco inaceitável.
+### Opções avaliadas
 
-| Opção | Problema |
-|---|---|
-| WhatsApp Business API (oficial) | Exige número empresarial, não funciona com número pessoal |
-| Baileys / whatsapp-web.js (unofficial) | Viola ToS do WhatsApp, risco real de ban do número pessoal (2–8 semanas) |
-| Evolution API | Mesmo risco — wrapper do Baileys |
+| Opção | Veredicto | Motivo |
+|---|---|---|
+| WhatsApp Business API (oficial Meta) | ❌ Inviável | Exige número empresarial verificado; não funciona com número pessoal |
+| Baileys / whatsapp-web.js | ⚠️ Risco real | Viola ToS, ban é comportamental — ver análise abaixo |
+| Evolution API | ⚠️ Mesmo risco | Wrapper do Baileys — herda todos os riscos |
 
-**O design está correto** — a arquitetura do connector, o padrão de unread state, a integração com Pulse, tudo resolvido. O bloqueio é externo: o WhatsApp não oferece API oficial para uso pessoal.
+### Análise de risco de ban — Baileys (fontes primárias)
 
-**Quando reavaliar:**
+**O que é fato verificado:**
+- Baileys viola explicitamente os ToS do WhatsApp ("unauthorized or automated means", "APIs that function substantially the same as our Services")
+- O próprio README do Baileys reconhece isso: _"The maintainers do not condone the use of this application in practices that violate the Terms of Service of WhatsApp"_
+- Casos reais de ban documentados nos issues do projeto: [#1983](https://github.com/WhiskeySockets/Baileys/issues/1983), [#1869](https://github.com/WhiskeySockets/Baileys/issues/1869), [#2075](https://github.com/WhiskeySockets/Baileys/issues/2075)
+
+**O que a pesquisa anterior errou:**
+- "2–8 semanas de ban" era **tempo de apelação**, não tempo até ser banido. Bans reais ocorrem em **dias**.
+- Severidade foi inflada — fontes citadas eram blogs com interesse comercial, sem dados primários.
+
+**O que múltiplas fontes convergem:**
+- Detecção é **baseada em comportamento**, não no método de conexão
+- Triggers de alto risco: mensagens para desconhecidos, velocidade >60 msgs/hora, reply ratio <15%, mensagens idênticas em massa
+- Triggers de baixo risco: contatos conhecidos, cadência humana, sem broadcast
+
+**Para o caso de uso do Fred (assistente pessoal, contatos conhecidos, batch a cada 5+ min):**
+- Nenhum dos comportamentos de alto risco estaria presente
+- Risco existente mas significativamente menor do que estimado inicialmente
+
+**O que não é verificado:**
+- baileys-antiban: claims do autor não têm teste independente; autor tem interesse comercial
+
+### Decisão final
+
+**Não implementar agora** — a violação de ToS cria risco para o número pessoal do Fred, mesmo que o comportamento seja de baixo risco. A assimetria (perder acesso ao número pessoal vs. ganho de conveniência) não justifica.
+
+**O design técnico está completo** — arquitetura, unread state, integração com Pulse, tudo resolvido. O bloqueio é de política, não de engenharia.
+
+### Quando reavaliar
+
 - Meta lançar API oficial para contas pessoais
 - Surgir solução que não exija contornar ToS
-- Usuário aceitar usar número dedicado (descartado por criar identidade dupla)
-
-**O que fica documentado:** O design completo do connector está pronto para ser implementado assim que a viabilidade técnica mudar.
+- Fred aceitar usar número dedicado (descartado nesta sessão — cria identidade dupla para contatos)
+- Meta relaxar enforcement para uso pessoal de baixo volume
