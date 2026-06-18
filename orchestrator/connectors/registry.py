@@ -153,7 +153,7 @@ class ConnectorRegistry:
             if cls is not None:
                 # Expose the communication channel this connector handles, if any.
                 # Allows the LLM to validate routing before calling upsert_contact.
-                if issubclass(cls, CommunicationChannel) and getattr(cls, "channel", ""):
+                if issubclass(cls, CommunicationChannel) and cls.channel:
                     entry["channel"] = cls.channel
                 ops = []
                 for name, meta in cls._operations.items():
