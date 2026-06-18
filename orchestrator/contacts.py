@@ -38,6 +38,7 @@ class Persona:
     aliases: list[str] = field(default_factory=list)
     context: str = ""
     tags: list[str] = field(default_factory=list)
+    vip: bool = False
     # Shadow copy tracking — list of {provider, source_id} dicts
     # e.g. [{"provider": "google", "source_id": "people/c1234567"}]
     sources: list[dict] = field(default_factory=list)
@@ -45,12 +46,16 @@ class Persona:
 
 @dataclass
 class Contact:
-    id: str
+    id: str       # deterministic: f"{persona_id}_{channel}_{slugified_address}"
     persona_id: str
-    channel: str  # "email" | "whatsapp" | "slack" | "sms" | "telegram"
+    channel: str  # "email" | "whatsapp" | "sms" | "phone" | "slack" | "telegram"
+    # "phone" = raw number, delivery method unknown — promote via upsert_contact once confirmed
     address: str
-    connector_id: str
     preferred: bool = False
+    # Per-address source tracking — which system(s) provided this address.
+    # Same address from multiple sources (Google + Apple) → same Contact id → merged sources.
+    # e.g. [{"provider": "google", "source_id": "people/c001"}, {"provider": "apple", ...}]
+    sources: list[dict] = field(default_factory=list)
 
 
 @dataclass
@@ -59,7 +64,7 @@ class NamedChannel:
     name: str
     channel: str
     address: str
-    connector_id: str
+    via_connector: str  # intrinsic: "#geral-vtex" IS a specific Slack workspace connector
     aliases: list[str] = field(default_factory=list)
 
 
@@ -145,6 +150,7 @@ class ContactRegistry:
                 aliases=entry.get("aliases", []),
                 context=entry.get("context", ""),
                 tags=entry.get("tags", []),
+                vip=bool(entry.get("vip", False)),
                 sources=entry.get("sources", []),
             )
             self._personas[p.id] = p
@@ -160,8 +166,8 @@ class ContactRegistry:
                 persona_id=entry["persona_id"],
                 channel=entry["channel"],
                 address=entry["address"],
-                connector_id=entry["connector_id"],
                 preferred=entry.get("preferred", False),
+                sources=entry.get("sources", []),
             )
             self._contacts.append(c)
         for entry in data.get("named_channels", []):
@@ -170,7 +176,7 @@ class ContactRegistry:
                 name=entry["name"],
                 channel=entry["channel"],
                 address=entry["address"],
-                connector_id=entry["connector_id"],
+                via_connector=entry["via_connector"],
                 aliases=entry.get("aliases", []),
             )
             self._named_channels.append(nc)
@@ -191,6 +197,7 @@ class ContactRegistry:
                 aliases=d["aliases"],
                 context=d["context"],
                 tags=d["tags"],
+                vip=bool(d.get("vip", False)),
                 sources=d["sources"],
             )
             self._personas[p.id] = p
@@ -201,8 +208,8 @@ class ContactRegistry:
                 persona_id=d["persona_id"],
                 channel=d["channel"],
                 address=d["address"],
-                connector_id=d["connector_id"],
                 preferred=d["preferred"],
+                sources=d.get("sources", []),
             )
             self._contacts.append(c)
 
@@ -212,7 +219,7 @@ class ContactRegistry:
                 name=d["name"],
                 channel=d["channel"],
                 address=d["address"],
-                connector_id=d["connector_id"],
+                via_connector=d["via_connector"],
                 aliases=d["aliases"],
             )
             self._named_channels.append(nc)
@@ -324,6 +331,7 @@ class ContactRegistry:
                 "aliases": p.aliases,
                 "context": p.context,
                 "tags": p.tags,
+                "vip": p.vip,
                 **({"sources": p.sources} if p.sources else {}),
             }
             for p in self._personas.values()
@@ -336,8 +344,8 @@ class ContactRegistry:
                 "persona_id": c.persona_id,
                 "channel": c.channel,
                 "address": c.address,
-                "connector_id": c.connector_id,
                 "preferred": c.preferred,
+                "sources": c.sources,
             }
             for c in self._contacts
         ]
@@ -349,7 +357,7 @@ class ContactRegistry:
                 "name": nc.name,
                 "channel": nc.channel,
                 "address": nc.address,
-                "connector_id": nc.connector_id,
+                "via_connector": nc.via_connector,
                 "aliases": nc.aliases,
             }
             for nc in self._named_channels
@@ -439,8 +447,8 @@ class ContactRegistry:
             "persona_id": c.persona_id,
             "channel": c.channel,
             "address": c.address,
-            "connector_id": c.connector_id,
             "preferred": c.preferred,
+            "sources": c.sources,
         }
 
     @staticmethod
@@ -450,6 +458,6 @@ class ContactRegistry:
             "name": nc.name,
             "channel": nc.channel,
             "address": nc.address,
-            "connector_id": nc.connector_id,
+            "via_connector": nc.via_connector,
             "aliases": nc.aliases,
         }

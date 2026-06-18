@@ -85,7 +85,7 @@ def connector(tmp_path: Path) -> ContactsConnector:
                         "persona_id": "fred",
                         "channel": "email",
                         "address": "fred@example.com",
-                        "connector_id": "gmail_fred_personal",
+                        "via_connector": "gmail_fred_personal",
                         "preferred": True,
                     },
                     {
@@ -93,7 +93,7 @@ def connector(tmp_path: Path) -> ContactsConnector:
                         "persona_id": "ana",
                         "channel": "whatsapp",
                         "address": "+55999",
-                        "connector_id": "whatsapp",
+                        "via_connector": "whatsapp",
                         "preferred": True,
                     },
                 ],
@@ -103,7 +103,7 @@ def connector(tmp_path: Path) -> ContactsConnector:
                         "name": "canal geral VTEX",
                         "channel": "slack",
                         "address": "C123",
-                        "connector_id": "slack_vtex",
+                        "via_connector": "slack_vtex",
                         "aliases": ["#geral-vtex"],
                     }
                 ],
@@ -180,7 +180,7 @@ def test_get_contact_preferred(connector: ContactsConnector) -> None:
     result = connector.call("get_contact", {"persona_id": "fred"})
     assert result.ok
     assert result.data["channel"] == "email"
-    assert result.data["connector_id"] == "gmail_fred_personal"
+    assert result.data["address"] == "fred@example.com"
 
 
 def test_get_contact_by_channel(connector: ContactsConnector) -> None:
@@ -209,7 +209,7 @@ def test_get_contact_unknown_persona(connector: ContactsConnector) -> None:
 def test_get_named_channel_found(connector: ContactsConnector) -> None:
     result = connector.call("get_named_channel", {"name": "#geral-vtex"})
     assert result.ok
-    assert result.data["connector_id"] == "slack_vtex"
+    assert result.data["via_connector"] == "slack_vtex"
     assert result.data["channel"] == "slack"
 
 
@@ -256,7 +256,7 @@ def test_upsert_named_channel_adds_new(connector: ContactsConnector) -> None:
             "name": "grupo família",
             "channel": "whatsapp",
             "address": "+55group123",
-            "connector_id": "whatsapp",
+            "via_connector": "whatsapp",
             "aliases": ["família", "grupo da família"],
         },
     )
@@ -275,7 +275,7 @@ def test_upsert_named_channel_replaces_existing(connector: ContactsConnector) ->
             "name": "canal geral VTEX",
             "channel": "slack",
             "address": "C999",  # updated address
-            "connector_id": "slack_vtex",
+            "via_connector": "slack_vtex",
         },
     )
     result = connector.call("get_named_channel", {"name": "canal geral VTEX"})
@@ -328,7 +328,7 @@ def test_upsert_named_channel_persists(tmp_path: Path) -> None:
             "name": "família whatsapp",
             "channel": "whatsapp",
             "address": "+55group1",
-            "connector_id": "whatsapp",
+            "via_connector": "whatsapp",
         },
     )
 
@@ -351,11 +351,15 @@ def test_connector_operations_declared() -> None:
         "list_personas",
         "find_persona",
         "get_contact",
+        "list_contacts",
         "get_named_channel",
         "upsert_persona",
+        "upsert_contact",
         "upsert_named_channel",
         "delete_persona",
         "set_preferred_contact",
+        "merge_personas",
+        "set_vip",
     }
 
 
@@ -429,3 +433,174 @@ def test_delete_persona_persists(tmp_path: Path) -> None:
     result = c2.call("find_persona", {"name": "Fantasma"})
     assert not result.ok
     assert "not_found" in result.error
+
+
+# ---------------------------------------------------------------------------
+# list_contacts
+# ---------------------------------------------------------------------------
+
+
+def test_list_contacts_returns_all_channels(connector: ContactsConnector) -> None:
+    result = connector.call("list_contacts", {"persona_id": "ana"})
+    assert result.ok
+    assert len(result.data) == 1
+    assert result.data[0]["channel"] == "whatsapp"
+    assert result.data[0]["address"] == "+55999"
+    assert result.data[0]["preferred"] is True
+
+
+def test_list_contacts_empty_for_no_contacts(connector: ContactsConnector) -> None:
+    result = connector.call("list_contacts", {"persona_id": "joao_pt"})
+    assert result.ok
+    assert result.data == []
+
+
+# ---------------------------------------------------------------------------
+# upsert_contact
+# ---------------------------------------------------------------------------
+
+
+def test_upsert_contact_adds_new_channel(connector: ContactsConnector) -> None:
+    result = connector.call(
+        "upsert_contact",
+        {
+            "persona_id": "fred",
+            "channel": "whatsapp",
+            "address": "+55999111",
+            "preferred": False,
+        },
+    )
+    assert result.ok
+
+    contacts = connector.call("list_contacts", {"persona_id": "fred"})
+    assert contacts.ok
+    channels = {c["channel"] for c in contacts.data}
+    assert "email" in channels
+    assert "whatsapp" in channels
+
+
+def test_upsert_contact_sets_preferred_clears_others(connector: ContactsConnector) -> None:
+    # fred has email preferred=True; add whatsapp as preferred
+    connector.call(
+        "upsert_contact",
+        {
+            "persona_id": "fred",
+            "channel": "whatsapp",
+            "address": "+55999111",
+            "preferred": True,
+        },
+    )
+    contacts = connector.call("list_contacts", {"persona_id": "fred"})
+    assert contacts.ok
+    preferred = [c for c in contacts.data if c["preferred"]]
+    assert len(preferred) == 1
+    assert preferred[0]["channel"] == "whatsapp"
+
+
+def test_upsert_contact_persona_not_found(connector: ContactsConnector) -> None:
+    result = connector.call(
+        "upsert_contact",
+        {
+            "persona_id": "nao_existe",
+            "channel": "whatsapp",
+            "address": "+55000",
+        },
+    )
+    assert not result.ok
+    assert "not_found" in result.error
+
+
+# ---------------------------------------------------------------------------
+# merge_personas
+# ---------------------------------------------------------------------------
+
+
+def test_merge_personas_absorbs_duplicate(connector: ContactsConnector) -> None:
+    """Base persona absorbs all contacts and aliases from the duplicate."""
+    # joao_pt has no contacts; give joao_contador a contact to merge
+    connector.call("upsert_contact", {"persona_id": "joao_contador", "channel": "email", "address": "contador@example.com"})
+
+    result = connector.call("merge_personas", {"base_id": "joao_pt", "duplicate_id": "joao_contador"})
+    assert result.ok
+
+    # joao_contador persona ID is gone from the registry
+    all_p = connector.call("list_personas", {})
+    assert all_p.ok
+    ids = {p["id"] for p in all_p.data}
+    assert "joao_contador" not in ids
+    assert "joao_pt" in ids
+
+    # Contact moved to joao_pt
+    contacts = connector.call("list_contacts", {"persona_id": "joao_pt"})
+    assert contacts.ok
+    assert any(c["address"] == "contador@example.com" for c in contacts.data)
+
+
+def test_merge_personas_merges_aliases(connector: ContactsConnector) -> None:
+    result = connector.call("merge_personas", {"base_id": "joao_pt", "duplicate_id": "joao_contador"})
+    assert result.ok
+
+    r = connector.call("find_persona", {"name": "João Contador"})
+    # After merge, "João Contador" should resolve to joao_pt (alias absorbed)
+    assert r.ok
+    assert r.data["id"] == "joao_pt"
+
+
+def test_merge_personas_base_not_found(connector: ContactsConnector) -> None:
+    result = connector.call("merge_personas", {"base_id": "nao_existe", "duplicate_id": "ana"})
+    assert not result.ok
+    assert "not_found" in result.error
+
+
+def test_merge_personas_duplicate_not_found(connector: ContactsConnector) -> None:
+    result = connector.call("merge_personas", {"base_id": "ana", "duplicate_id": "nao_existe"})
+    assert not result.ok
+    assert "not_found" in result.error
+
+
+# ---------------------------------------------------------------------------
+# set_vip
+# ---------------------------------------------------------------------------
+
+
+def test_set_vip_marks_persona(connector: ContactsConnector) -> None:
+    result = connector.call("set_vip", {"persona_id": "ana", "vip": True})
+    assert result.ok
+
+    r = connector.call("find_persona", {"name": "ana"})
+    assert r.ok
+    assert r.data["vip"] is True
+
+
+def test_set_vip_clears_flag(connector: ContactsConnector) -> None:
+    connector.call("set_vip", {"persona_id": "ana", "vip": True})
+    connector.call("set_vip", {"persona_id": "ana", "vip": False})
+
+    r = connector.call("find_persona", {"name": "ana"})
+    assert r.ok
+    assert r.data["vip"] is False
+
+
+def test_set_vip_not_found(connector: ContactsConnector) -> None:
+    result = connector.call("set_vip", {"persona_id": "nao_existe", "vip": True})
+    assert not result.ok
+    assert "not_found" in result.error
+
+
+def test_set_vip_persists(tmp_path: Path) -> None:
+    """VIP flag survives a reload."""
+    personas_path = tmp_path / "personas.yaml"
+    contacts_path = tmp_path / "contacts.yaml"
+    personas_path.write_text(yaml.dump({"personas": [
+        {"id": "viptest", "name": "VIP Test", "type": "person", "owner": "fred",
+         "aliases": ["VIP Test"], "context": "", "vip": False}
+    ]}))
+    contacts_path.write_text(yaml.dump({"contacts": [], "named_channels": []}))
+
+    c1 = ContactsConnector(personas_file=str(personas_path), contacts_file=str(contacts_path))
+    c1.call("set_vip", {"persona_id": "viptest", "vip": True})
+
+    c2 = ContactsConnector(personas_file=str(personas_path), contacts_file=str(contacts_path))
+    r = c2.call("find_persona", {"name": "VIP Test"})
+    assert r.ok
+    assert r.data["vip"] is True

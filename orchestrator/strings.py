@@ -60,6 +60,8 @@ _STRINGS: dict[str, dict[str, str]] = {
         "chat_history_expand": "ctrl+o expand",
         "chat_history_collapse": "ctrl+o collapse",
         "saving_memory_skip": "ctrl+c skip",
+        # -- Tool event display --
+        "tool_prefix": "tool:",
         # -- Sandbox event display --
         "sandbox_label": "code",
         "sandbox_timed_out": "timed out",
@@ -115,6 +117,8 @@ _STRINGS: dict[str, dict[str, str]] = {
         "chat_history_expand": "ctrl+o expandir",
         "chat_history_collapse": "ctrl+o recolher",
         "saving_memory_skip": "ctrl+c pular",
+        # -- Tool event display --
+        "tool_prefix": "tool:",
         # -- Sandbox event display --
         "sandbox_label": "código",
         "sandbox_timed_out": "tempo esgotado",

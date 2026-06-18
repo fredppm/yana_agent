@@ -78,6 +78,7 @@ class PersonaRecord(Base):
     context: MappedColumn[str] = mapped_column(Text, nullable=False, default="")
     tags_json: MappedColumn[str] = mapped_column(Text, nullable=False, default="[]")
     sources_json: MappedColumn[str] = mapped_column(Text, nullable=False, default="[]")
+    vip: MappedColumn[int] = mapped_column(Integer, nullable=False, default=0)
 
 
 class ContactRecord(Base):
@@ -87,8 +88,8 @@ class ContactRecord(Base):
     persona_id: MappedColumn[str] = mapped_column(String, nullable=False)
     channel: MappedColumn[str] = mapped_column(String, nullable=False)
     address: MappedColumn[str] = mapped_column(String, nullable=False)
-    connector_id: MappedColumn[str] = mapped_column(String, nullable=False)
     preferred: MappedColumn[int] = mapped_column(Integer, nullable=False, default=0)
+    sources_json: MappedColumn[str] = mapped_column(Text, nullable=False, default="[]")
 
 
 class NamedChannelRecord(Base):
@@ -98,5 +99,5 @@ class NamedChannelRecord(Base):
     name: MappedColumn[str] = mapped_column(String, nullable=False)
     channel: MappedColumn[str] = mapped_column(String, nullable=False)
     address: MappedColumn[str] = mapped_column(String, nullable=False)
-    connector_id: MappedColumn[str] = mapped_column(String, nullable=False)
+    via_connector: MappedColumn[str] = mapped_column(String, nullable=False)
     aliases_json: MappedColumn[str] = mapped_column(Text, nullable=False, default="[]")

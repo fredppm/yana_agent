@@ -45,6 +45,7 @@ _SCOPES = ["https://www.googleapis.com/auth/gmail.modify"]
 
 class GmailConnector(Connector, CommunicationChannel):
     connector_description = "Gmail email access — unread important, search, send, label"
+    channel = "email"
 
     def __init__(
         self,

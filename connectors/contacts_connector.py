@@ -4,7 +4,7 @@ connectors/contacts_connector.py — ContactsConnector.
 Exposes the ContactRegistry as a Connector so the LLM can call:
 
     find_persona(name)                   → persona info or ambiguity signal
-    get_contact(persona_id, channel?)    → address + connector_id to use
+    get_contact(persona_id, channel?)    → address + via_connector to use
 
 Resolution contract:
   - find_persona returns ok=True with data if exactly one match.
@@ -78,11 +78,12 @@ class ContactsConnector(Connector):
 
     @query(
         description=(
-            "List all personas in the registry, optionally filtered by a name fragment. "
-            "Use this to inspect what contacts are stored, debug unexpected results, "
-            "or find a contact when the exact name is unknown. "
+            "List personas, optionally filtered by a name fragment. "
+            "Use this when: the user asks to LIST contacts ('me lista as Fernandas'), "
+            "the name might match multiple people, or you want to browse the registry. "
+            "Do NOT use this to resolve a single specific person — use find_persona for that. "
             "filter: case-insensitive substring matched against id, name, and aliases. "
-            "Returns a list of {id, name, aliases, sources} objects."
+            "Returns a list of {id, name, aliases, vip, sources} objects."
         ),
         params={"filter": {"type": "string", "required": False}},
         returns={"type": "list"},
@@ -102,6 +103,7 @@ class ContactsConnector(Connector):
                 "name": p.name,
                 "aliases": p.aliases,
                 "context": p.context,
+                "vip": p.vip,
                 "sources": p.sources,
             })
         results.sort(key=lambda x: x["name"].lower())
@@ -109,11 +111,15 @@ class ContactsConnector(Connector):
 
     @query(
         description=(
-            "Find a persona by name or alias. "
+            "Resolve ONE specific person by name or alias. "
+            "Use this only when the intent is to act on a single person "
+            "('manda mensagem pra Fernanda', 'qual o email do João'). "
+            "Do NOT use this for listing — use list_personas with a filter instead. "
             "Returns persona info if exactly one match. "
-            "Returns error='ambiguous' with a list of candidates if the name is ambiguous — "
-            "ask the user to clarify. "
-            "Returns error='not_found' if no persona matches."
+            "Returns error='ambiguous' with candidates if the name matches multiple people — "
+            "call list_personas with the same filter to show the user the options. "
+            "Returns error='not_found' if no match. "
+            "After resolving, call list_contacts(persona_id) to see available channels."
         ),
         params={"name": {"type": "string", "required": True}},
         returns={"type": "object"},
@@ -137,6 +143,8 @@ class ContactsConnector(Connector):
             "type": p.type,
             "context": p.context,
             "tags": p.tags,
+            "vip": p.vip,
+            "aliases": p.aliases,
         }
 
     @query(
@@ -144,7 +152,8 @@ class ContactsConnector(Connector):
             "Get the contact address for a persona on a given channel. "
             "Pass channel to request a specific medium (email/whatsapp/slack/sms/telegram). "
             "Omit channel to use the persona's preferred channel. "
-            "Returns address and connector_id to use for sending."
+            "Returns the channel and address. Routing connector is resolved at send time "
+            "from the connector registry — it is not stored in the contact."
         ),
         params={
             "persona_id": {"type": "string", "required": True},
@@ -165,7 +174,6 @@ class ContactsConnector(Connector):
             "persona_id": contact.persona_id,
             "channel": contact.channel,
             "address": contact.address,
-            "connector_id": contact.connector_id,
             "preferred": contact.preferred,
         }
 
@@ -174,7 +182,7 @@ class ContactsConnector(Connector):
             "Resolve a named channel (e.g. '#geral-vtex', 'canal geral da VTEX'). "
             "Named channels are destinations without a specific persona — large groups, "
             "mailing lists, broadcast channels. "
-            "Returns channel info and connector_id to use for sending."
+            "Returns channel info and via_connector to use for sending."
         ),
         params={"name": {"type": "string", "required": True}},
         returns={"type": "object"},
@@ -188,7 +196,7 @@ class ContactsConnector(Connector):
             "name": nc.name,
             "channel": nc.channel,
             "address": nc.address,
-            "connector_id": nc.connector_id,
+            "via_connector": nc.via_connector,
         }
 
     # ------------------------------------------------------------------
@@ -207,6 +215,7 @@ class ContactsConnector(Connector):
             "aliases": {"type": "array", "required": False},
             "context": {"type": "string", "required": False},
             "tags": {"type": "array", "required": False},
+            "vip": {"type": "boolean", "required": False},
         },
         returns={"type": "boolean"},
     )
@@ -218,8 +227,13 @@ class ContactsConnector(Connector):
         aliases: list[str] | None = None,
         context: str = "",
         tags: list[str] | None = None,
+        vip: bool = False,
     ) -> bool:
         Persona = _contacts_mod.Persona
+
+        # Preserve sources if persona already exists
+        existing = self._registry._personas.get(id)
+        sources = existing.sources if existing is not None else []
 
         p = Persona(
             id=id,
@@ -229,6 +243,8 @@ class ContactsConnector(Connector):
             aliases=aliases or [],
             context=context,
             tags=tags or [],
+            vip=vip,
+            sources=sources,
         )
         self._registry._personas[id] = p
         self._registry.save()
@@ -244,7 +260,7 @@ class ContactsConnector(Connector):
             "name": {"type": "string", "required": True},
             "channel": {"type": "string", "required": True},
             "address": {"type": "string", "required": True},
-            "connector_id": {"type": "string", "required": True},
+            "via_connector": {"type": "string", "required": True},
             "aliases": {"type": "array", "required": False},
         },
         returns={"type": "boolean"},
@@ -255,7 +271,7 @@ class ContactsConnector(Connector):
         name: str,
         channel: str,
         address: str,
-        connector_id: str,
+        via_connector: str,
         aliases: list[str] | None = None,
     ) -> bool:
         NamedChannel = _contacts_mod.NamedChannel
@@ -265,7 +281,7 @@ class ContactsConnector(Connector):
             name=name,
             channel=channel,
             address=address,
-            connector_id=connector_id,
+            via_connector=via_connector,
             aliases=aliases or [],
         )
         # Replace if exists, otherwise append
@@ -273,6 +289,90 @@ class ContactsConnector(Connector):
             x for x in self._registry._named_channels if x.id != id
         ]
         self._registry._named_channels.append(nc)
+        self._registry.save()
+        return True
+
+    @query(
+        description=(
+            "List all contact addresses for a persona — all channels (email, whatsapp, sms, etc). "
+            "Use this when presenting full persona details or checking what channels are available. "
+            "Returns a list of {channel, address, preferred, sources}."
+        ),
+        params={"persona_id": {"type": "string", "required": True}},
+        returns={"type": "list"},
+    )
+    def list_contacts(self, persona_id: str) -> list[dict[str, Any]]:
+        persona_contacts = [c for c in self._registry._contacts if c.persona_id == persona_id]
+        return [
+            {
+                "channel": c.channel,
+                "address": c.address,
+                "preferred": c.preferred,
+                "sources": c.sources,
+            }
+            for c in sorted(persona_contacts, key=lambda c: (not c.preferred, c.channel))
+        ]
+
+    @command(
+        description=(
+            "Add or update a contact address for a persona. "
+            "Use this when the user tells you how to reach someone on a specific channel "
+            "(e.g. 'a Fernanda, o WhatsApp dela é +55 21 99294-0714'). "
+            "channel: 'email', 'whatsapp', 'sms', 'phone', 'slack', 'telegram'. "
+            "Use 'phone' for a raw phone number when the delivery method is unknown — "
+            "later, call upsert_contact again with channel='whatsapp' or 'sms' once confirmed. "
+            "preferred: if true, marks this as the default channel for this persona. "
+            "Returns error='not_found' if the persona_id does not exist."
+        ),
+        params={
+            "persona_id": {"type": "string", "required": True},
+            "channel": {"type": "string", "required": True},
+            "address": {"type": "string", "required": True},
+            "preferred": {"type": "boolean", "required": False},
+        },
+        returns={"type": "boolean"},
+    )
+    def upsert_contact(
+        self,
+        persona_id: str,
+        channel: str,
+        address: str,
+        preferred: bool = False,
+    ) -> bool:
+        Contact = _contacts_mod.Contact
+
+        if persona_id not in self._registry._personas:
+            raise ValueError(f"not_found: persona '{persona_id}' does not exist")
+
+        # If marking preferred, clear existing preferred flag for this persona
+        if preferred:
+            for c in self._registry._contacts:
+                if c.persona_id == persona_id:
+                    c.preferred = False
+
+        # Build a stable id from persona + channel + address
+        import re
+        safe_addr = re.sub(r"[^a-z0-9]+", "_", address.lower()).strip("_")
+        contact_id = f"{persona_id}_{channel}_{safe_addr}"
+
+        # Preserve existing sources if contact already exists
+        existing = next((c for c in self._registry._contacts if c.id == contact_id), None)
+        sources = existing.sources if existing is not None else []
+
+        # Replace if same id exists, otherwise append
+        self._registry._contacts = [
+            c for c in self._registry._contacts if c.id != contact_id
+        ]
+        self._registry._contacts.append(
+            Contact(
+                id=contact_id,
+                persona_id=persona_id,
+                channel=channel,
+                address=address,
+                preferred=preferred,
+                sources=sources,
+            )
+        )
         self._registry.save()
         return True
 
@@ -321,5 +421,105 @@ class ContactsConnector(Connector):
 
         for c in persona_contacts:
             c.preferred = c.channel == channel
+        self._registry.save()
+        return True
+
+    @command(
+        description=(
+            "Merge two personas into one — the duplicate is absorbed into the base. "
+            "Use this when YANA has two entries for the same person, e.g. 'Fernanda Moreira' "
+            "from Google and 'Fernanda Oliveira' from Apple that are actually the same person. "
+            "After the merge: the base persona keeps its name, context, and tags; "
+            "aliases and contacts from the duplicate are moved over; "
+            "sources from both are merged (deduplicated by source_id); "
+            "the duplicate persona and its contacts are deleted. "
+            "Returns error='not_found' if either id does not exist."
+        ),
+        params={
+            "base_id": {"type": "string", "required": True},
+            "duplicate_id": {"type": "string", "required": True},
+        },
+        returns={"type": "boolean"},
+    )
+    def merge_personas(self, base_id: str, duplicate_id: str) -> bool:
+        Contact = _contacts_mod.Contact
+
+        if base_id not in self._registry._personas:
+            raise ValueError(f"not_found: base persona '{base_id}' does not exist")
+        if duplicate_id not in self._registry._personas:
+            raise ValueError(f"not_found: duplicate persona '{duplicate_id}' does not exist")
+
+        base = self._registry._personas[base_id]
+        dup = self._registry._personas[duplicate_id]
+
+        # Merge aliases (deduplicated, case-insensitive).
+        # Also absorb the duplicate's name so searching by it still resolves.
+        base_aliases_lower = {a.lower() for a in base.aliases}
+        for alias in [dup.name] + dup.aliases:
+            if alias.lower() not in base_aliases_lower:
+                base.aliases.append(alias)
+                base_aliases_lower.add(alias.lower())
+
+        # Merge sources (deduplicated by source_id)
+        existing_source_ids = {s.get("source_id") for s in base.sources}
+        for s in dup.sources:
+            if s.get("source_id") not in existing_source_ids:
+                base.sources.append(s)
+                existing_source_ids.add(s.get("source_id"))
+
+        # Merge tags (deduplicated)
+        base_tags = set(base.tags)
+        for tag in dup.tags:
+            if tag not in base_tags:
+                base.tags.append(tag)
+                base_tags.add(tag)
+
+        # Promote vip if duplicate was vip
+        if dup.vip:
+            base.vip = True
+
+        # Move contacts from duplicate to base, dedup by deterministic id
+        import re
+        existing_contact_ids = {c.id for c in self._registry._contacts if c.persona_id == base_id}
+        dup_contacts = [c for c in self._registry._contacts if c.persona_id == duplicate_id]
+        for dc in dup_contacts:
+            safe_addr = re.sub(r"[^a-z0-9]+", "_", dc.address.lower()).strip("_")
+            new_id = f"{base_id}_{dc.channel}_{safe_addr}"
+            if new_id not in existing_contact_ids:
+                self._registry._contacts.append(Contact(
+                    id=new_id,
+                    persona_id=base_id,
+                    channel=dc.channel,
+                    address=dc.address,
+                    preferred=dc.preferred,
+                    sources=dc.sources,
+                ))
+                existing_contact_ids.add(new_id)
+
+        # Delete duplicate persona and its contacts
+        del self._registry._personas[duplicate_id]
+        self._registry._contacts = [
+            c for c in self._registry._contacts if c.persona_id != duplicate_id
+        ]
+
+        self._registry.save()
+        return True
+
+    @command(
+        description=(
+            "Set or clear the VIP flag on a persona. "
+            "VIP contacts get priority treatment in YANA's responses. "
+            "Returns error='not_found' if the persona id does not exist."
+        ),
+        params={
+            "persona_id": {"type": "string", "required": True},
+            "vip": {"type": "boolean", "required": True},
+        },
+        returns={"type": "boolean"},
+    )
+    def set_vip(self, persona_id: str, vip: bool) -> bool:
+        if persona_id not in self._registry._personas:
+            raise ValueError(f"not_found: persona '{persona_id}' does not exist")
+        self._registry._personas[persona_id].vip = vip
         self._registry.save()
         return True

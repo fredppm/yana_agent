@@ -81,7 +81,7 @@ def registry(tmp_path: Path) -> ContactRegistry:
                     "persona_id": "fred",
                     "channel": "email",
                     "address": "fred@example.com",
-                    "connector_id": "gmail_fred_personal",
+                    "via_connector": "gmail_fred_personal",
                     "preferred": True,
                 },
                 {
@@ -89,7 +89,7 @@ def registry(tmp_path: Path) -> ContactRegistry:
                     "persona_id": "ana",
                     "channel": "whatsapp",
                     "address": "+55999999999",
-                    "connector_id": "whatsapp_personal",
+                    "via_connector": "whatsapp_personal",
                     "preferred": True,
                 },
                 {
@@ -97,7 +97,7 @@ def registry(tmp_path: Path) -> ContactRegistry:
                     "persona_id": "ana",
                     "channel": "email",
                     "address": "ana@example.com",
-                    "connector_id": "gmail_fred_personal",
+                    "via_connector": "gmail_fred_personal",
                     "preferred": False,
                 },
             ],
@@ -107,7 +107,7 @@ def registry(tmp_path: Path) -> ContactRegistry:
                     "name": "canal geral da VTEX",
                     "channel": "slack",
                     "address": "C123456",
-                    "connector_id": "slack_vtex",
+                    "via_connector": "slack_vtex",
                     "aliases": ["#geral-vtex", "canal geral"],
                 }
             ],

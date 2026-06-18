@@ -74,12 +74,7 @@ def _google_person(
 def _sync(connector: GoogleContactsConnector, people: list[dict]) -> dict:
     """Run sync_contacts with a mocked _fetch_contacts (no network, no parse errors)."""
     with patch.object(connector, "_fetch_contacts", return_value=(people, [])):
-        return connector.sync_contacts(
-            owner="fred",
-            email_connector_id="gmail_fred_personal",
-            phone_connector_id="whatsapp",
-            channel_for_phone="whatsapp",
-        )
+        return connector.sync_contacts(owner="fred")
 
 
 # ---------------------------------------------------------------------------
@@ -120,7 +115,7 @@ def test_first_sync_stores_google_source_id(tmp_path: Path) -> None:
 
 def test_first_sync_creates_email_contact(tmp_path: Path) -> None:
     """
-    Ana's email from Google becomes a Contact entry in YANA.
+    Ana's email from Google becomes a Contact entry in YANA with google source tracking.
     """
     connector = _make_connector(tmp_path)
     _sync(connector, [
@@ -130,21 +125,24 @@ def test_first_sync_creates_email_contact(tmp_path: Path) -> None:
     c = connector._registry.get_contact("ana", channel="email")
     assert c is not None
     assert c.address == "ana@example.com"
-    assert c.connector_id == "gmail_fred_personal"
+    assert any(s.get("provider") == "google" for s in c.sources)
 
 
 def test_first_sync_creates_phone_contact(tmp_path: Path) -> None:
     """
-    Ana's phone from Google becomes a WhatsApp Contact entry in YANA.
+    Ana's phone from Google is stored as channel='phone' (raw, delivery unknown).
+    Google doesn't tell us if it's WhatsApp or SMS — that must be confirmed separately.
     """
     connector = _make_connector(tmp_path)
     _sync(connector, [
         _google_person("Ana", "people/c001", phones=["+55999111222"])
     ])
 
-    c = connector._registry.get_contact("ana", channel="whatsapp")
+    c = connector._registry.get_contact("ana", channel="phone")
     assert c is not None
     assert c.address == "+55999111222"
+    assert c.channel == "phone"  # not routable until promoted via upsert_contact
+    assert any(s.get("provider") == "google" for s in c.sources)
 
 
 def test_first_sync_returns_counts(tmp_path: Path) -> None:
@@ -201,7 +199,7 @@ def test_second_sync_adds_new_email(tmp_path: Path) -> None:
 
     contacts = [c for c in connector._registry._contacts if c.persona_id == "ana"]
     channels = {c.channel for c in contacts}
-    assert "whatsapp" in channels
+    assert "phone" in channels  # raw phone — channel unknown from Google
     assert "email" in channels
     assert len(contacts) == 2  # no duplicates
 
@@ -375,7 +373,7 @@ def test_sync_twice_produces_no_duplicate_contacts(tmp_path: Path) -> None:
     _sync(connector, people)
 
     contacts = [c for c in connector._registry._contacts if c.persona_id == "ana"]
-    assert len(contacts) == 2  # one email, one whatsapp — not 4
+    assert len(contacts) == 2  # one email, one phone (raw) — not 4
 
 
 def test_second_sync_reports_updated_not_added(tmp_path: Path) -> None:
@@ -411,11 +409,11 @@ def test_joao_with_only_email_get_contact_returns_email(tmp_path: Path) -> None:
     assert c.channel == "email"
 
 
-def test_joao_with_only_phone_get_contact_returns_whatsapp(tmp_path: Path) -> None:
+def test_joao_with_only_phone_get_contact_returns_phone(tmp_path: Path) -> None:
     """
     João was synced with only a phone number.
-    When YANA tries to reach João without specifying a channel,
-    it returns whatsapp — the only option available.
+    Google doesn't tell us the channel — stored as channel='phone' (raw).
+    YANA must then ask Fred: "WhatsApp or SMS?" before routing a message.
     """
     connector = _make_connector(tmp_path)
     _sync(connector, [_google_person("João", "people/c010", phones=["+55911222333"])])
@@ -423,7 +421,7 @@ def test_joao_with_only_phone_get_contact_returns_whatsapp(tmp_path: Path) -> No
     persona_id = list(connector._registry._personas.keys())[0]
     c = connector._registry.get_contact(persona_id, channel=None)
     assert c is not None
-    assert c.channel == "whatsapp"
+    assert c.channel == "phone"  # not routable yet — delivery method unknown
 
 
 # ---------------------------------------------------------------------------
@@ -461,9 +459,9 @@ def test_joao_with_email_and_phone_no_preferred_returns_first(tmp_path: Path) ->
 
 def test_set_preferred_contact_makes_whatsapp_default(tmp_path: Path) -> None:
     """
-    João has email and WhatsApp.
-    Fred tells YANA: "prefiro o WhatsApp para o João".
-    After set_preferred_contact, get_contact without channel returns WhatsApp.
+    João synced with email and phone (raw). Fred tells YANA: "João usa WhatsApp".
+    YANA calls upsert_contact to promote the phone to a whatsapp entry, then
+    set_preferred_contact makes it the default.
     """
     from contacts_connector import ContactsConnector
 
@@ -485,19 +483,22 @@ def test_set_preferred_contact_makes_whatsapp_default(tmp_path: Path) -> None:
 
     persona_id = list(gc._registry._personas.keys())[0]
 
-    # Now use ContactsConnector to set preferred
-    cc = ContactsConnector(
-        personas_file=str(personas_path),
-        contacts_file=str(contacts_path),
-    )
+    # YANA learns João is on WhatsApp: upsert_contact promotes the raw phone to whatsapp
+    cc = ContactsConnector(personas_file=str(personas_path), contacts_file=str(contacts_path))
+    r = cc.call("upsert_contact", {
+        "persona_id": persona_id,
+        "channel": "whatsapp",
+        "address": "+55911222333",
+        "preferred": False,
+    })
+    assert r.ok
+
+    # Now set whatsapp as preferred
     result = cc.call("set_preferred_contact", {"persona_id": persona_id, "channel": "whatsapp"})
     assert result.ok
 
     # Reload and verify
-    cc2 = ContactsConnector(
-        personas_file=str(personas_path),
-        contacts_file=str(contacts_path),
-    )
+    cc2 = ContactsConnector(personas_file=str(personas_path), contacts_file=str(contacts_path))
     c = cc2._registry.get_contact(persona_id)
     assert c is not None
     assert c.channel == "whatsapp"
@@ -557,7 +558,14 @@ def test_set_preferred_contact_persists_to_yaml(tmp_path: Path) -> None:
     ])
     persona_id = list(gc._registry._personas.keys())[0]
 
+    # Promote raw phone to whatsapp first
     cc = ContactsConnector(personas_file=str(personas_path), contacts_file=str(contacts_path))
+    cc.call("upsert_contact", {
+        "persona_id": persona_id,
+        "channel": "whatsapp",
+        "address": "+55911222333",
+        "preferred": False,
+    })
     cc.call("set_preferred_contact", {"persona_id": persona_id, "channel": "whatsapp"})
 
     # Fresh load
@@ -576,9 +584,6 @@ def _sync_purge(connector: GoogleContactsConnector, people: list[dict]) -> dict:
     with patch.object(connector, "_fetch_contacts", return_value=(people, [])):
         return connector.sync_contacts(
             owner="fred",
-            email_connector_id="gmail_fred_personal",
-            phone_connector_id="whatsapp",
-            channel_for_phone="whatsapp",
             force_update_names=True,
             purge_removed=True,
         )
@@ -610,7 +615,7 @@ def test_purge_removed_also_removes_contacts(tmp_path: Path) -> None:
         _google_person("Ana", "people/c001", emails=["ana@example.com"], phones=["+55999"])
     ])
     contacts_before = len(connector._registry._contacts)
-    assert contacts_before == 2  # email + whatsapp
+    assert contacts_before == 2  # email + phone (raw)
 
     _sync_purge(connector, [])
 

@@ -251,16 +251,24 @@ class CommunicationChannel:
     """
     Interface for connectors that can send and receive messages.
 
-    A connector that supports messaging declares both base classes:
-        class GmailConnector(Connector, CommunicationChannel): ...
+    A connector that supports messaging declares both base classes AND sets `channel`:
+        class GmailConnector(Connector, CommunicationChannel):
+            channel = "email"
+            ...
 
-    The registry can discover communication-capable connectors via:
-        isinstance(connector, CommunicationChannel)
+    Supported channel values: "email" | "whatsapp" | "sms" | "phone" | "slack" | "telegram"
+
+    The registry can:
+      - Discover communication-capable connectors: isinstance(connector, CommunicationChannel)
+      - Validate routing: connector.channel == contact.channel before sending
+      - Prevent mismatches (e.g. calling Gmail to send a WhatsApp message)
 
     Credential naming convention for communication connectors:
         app_credential  — OAuth Client ID/Secret or API key. YANA owns. Immutable.
         persona_token   — Per-user OAuth token. Persona owns. Expires and refreshes.
     """
+
+    channel: ClassVar[str] = ""  # must be overridden: "email" | "whatsapp" | "sms" | ...
 
     def send_message(self, address: str, text: str) -> bool:
         """

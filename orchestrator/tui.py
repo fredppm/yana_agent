@@ -783,14 +783,16 @@ class YANAApp(App[TuiResult]):
             self._write_sandbox_event(chat, payload, ts=ts)
             return
         w = self._chat_width()
-        label = f"{instance}/{operation}" if instance else operation
-        if error:
-            label = f"{label}  ✗ {error}"
+        op = f"{instance}/{operation}" if instance else operation
+        label = f"{t('tool_prefix')} {op}"
+        status = "  ✗" if error else "  ✓"
         ts_str = f"  {ts}" if ts else ""
         ts_len = cell_len(ts_str)
-        gap = max(0, w - 2 - cell_len(label) - ts_len)
+        gap = max(0, w - self._GUTTER - cell_len(label) - cell_len(status) - ts_len)
         ts_mk = f"[dim]{escape(ts_str)}[/dim]" if ts_str else ""
-        chat.write(f"[dim]  {escape(label)}{' ' * gap}{ts_mk}[/dim]")
+        chat.write(f"[dim]▸  {escape(label)}{escape(status)}{' ' * gap}{ts_mk}[/dim]")  # noqa: RUF001
+        if error:
+            chat.write(f"[dim]   {escape(error)}[/dim]")
         chat.write("")
 
     def _write_sandbox_event(self, chat: RichLog, payload: dict, ts: str = "") -> None:

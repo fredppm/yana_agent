@@ -3,7 +3,7 @@ connectors/google_contacts.py — Google Contacts (People API) connector.
 
 Two operations:
   list_contacts(max_results?)          → raw Google contact data (query)
-  import_contacts(owner, email_connector_id, phone_connector_id?, channel_for_phone?)
+  import_contacts(owner, email_via_connector, phone_via_connector?, channel_for_phone?)
                                        → upserts Personas + Contacts into the registry (command)
 
 import_contacts is designed to be run once (or periodically) to seed the registry.
@@ -235,9 +235,10 @@ class GoogleContactsConnector(Connector):
             "name and addresses updated — YANA enrichment (aliases, context, tags, preferred channel) "
             "is never overwritten. Safe to run repeatedly. "
             "owner: persona owner label (usually 'fred'). "
-            "email_connector_id: connector to use for email contacts (e.g. 'gmail_fred_personal'). "
-            "phone_connector_id: connector to use for phone contacts (e.g. 'whatsapp'). "
-            "channel_for_phone: 'whatsapp' or 'sms' — defaults to 'whatsapp'. "
+            "Phone numbers from Google are always imported as channel='phone' (raw, delivery unknown). "
+            "Google doesn't tell us if a number has WhatsApp or SMS — that must be confirmed separately. "
+            "Once the user says 'Fernanda uses WhatsApp', call upsert_contact on contacts connector "
+            "with channel='whatsapp'. "
             "force_update_names: if true, overwrite the stored name with the current Google name "
             "for existing personas — use this to fix contacts imported with wrong names. "
             "purge_removed: if true, delete any persona whose ONLY source is Google and whose "
@@ -246,9 +247,6 @@ class GoogleContactsConnector(Connector):
         ),
         params={
             "owner": {"type": "string", "required": True},
-            "email_connector_id": {"type": "string", "required": True},
-            "phone_connector_id": {"type": "string", "required": False},
-            "channel_for_phone": {"type": "string", "required": False},
             "force_update_names": {"type": "boolean", "required": False},
             "purge_removed": {"type": "boolean", "required": False},
         },
@@ -257,9 +255,6 @@ class GoogleContactsConnector(Connector):
     def sync_contacts(
         self,
         owner: str,
-        email_connector_id: str,
-        phone_connector_id: str | None = None,
-        channel_for_phone: str = "whatsapp",
         force_update_names: bool = False,
         purge_removed: bool = False,
     ) -> dict[str, Any]:
@@ -271,7 +266,12 @@ class GoogleContactsConnector(Connector):
         skipped = 0
         skipped_names: list[str] = []
 
-        existing_contact_ids = {c.id for c in self._registry._contacts}
+        # Index existing contacts by id for O(1) dedup lookup
+        existing_contacts_by_id: dict[str, Contact] = {
+            c.id: c for c in self._registry._contacts
+        }
+
+        google_source = {"provider": "google", "source_id": ""}  # template
 
         for entry in raw:
             display: str = entry["name"]
@@ -331,36 +331,51 @@ class GoogleContactsConnector(Connector):
                 self._registry._personas[persona_id] = p
                 added_personas += 1
 
-            # Sync email contacts
+            contact_source = {"provider": "google", "source_id": source_id}
+
+            # Sync email contacts — provenance tracked in sources
             for email in emails:
                 contact_id = f"{persona_id}_email_{_slugify(email)}"
-                if contact_id not in existing_contact_ids:
-                    self._registry._contacts.append(Contact(
+                existing_c = existing_contacts_by_id.get(contact_id)
+                if existing_c is not None:
+                    # Merge source if not already recorded
+                    if not any(s.get("source_id") == source_id for s in existing_c.sources):
+                        existing_c.sources.append(contact_source)
+                else:
+                    new_c = Contact(
                         id=contact_id,
                         persona_id=persona_id,
                         channel="email",
                         address=email,
-                        connector_id=email_connector_id,
                         preferred=len(emails) == 1 and not phones,
-                    ))
-                    existing_contact_ids.add(contact_id)
+                        sources=[contact_source],
+                    )
+                    self._registry._contacts.append(new_c)
+                    existing_contacts_by_id[contact_id] = new_c
                     added_contacts += 1
 
-            # Sync phone contacts
-            if phone_connector_id:
-                for phone in phones:
-                    contact_id = f"{persona_id}_{channel_for_phone}_{_slugify(phone)}"
-                    if contact_id not in existing_contact_ids:
-                        self._registry._contacts.append(Contact(
-                            id=contact_id,
-                            persona_id=persona_id,
-                            channel=channel_for_phone,
-                            address=phone,
-                            connector_id=phone_connector_id,
-                            preferred=not emails,
-                        ))
-                        existing_contact_ids.add(contact_id)
-                        added_contacts += 1
+            # Sync phone numbers as channel="phone" — raw, delivery method unknown.
+            # Google Contacts doesn't tell us if a number has WhatsApp, SMS, or neither.
+            # Use upsert_contact on contacts connector to promote to channel="whatsapp"/"sms"
+            # once the user confirms the delivery method.
+            for phone in phones:
+                contact_id = f"{persona_id}_phone_{_slugify(phone)}"
+                existing_c = existing_contacts_by_id.get(contact_id)
+                if existing_c is not None:
+                    if not any(s.get("source_id") == source_id for s in existing_c.sources):
+                        existing_c.sources.append(contact_source)
+                else:
+                    new_c = Contact(
+                        id=contact_id,
+                        persona_id=persona_id,
+                        channel="phone",
+                        address=phone,
+                        preferred=False,  # phone entries are never auto-preferred
+                        sources=[contact_source],
+                    )
+                    self._registry._contacts.append(new_c)
+                    existing_contacts_by_id[contact_id] = new_c
+                    added_contacts += 1
 
         # Purge personas whose Google source_id no longer exists in the current fetch.
         # Only removes personas whose EVERY source is Google — personas with mixed sources

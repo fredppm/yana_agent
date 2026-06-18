@@ -42,6 +42,7 @@ def upsert_persona_sync(d: dict, engine=None) -> None:
         r.context = d.get("context", "")
         r.tags_json = json.dumps(d.get("tags", []), ensure_ascii=False)
         r.sources_json = json.dumps(d.get("sources", []), ensure_ascii=False)
+        r.vip = 1 if d.get("vip") else 0
         s.merge(r)
         s.commit()
 
@@ -74,8 +75,8 @@ def upsert_contact_sync(d: dict, engine=None) -> None:
         r.persona_id = d["persona_id"]
         r.channel = d["channel"]
         r.address = d["address"]
-        r.connector_id = d["connector_id"]
         r.preferred = 1 if d.get("preferred") else 0
+        r.sources_json = json.dumps(d.get("sources", []), ensure_ascii=False)
         s.merge(r)
         s.commit()
 
@@ -113,7 +114,7 @@ def upsert_named_channel_sync(d: dict, engine=None) -> None:
         r.name = d["name"]
         r.channel = d["channel"]
         r.address = d["address"]
-        r.connector_id = d["connector_id"]
+        r.via_connector = d["via_connector"]
         r.aliases_json = json.dumps(d.get("aliases", []), ensure_ascii=False)
         s.merge(r)
         s.commit()
@@ -144,6 +145,7 @@ def _persona_to_dict(r: PersonaRecord) -> dict:
         "context": r.context,
         "tags": json.loads(r.tags_json),
         "sources": json.loads(r.sources_json),
+        "vip": bool(r.vip),
     }
 
 
@@ -153,8 +155,8 @@ def _contact_to_dict(r: ContactRecord) -> dict:
         "persona_id": r.persona_id,
         "channel": r.channel,
         "address": r.address,
-        "connector_id": r.connector_id,
         "preferred": bool(r.preferred),
+        "sources": json.loads(r.sources_json),
     }
 
 
@@ -164,6 +166,6 @@ def _nc_to_dict(r: NamedChannelRecord) -> dict:
         "name": r.name,
         "channel": r.channel,
         "address": r.address,
-        "connector_id": r.connector_id,
+        "via_connector": r.via_connector,
         "aliases": json.loads(r.aliases_json),
     }
