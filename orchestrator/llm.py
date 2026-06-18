@@ -196,10 +196,7 @@ def _sanitize_messages(messages: list[dict]) -> list[dict]:
     at the message top level. Extra fields added by the TUI for display/storage
     purposes must be removed before the API call.
     """
-    return [
-        {k: v for k, v in m.items() if k in _MSG_KEYS}
-        for m in messages
-    ]
+    return [{k: v for k, v in m.items() if k in _MSG_KEYS} for m in messages]
 
 
 # ---------------------------------------------------------------------------

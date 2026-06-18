@@ -46,7 +46,7 @@ class Persona:
 
 @dataclass
 class Contact:
-    id: str       # deterministic: f"{persona_id}_{channel}_{slugified_address}"
+    id: str  # deterministic: f"{persona_id}_{channel}_{slugified_address}"
     persona_id: str
     channel: str  # "email" | "whatsapp" | "sms" | "phone" | "slack" | "telegram"
     # "phone" = raw number, delivery method unknown — promote via upsert_contact once confirmed
@@ -244,8 +244,7 @@ class ContactRegistry:
 
         # Alias match
         matches = [
-            p for p in self._personas.values()
-            if any(a.lower() == needle for a in p.aliases)
+            p for p in self._personas.values() if any(a.lower() == needle for a in p.aliases)
         ]
         return matches[0] if len(matches) == 1 else None
 
@@ -264,7 +263,8 @@ class ContactRegistry:
         needle = name.strip().lower()
 
         exact = [
-            p for p in self._personas.values()
+            p
+            for p in self._personas.values()
             if p.id == needle or any(a.lower() == needle for a in p.aliases)
         ]
         if exact:
@@ -272,7 +272,8 @@ class ContactRegistry:
 
         # First-word fallback: "Fernanda" → any alias whose first word is "fernanda"
         return [
-            p for p in self._personas.values()
+            p
+            for p in self._personas.values()
             if any(a.split()[0].lower() == needle for a in p.aliases if a.split())
         ]
 
@@ -426,6 +427,7 @@ class ContactRegistry:
             # We need to delete by id — use a targeted delete
             from store.contacts import _session as _store_session
             from store.models import ContactRecord
+
             with _store_session(engine) as s:
                 r = s.get(ContactRecord, cid)
                 if r:
