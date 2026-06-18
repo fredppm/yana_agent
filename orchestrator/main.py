@@ -278,8 +278,22 @@ def _run_tui_conversation(
             # Regular session: store in Graphiti in background — TUI closes immediately
             mem.store_session_background(final_messages, session_id)
 
-        # Generate session title + summary (non-blocking, best-effort)
+        # Generate session title + summary (non-blocking, best-effort).
+        # NOTE: store_session_background creates the DB record in a background thread,
+        # so we must ensure the record exists before calling update_session_title_sync.
+        # We call create_session_sync here first (idempotent — safe to call twice).
         if final_messages:
+            import json as _json
+
+            _profile_id = profiles.get_active_profile()
+            if _profile_id:
+                store.create_session_sync(
+                    session_id,
+                    _profile_id,
+                    datetime.now().isoformat(),
+                    "",
+                    _json.dumps(final_messages, ensure_ascii=False),
+                )
             try:
                 title_data = sw.write_session_title(final_messages, config=providers_config)
                 if title_data:
