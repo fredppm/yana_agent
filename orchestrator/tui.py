@@ -790,7 +790,7 @@ class YANAApp(App[TuiResult]):
         ts_len = cell_len(ts_str)
         gap = max(0, w - self._GUTTER - cell_len(label) - cell_len(status) - ts_len)
         ts_mk = f"[dim]{escape(ts_str)}[/dim]" if ts_str else ""
-        chat.write(f"[dim]▸  {escape(label)}{escape(status)}{' ' * gap}{ts_mk}[/dim]")  # noqa: RUF001
+        chat.write(f"[dim]▸  {escape(label)}{escape(status)}{' ' * gap}{ts_mk}[/dim]")
         if error:
             chat.write(f"[dim]   {escape(error)}[/dim]")
         chat.write("")

@@ -1,6 +1,6 @@
 from .base import (
-    Connector,
     CommunicationChannel,
+    Connector,
     ConnectorResult,
     OperationMeta,
     ParamSchema,
@@ -13,8 +13,8 @@ from .loader import load_connectors
 from .registry import ConnectorInstance, ConnectorRegistry
 
 __all__ = [
-    "Connector",
     "CommunicationChannel",
+    "Connector",
     "ConnectorInstance",
     "ConnectorRegistry",
     "ConnectorResult",

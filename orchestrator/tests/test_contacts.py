@@ -10,9 +10,7 @@ from pathlib import Path
 
 import pytest
 import yaml
-
-from contacts import Contact, ContactRegistry, NamedChannel, Persona
-
+from contacts import ContactRegistry, Persona
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -260,7 +258,6 @@ def test_save_round_trips_named_channels(registry: ContactRegistry) -> None:
 
 def test_save_persists_new_persona(registry: ContactRegistry) -> None:
     """A persona added after load() is persisted by save()."""
-    from contacts import Persona
 
     registry._personas["novo"] = Persona(
         id="novo", name="Novo", type="person", owner="fred", aliases=["novo"], context="", tags=[]
@@ -281,7 +278,8 @@ def test_gmail_is_communication_channel() -> None:
     import sys
 
     sys.path.insert(0, str(Path(__file__).parent.parent.parent / "connectors"))
-    from connectors import CommunicationChannel
     from gmail import GmailConnector
+
+    from connectors import CommunicationChannel
 
     assert issubclass(GmailConnector, CommunicationChannel)

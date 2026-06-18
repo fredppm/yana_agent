@@ -20,7 +20,6 @@ if str(_CONNECTORS_DIR) not in sys.path:
 
 from contacts_connector import ContactsConnector  # noqa: E402
 
-
 # ---------------------------------------------------------------------------
 # Fixture — connector with in-memory YAML config
 # ---------------------------------------------------------------------------
@@ -295,17 +294,13 @@ def test_upsert_persona_persists(tmp_path: Path) -> None:
     personas_path.write_text(yaml.dump({"personas": []}))
     contacts_path.write_text(yaml.dump({"contacts": [], "named_channels": []}))
 
-    c1 = ContactsConnector(
-        personas_file=str(personas_path), contacts_file=str(contacts_path)
-    )
+    c1 = ContactsConnector(personas_file=str(personas_path), contacts_file=str(contacts_path))
     c1.call(
         "upsert_persona",
         {"id": "novo", "name": "Novo", "aliases": ["novo"]},
     )
 
-    c2 = ContactsConnector(
-        personas_file=str(personas_path), contacts_file=str(contacts_path)
-    )
+    c2 = ContactsConnector(personas_file=str(personas_path), contacts_file=str(contacts_path))
     result = c2.call("find_persona", {"name": "novo"})
     assert result.ok
     assert result.data["id"] == "novo"
@@ -318,9 +313,7 @@ def test_upsert_named_channel_persists(tmp_path: Path) -> None:
     personas_path.write_text(yaml.dump({"personas": []}))
     contacts_path.write_text(yaml.dump({"contacts": [], "named_channels": []}))
 
-    c1 = ContactsConnector(
-        personas_file=str(personas_path), contacts_file=str(contacts_path)
-    )
+    c1 = ContactsConnector(personas_file=str(personas_path), contacts_file=str(contacts_path))
     c1.call(
         "upsert_named_channel",
         {
@@ -332,9 +325,7 @@ def test_upsert_named_channel_persists(tmp_path: Path) -> None:
         },
     )
 
-    c2 = ContactsConnector(
-        personas_file=str(personas_path), contacts_file=str(contacts_path)
-    )
+    c2 = ContactsConnector(personas_file=str(personas_path), contacts_file=str(contacts_path))
     result = c2.call("get_named_channel", {"name": "família whatsapp"})
     assert result.ok
     assert result.data["id"] == "familia_wpp"
@@ -422,8 +413,22 @@ def test_delete_persona_not_found(connector: ContactsConnector) -> None:
 def test_delete_persona_persists(tmp_path: Path) -> None:
     personas_path = tmp_path / "personas.yaml"
     contacts_path = tmp_path / "contacts.yaml"
-    personas_path.write_text(yaml.dump({"personas": [{"id": "fantasma", "name": "Fantasma",
-        "type": "person", "owner": "fred", "aliases": ["Fantasma"], "context": ""}]}))
+    personas_path.write_text(
+        yaml.dump(
+            {
+                "personas": [
+                    {
+                        "id": "fantasma",
+                        "name": "Fantasma",
+                        "type": "person",
+                        "owner": "fred",
+                        "aliases": ["Fantasma"],
+                        "context": "",
+                    }
+                ]
+            }
+        )
+    )
     contacts_path.write_text(yaml.dump({"contacts": [], "named_channels": []}))
 
     c1 = ContactsConnector(personas_file=str(personas_path), contacts_file=str(contacts_path))
@@ -518,9 +523,14 @@ def test_upsert_contact_persona_not_found(connector: ContactsConnector) -> None:
 def test_merge_personas_absorbs_duplicate(connector: ContactsConnector) -> None:
     """Base persona absorbs all contacts and aliases from the duplicate."""
     # joao_pt has no contacts; give joao_contador a contact to merge
-    connector.call("upsert_contact", {"persona_id": "joao_contador", "channel": "email", "address": "contador@example.com"})
+    connector.call(
+        "upsert_contact",
+        {"persona_id": "joao_contador", "channel": "email", "address": "contador@example.com"},
+    )
 
-    result = connector.call("merge_personas", {"base_id": "joao_pt", "duplicate_id": "joao_contador"})
+    result = connector.call(
+        "merge_personas", {"base_id": "joao_pt", "duplicate_id": "joao_contador"}
+    )
     assert result.ok
 
     # joao_contador persona ID is gone from the registry
@@ -537,7 +547,9 @@ def test_merge_personas_absorbs_duplicate(connector: ContactsConnector) -> None:
 
 
 def test_merge_personas_merges_aliases(connector: ContactsConnector) -> None:
-    result = connector.call("merge_personas", {"base_id": "joao_pt", "duplicate_id": "joao_contador"})
+    result = connector.call(
+        "merge_personas", {"base_id": "joao_pt", "duplicate_id": "joao_contador"}
+    )
     assert result.ok
 
     r = connector.call("find_persona", {"name": "João Contador"})
@@ -591,10 +603,23 @@ def test_set_vip_persists(tmp_path: Path) -> None:
     """VIP flag survives a reload."""
     personas_path = tmp_path / "personas.yaml"
     contacts_path = tmp_path / "contacts.yaml"
-    personas_path.write_text(yaml.dump({"personas": [
-        {"id": "viptest", "name": "VIP Test", "type": "person", "owner": "fred",
-         "aliases": ["VIP Test"], "context": "", "vip": False}
-    ]}))
+    personas_path.write_text(
+        yaml.dump(
+            {
+                "personas": [
+                    {
+                        "id": "viptest",
+                        "name": "VIP Test",
+                        "type": "person",
+                        "owner": "fred",
+                        "aliases": ["VIP Test"],
+                        "context": "",
+                        "vip": False,
+                    }
+                ]
+            }
+        )
+    )
     contacts_path.write_text(yaml.dump({"contacts": [], "named_channels": []}))
 
     c1 = ContactsConnector(personas_file=str(personas_path), contacts_file=str(contacts_path))

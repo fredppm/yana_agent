@@ -20,7 +20,7 @@ from typing import Any
 
 import yaml
 
-from .base import Connector, ConnectorResult, CommunicationChannel
+from .base import CommunicationChannel, Connector, ConnectorResult
 
 # ---------------------------------------------------------------------------
 # ConnectorInstance — manifest entry
