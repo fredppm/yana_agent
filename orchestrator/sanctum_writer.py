@@ -259,7 +259,11 @@ def write_session_title(
         )
 
         return _parse_title_response(response)
-    except Exception:
+    except Exception as _e:
+        import sys as _sys
+        import traceback as _tb
+        print(f"\n[YANA] write_session_title error: {_e}", file=_sys.stderr)
+        _tb.print_exc(file=_sys.stderr)
         return {}
 
 
