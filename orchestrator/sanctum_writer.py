@@ -258,12 +258,16 @@ def write_session_title(
             timeout=30.0,
         )
 
-        return _parse_title_response(response)
+        result = _parse_title_response(response)
+        from pathlib import Path as _Path
+        _log = _Path(__file__).parent / "title-debug.log"
+        _log.write_text(f"OK\nresponse={response[:500]}\nparsed={result}", encoding="utf-8")
+        return result
     except Exception as _e:
-        import sys as _sys
         import traceback as _tb
-        print(f"\n[YANA] write_session_title error: {_e}", file=_sys.stderr)
-        _tb.print_exc(file=_sys.stderr)
+        from pathlib import Path as _Path
+        _log = _Path(__file__).parent / "title-debug.log"
+        _log.write_text(f"ERROR: {_e}\n{_tb.format_exc()}", encoding="utf-8")
         return {}
 
 
