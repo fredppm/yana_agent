@@ -300,7 +300,14 @@ def _run_tui_conversation(
                                 for b in _text
                                 if isinstance(b, dict) and b.get("type") == "text"
                             )
-                        _candidate = str(_text).strip()[:120]
+                        # Take first non-empty line and strip markdown noise
+                        _first_line = next(
+                            (ln.strip() for ln in str(_text).splitlines() if ln.strip()),
+                            "",
+                        )
+                        import re as _re
+                        _first_line = _re.sub(r"\*+|`+|#{1,6}\s*|>\s*", "", _first_line).strip()
+                        _candidate = _first_line[:120]
                         if _candidate:
                             _fallback_title = _candidate
                             break  # found a real text message
