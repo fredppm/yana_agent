@@ -294,11 +294,16 @@ def _run_tui_conversation(
                     if _m.get("role") == "assistant":
                         _text = _m.get("content", "")
                         if isinstance(_text, list):
+                            # Only collect text blocks — skip tool_use, tool_result, etc.
                             _text = " ".join(
-                                b.get("text", "") for b in _text if isinstance(b, dict)
+                                b.get("text", "")
+                                for b in _text
+                                if isinstance(b, dict) and b.get("type") == "text"
                             )
-                        _fallback_title = str(_text).strip()[:120]
-                        break
+                        _candidate = str(_text).strip()[:120]
+                        if _candidate:
+                            _fallback_title = _candidate
+                            break  # found a real text message
 
                 store.create_session_sync(
                     session_id,
