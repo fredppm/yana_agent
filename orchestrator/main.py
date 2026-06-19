@@ -278,7 +278,7 @@ def _run_tui_conversation(
             # Regular session: store in Graphiti in background — TUI closes immediately
             mem.store_session_background(final_messages, session_id)
 
-        # Generate session title + summary (non-blocking, best-effort).
+        # Generate session title + summary.
         # NOTE: store_session_background creates the DB record in a background thread,
         # so we must ensure the record exists before calling update_session_title_sync.
         # We call create_session_sync here first (idempotent — safe to call twice).
@@ -287,11 +287,24 @@ def _run_tui_conversation(
 
             _profile_id = profiles.get_active_profile()
             if _profile_id:
+                # Derive a plain-text fallback title from the last assistant message
+                # so sessions always have visible text even when LLM title gen fails.
+                _fallback_title = ""
+                for _m in reversed(final_messages):
+                    if _m.get("role") == "assistant":
+                        _text = _m.get("content", "")
+                        if isinstance(_text, list):
+                            _text = " ".join(
+                                b.get("text", "") for b in _text if isinstance(b, dict)
+                            )
+                        _fallback_title = str(_text).strip()[:120]
+                        break
+
                 store.create_session_sync(
                     session_id,
                     _profile_id,
                     datetime.now().isoformat(),
-                    "",
+                    _fallback_title,
                     _json.dumps(final_messages, ensure_ascii=False),
                 )
             try:
@@ -303,7 +316,7 @@ def _run_tui_conversation(
                         title_data.get("summary"),
                     )
             except Exception:
-                pass  # best-effort — never block exit
+                pass  # best-effort — LLM failure leaves fallback_title in place
 
     run_tui(
         _sessions,
