@@ -22,7 +22,9 @@ def create_session_sync(
         if record is None:
             record = SessionRecord(id=session_id, profile_id=profile_id, started_at=started_at)
             db.add(record)
-        record.title = title
+        # Only overwrite an existing non-empty title if the new title is non-empty.
+        if title or not record.title:
+            record.title = title
         record.messages_json = messages_json
         db.commit()
 

@@ -278,8 +278,47 @@ def _run_tui_conversation(
             # Regular session: store in Graphiti in background — TUI closes immediately
             mem.store_session_background(final_messages, session_id)
 
-        # Generate session title + summary (non-blocking, best-effort)
+        # Generate session title + summary.
+        # NOTE: store_session_background creates the DB record in a background thread,
+        # so we must ensure the record exists before calling update_session_title_sync.
+        # We call create_session_sync here first (idempotent — safe to call twice).
         if final_messages:
+            import json as _json
+
+            _profile_id = profiles.get_active_profile()
+            if _profile_id:
+                # Derive a plain-text fallback title from the last assistant message
+                # so sessions always have visible text even when LLM title gen fails.
+                _fallback_title = ""
+                for _m in reversed(final_messages):
+                    if _m.get("role") == "assistant":
+                        _text = _m.get("content", "")
+                        if isinstance(_text, list):
+                            # Only collect text blocks — skip tool_use, tool_result, etc.
+                            _text = " ".join(
+                                b.get("text", "")
+                                for b in _text
+                                if isinstance(b, dict) and b.get("type") == "text"
+                            )
+                        # Take first non-empty line and strip markdown noise
+                        _first_line = next(
+                            (ln.strip() for ln in str(_text).splitlines() if ln.strip()),
+                            "",
+                        )
+                        import re as _re
+                        _first_line = _re.sub(r"\*+|`+|#{1,6}\s*|>\s*", "", _first_line).strip()
+                        _candidate = _first_line[:120]
+                        if _candidate:
+                            _fallback_title = _candidate
+                            break  # found a real text message
+
+                store.create_session_sync(
+                    session_id,
+                    _profile_id,
+                    datetime.now().isoformat(),
+                    _fallback_title,
+                    _json.dumps(final_messages, ensure_ascii=False),
+                )
             try:
                 title_data = sw.write_session_title(final_messages, config=providers_config)
                 if title_data:
@@ -289,7 +328,7 @@ def _run_tui_conversation(
                         title_data.get("summary"),
                     )
             except Exception:
-                pass  # best-effort — never block exit
+                pass  # best-effort — LLM failure leaves fallback_title in place
 
     run_tui(
         _sessions,

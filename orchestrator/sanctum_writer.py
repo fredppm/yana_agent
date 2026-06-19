@@ -227,7 +227,27 @@ def write_session_title(
         if not context:
             return {}
 
-        title_messages = [*context, {"role": "user", "content": _TITLE_PROMPT}]
+        # Strip tool_use / tool_result blocks — they break LLM calls without tool config.
+        # Keep only messages that have plain text content.
+        def _text_only(msg: dict) -> dict | None:
+            content = msg.get("content", "")
+            if isinstance(content, list):
+                text_parts = [
+                    b.get("text", "")
+                    for b in content
+                    if isinstance(b, dict) and b.get("type") == "text"
+                ]
+                text = " ".join(text_parts).strip()
+                if not text:
+                    return None
+                return {**msg, "content": text}
+            return msg if str(content).strip() else None
+
+        clean_context = [m for msg in context if (m := _text_only(msg)) is not None]
+        if not clean_context:
+            return {}
+
+        title_messages = [*clean_context, {"role": "user", "content": _TITLE_PROMPT}]
 
         response = prov.call_llm(
             title_messages,
@@ -238,8 +258,16 @@ def write_session_title(
             timeout=30.0,
         )
 
-        return _parse_title_response(response)
-    except Exception:
+        result = _parse_title_response(response)
+        from pathlib import Path as _Path
+        _log = _Path(__file__).parent / "title-debug.log"
+        _log.write_text(f"OK\nresponse={response[:500]}\nparsed={result}", encoding="utf-8")
+        return result
+    except Exception as _e:
+        import traceback as _tb
+        from pathlib import Path as _Path
+        _log = _Path(__file__).parent / "title-debug.log"
+        _log.write_text(f"ERROR: {_e}\n{_tb.format_exc()}", encoding="utf-8")
         return {}
 
 

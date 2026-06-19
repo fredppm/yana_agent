@@ -365,8 +365,8 @@ def store_session_background(messages: list[dict], session_id: str) -> None:
     """
     Fire-and-forget: store session in a background thread.
 
-    The TUI can close immediately. Thread is non-daemon so the process
-    stays alive until indexing finishes (typically a few seconds).
+    Thread is daemon so the process exits when the TUI closes; Graphiti
+    indexing is best-effort and should not block the user's terminal.
     """
 
     def _run() -> None:
@@ -380,7 +380,7 @@ def store_session_background(messages: list[dict], session_id: str) -> None:
         finally:
             loop.close()
 
-    threading.Thread(target=_run, daemon=False, name="graphiti-store").start()
+    threading.Thread(target=_run, daemon=True, name="graphiti-store").start()
 
 
 def load_context_sync(query: str | None = None, timeout: float = 5.0) -> str:
